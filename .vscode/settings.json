@@ -1,0 +1,4 @@
+{
+    "cmake.sourceDirectory": "${workspaceFolder}/firmware/esp32/mic_test",
+    "C_Cpp.default.compileCommands": "${workspaceFolder}/firmware/esp32/mic_test/build/compile_commands.json"
+}

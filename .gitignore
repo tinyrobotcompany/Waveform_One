@@ -1,0 +1,96 @@
+# macOS
+.DS_Store
+._*
+
+# Local editor state (keep portable project configuration)
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Rust
+target/
+
+# C/C++ / CMake
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# ESP-IDF generated configuration and downloaded components.
+# Keep sdkconfig.defaults*, idf_component.yml and dependencies.lock in Git.
+managed_components/
+sdkconfig
+sdkconfig.old
+/eim_config.toml
+
+# Local diagnostics, pre-Git backups and captured audio
+*.log
+logs/
+/firmware/esp32/mic_test/backups/
+captures/
+recordings/
+
+# Pi runtime state (keep source, migrations and explicit test fixtures)
+/pi/data/
+/pi/cache/
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Fusion / CAD temporary and backup files
+*.bak
+*.tmp
+*.autosave
+*.FCStd1
+*.kicad_prl
+*.kicad_sch-bak
+*.kicad_pcb-bak
+*-backups/
+~*.lck
+fp-info-cache
+
+# Slicer temporary/cache files
+*.gcode
+*.bgcode
+
+# Generated mechanical exports are normally reproducible.
+# Remove these ignores later if release exports should be versioned.
+mechanical/exports/stl/*
+mechanical/exports/3mf/*
+mechanical/exports/step/*
+!mechanical/exports/stl/.gitkeep
+!mechanical/exports/3mf/.gitkeep
+!mechanical/exports/step/.gitkeep
+
+# Electronics generated manufacturing files
+electronics/gerbers/*
+!electronics/gerbers/.gitkeep
+
+# Secrets
+.env
+.env.*
+!.env.example
+.secrets/
+*.key
+*.p12
+*.pfx
+
+# The working mic_test source and host tests are intentionally versioned.
