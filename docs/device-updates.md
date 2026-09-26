@@ -159,3 +159,18 @@ retained settings, offline checks, interrupted transfer, bad-boot rollback, Pi r
 at transaction boundaries, and full USB recovery. Automated fakes do not establish
 these hardware guarantees. Monitor and log reset reasons to resolve this prototype's
 reported instability before running these tests.
+
+## OTA handle ownership and artifact verification
+
+`esp_ota_end()` consumes the OTA handle even when validation fails. The flash
+adapter clears its copy after calling it; it must not abort that consumed handle.
+Failures before `esp_ota_end()` still abort the active operation. Adapter tests
+exercise finalization failure, boot-selection failure, hash failure and successful
+retry using the actual production adapter with IDF-contract test doubles.
+See [Espressif's esp_ota_end contract](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/system/ota.html#_CPPv411esp_ota_end16esp_ota_handle_t).
+
+Release staging is a fresh temporary directory. The release job downloads the
+Pi and ESP artifacts from the same successful validation run before signing.
+Both build metadata files must identify `GITHUB_SHA`, and each payload must match
+its producer-recorded SHA-256. The explicit pre-sign verification step fails on
+missing, substituted or mismatched artifacts; manifest generation repeats it.

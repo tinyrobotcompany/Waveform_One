@@ -84,6 +84,7 @@ jobs:
           cp -R pi/recognition pi/scripts pi/updater update-stage/pi/
           python3 -m pip download --only-binary=:all: -r pi/recognition/requirements.lock -d update-stage/wheels
           tar --exclude='__pycache__' --exclude='tests' -czf dist/waveform-one-pi.tar.gz -C update-stage bin pi wheels
+          python3 scripts/package-update.py --record-pi dist
           cd dist
           sha256sum waveform-control-linux-aarch64.tar.gz > waveform-control-linux-aarch64.tar.gz.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -43,3 +43,10 @@ done
     "$esp_dir/visualizer/tests/capture_transport_test.cpp" -o "$build_dir/capture_transport"
 "$build_dir/capture_transport"
 printf '%s\n' 'PASS: production capture/control transport, overflow recovery and failed headers'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/visualizer/tests/stubs" -I "$esp_dir/visualizer/main" \
+    "$esp_dir/visualizer/tests/update_flash_test.cpp" -o "$build_dir/update_flash"
+"$build_dir/update_flash"
+printf '%s\n' 'PASS: production flash adapter failure cleanup and retry'

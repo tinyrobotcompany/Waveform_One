@@ -14,6 +14,8 @@ from updates import NAMES,validate,verify_signature
 
 def manifest(dist,version,sequence,commit,notes):
     build=json.loads((dist/'esp-update-build.json').read_text())
+    pi_build=json.loads((dist/'pi-update-build.json').read_text())
+    if pi_build['commit']!=commit:raise ValueError('Pi artifact belongs to a different commit')
     result=dict(schema=1,product='waveform-one',hardware='esp32s3-16mb',
                 platform='linux-aarch64',python='3.13',protocol=1,channel='stable',source_ref='refs/heads/main',
                 sequence=sequence,version=version,commit=commit,notes=notes,
@@ -21,10 +23,28 @@ def manifest(dist,version,sequence,commit,notes):
     if build['commit']!=commit:raise ValueError('ESP artifact belongs to a different commit')
     for key,name in NAMES.items():
         data=(dist/name).read_bytes()
-        result['assets'][key]=dict(name=name,size=len(data),sha256=hashlib.sha256(data).hexdigest())
+        digest=hashlib.sha256(data).hexdigest()
+        provenance=pi_build if key=='pi' else build
+        if provenance.get('sha256',{}).get(name)!=digest:
+            raise ValueError(f'Artifact does not match its validated build: {name}')
+        result['assets'][key]=dict(name=name,size=len(data),sha256=digest)
     return validate(result,0)
 
+def record_pi(dist,commit):
+    name=NAMES['pi']
+    (dist/'pi-update-build.json').write_text(json.dumps({'commit':commit,
+        'sha256':{name:hashlib.sha256((dist/name).read_bytes()).hexdigest()}}))
+
+
 if __name__=='__main__':
+    if len(sys.argv)==3 and sys.argv[1]=='--record-pi':
+        record_pi(Path(sys.argv[2]),os.environ['GITHUB_SHA'])
+        sys.exit(0)
+    if len(sys.argv)==3 and sys.argv[1]=='--verify':
+        manifest(Path(sys.argv[2]),'v0.0.0',1,os.environ['GITHUB_SHA'],'Pre-sign verification')
+        print('Verified all Pi/ESP assets against build hashes and GITHUB_SHA')
+        sys.exit(0)
+
     p=argparse.ArgumentParser();p.add_argument('dist',type=Path);p.add_argument('plan',type=Path)
     args=p.parse_args();plan=json.loads(args.plan.read_text())
     result=manifest(args.dist,plan['tag'],int(os.environ['GITHUB_RUN_NUMBER']),os.environ['GITHUB_SHA'],plan['notes'])

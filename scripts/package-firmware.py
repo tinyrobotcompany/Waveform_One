@@ -38,8 +38,6 @@ SHA256SUMS detects download corruption; it is not a cryptographic signature.
     elf = build / 'waveform_visualizer.elf'
     if app.exists() and elf.exists():
         (output / 'waveform-one-esp32s3-ota.bin').write_bytes(app.read_bytes())
-        (output / 'esp-update-build.json').write_text(json.dumps({
-            'commit': commit, 'esp_elf_sha256': hashlib.sha256(elf.read_bytes()).hexdigest()}))
     archive = output / 'waveform-one-esp32s3-usb.zip'
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as z:
         for name, data in sorted(files.items()):
@@ -47,6 +45,12 @@ SHA256SUMS detects download corruption; it is not a cryptographic signature.
             info.compress_type = zipfile.ZIP_DEFLATED
             z.writestr(info, data)
     (output / 'SHA256SUMS').write_text(f'{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n')
+    if app.exists() and elf.exists():
+        names=['waveform-one-esp32s3-ota.bin',archive.name]
+        (output / 'esp-update-build.json').write_text(json.dumps({
+            'commit':commit,'esp_elf_sha256':hashlib.sha256(elf.read_bytes()).hexdigest(),
+            'sha256':{name:hashlib.sha256((output/name).read_bytes()).hexdigest() for name in names}}))
+
 
 
 if __name__ == '__main__':
