@@ -16,6 +16,7 @@ import urllib.request
 from updates import (BASE, NAMES, activate, atomic_json, download, extract,
                      sync_directory, validate, verify_asset, verify_signature)
 from esp import Esp, connect_healthy
+from policy import automatic_install, mode
 
 CONFIG=Path.home()/'.config/waveform-one'
 ROOT=Path.home()/'.local/share/waveform-one/releases'
@@ -27,7 +28,8 @@ def read(path, default=None):
 
 
 def status(phase, message, **extra):
-    atomic_json(CONFIG/'update-status.json',dict(phase=phase,message=message,**extra))
+    selected=read(CONFIG/'updater.json',{}).get('deployment_mode','production')
+    atomic_json(CONFIG/'update-status.json',dict(phase=phase,message=message,deployment_mode=selected,**extra))
 
 
 def service(action):
@@ -64,6 +66,8 @@ def recover(config):
     installed=read(ROOT/'installed.json',{})
     if installed.get('sequence')==journal['sequence']:
         (ROOT/'transaction.json').unlink();sync_directory(ROOT);return
+    if mode(config)=='development':
+        atomic_json(ROOT/'failed-automatic.json',{'sequence':journal['sequence']})
     status('recovering','Restoring the previous release…')
     service('stop')
     activate(ROOT,journal['previous'])
@@ -162,7 +166,7 @@ def prune():
 
 def main():
     parser=argparse.ArgumentParser()
-    parser.add_argument('action',choices=['check','install','recover'])
+    parser.add_argument('action',choices=['check','install','recover','sync-main'])
     args=parser.parse_args()
     CONFIG.mkdir(parents=True,exist_ok=True);ROOT.mkdir(parents=True,exist_ok=True)
     with (ROOT/'lock').open('w') as lock:
@@ -174,6 +178,7 @@ def main():
                 status('unconfigured','Updates need one-time device setup.');return
             if platform.machine()!='aarch64' or sys.version_info[:2]!=(3,13):
                 raise RuntimeError('Updater requires ARM64 Raspberry Pi OS with Python 3.13')
+            automatic=automatic_install(config,args.action)
             recover(config)
             if args.action=='recover':return
             prune()
@@ -183,6 +188,16 @@ def main():
                 status('current','Waveform One is up to date.',version=installed.get('version'));return
             if args.action=='check':
                 status('available','An update is available.',version=m['version'],notes=m['notes']);return
+            if automatic:
+                if read(ROOT/'failed-automatic.json',{}).get('sequence')==m['sequence']:
+                    status('failed','This development release failed. Automatic retry is paused; check and install manually to retry.',version=m['version'])
+                    return
+                try:
+                    install(m,config)
+                except Exception:
+                    atomic_json(ROOT/'failed-automatic.json',{'sequence':m['sequence']})
+                    raise
+                return
             # Install the exact version the user saw, never a newer unreviewed release.
             requested=read(CONFIG/'update-request.json',{})
             if requested.get('version')!=m['version']:raise RuntimeError('Available version changed; check updates and select Install again')

@@ -14,7 +14,7 @@ class UpdatesTests(unittest.TestCase):
     def manifest(self):
         return dict(schema=1, product='waveform-one', hardware='esp32s3-16mb',
                     platform='linux-aarch64', python='3.13', protocol=1,
-                    channel='stable', sequence=2, version='v0.2.0', notes='Update',
+                    channel='stable', source_ref='refs/heads/main', sequence=2, version='v0.2.0', notes='Update',
                     commit='a'*40, esp_elf_sha256='b'*64,
                     assets={k:dict(name=n,size=3,sha256=hashlib.sha256(b'abc').hexdigest()) for k,n in
                             [('pi','waveform-one-pi.tar.gz'),('esp','waveform-one-esp32s3-ota.bin'),('usb','waveform-one-esp32s3-usb.zip')]})
@@ -22,7 +22,7 @@ class UpdatesTests(unittest.TestCase):
     def test_compatibility_and_monotonic_versions(self):
         m=self.manifest()
         updates.validate(m, 1)
-        for key,value in [('hardware','unknown'),('protocol',2),('sequence',1),('platform','x86_64'),('python','3.12')]:
+        for key,value in [('source_ref','refs/heads/feature'),('hardware','unknown'),('protocol',2),('sequence',1),('platform','x86_64'),('python','3.12')]:
             with self.subTest(key=key), self.assertRaises(ValueError):
                 updates.validate(dict(m,**{key:value}),1)
         m['assets']['pi']['name']='../escape'

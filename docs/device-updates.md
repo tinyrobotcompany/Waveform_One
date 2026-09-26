@@ -7,8 +7,8 @@ Hardware commissioning and power-loss acceptance testing are still required.
 
 ## How owners receive updates
 
-The Pi checks public GitHub releases over HTTPS approximately every six hours,
-with a random delay to spread device traffic. No inbound ports, SSH account,
+The Pi checks public GitHub releases over HTTPS monthly,
+with a random delay to spread customer device traffic. No inbound ports, SSH account,
 GitHub token, phone app or separate ESP Wi-Fi setup is required. The touchscreen
 and paired phone show **Update available**. Settings → Updates shows release
 notes and **Install update**; closing Settings defers installation.
@@ -20,9 +20,18 @@ pairing tokens and microphone/LED wiring are preserved. No recording is sent to
 the update publisher. When offline, the existing application continues working;
 checks report an error and retry at the next scheduled check or manual request.
 
-This first implementation has one stable channel and explicit installation. Beta
-cohorts, fleet telemetry, automatic night-time installation and signing-key rotation
-are follow-up work, not enabled features.
+Customer devices use explicit installation. The development Pi instead uses
+`development` mode: an outbound agent checks for newly signed main releases every
+minute and installs them automatically after CI has published them. There is no
+Install-button requirement on this device. This is a pull-based deployment agent,
+not inbound SSH or a GitHub runner on the home network. If it was offline when a
+release happened, it catches up after restarting. A failed version is not retried
+automatically; manually check/install to retry, or publish a newer fixed release.
+
+Only CI-published, signed `refs/heads/main` releases qualify. A failed build, a
+feature-branch push, or a docs-only main push that publishes no release does not
+install anything. Beta cohorts, fleet telemetry and signing-key rotation are
+follow-up work, not enabled features.
 
 ## Trust and publication
 
@@ -93,6 +102,17 @@ sh pi/updater/install.sh pi/updater/release-public.pem \
   /dev/serial/by-id/YOUR_ESP_DEVICE \
   "$HOME/waveform-first-update/application"
 ```
+
+For Simon's development Pi, append `development` to the installer command:
+
+```sh
+sh pi/updater/install.sh pi/updater/release-public.pem \
+  /dev/serial/by-id/YOUR_ESP_DEVICE \
+  "$HOME/waveform-first-update/application" development
+```
+
+Without that argument the installer selects monthly production checks and manual
+installation. The mode is a local commissioning setting, not a phone control.
 
 The installer checks the ESP build identity/health, preserves existing service
 configuration, creates update overrides and installs check/install/recovery units.

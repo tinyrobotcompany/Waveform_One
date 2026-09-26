@@ -1,6 +1,6 @@
 # Device update implementation plan
 
-Status: implementation checklist. Code is implemented; signing setup, hardware
+Status: implementation checklist. Code and signing setup are implemented; hardware
 commissioning and real power-loss acceptance tests remain. See device-updates.md.
 Branch: `feature/device-ota-updates`.
 Baseline: `8367eede422b5eaa97932019e6bd878b34f37fe8`.
@@ -14,8 +14,8 @@ The existing touchscreen and paired phone interface show available version,
 release notes, progress, restart requirements, failures and recovery state.
 A native iOS app is not required.
 
-Initial installation policy is explicit Install/Later. Unattended installation
-during a configured idle window is deferred.
+Customer devices check monthly and use Install/Later. The development Pi follows
+successful signed main releases automatically via a one-minute outbound agent.
 Checking for an update must never interrupt listening or recording. Losing the
 internet must leave installed visualisation and local controls working.
 

@@ -15,7 +15,7 @@ from updates import NAMES,validate,verify_signature
 def manifest(dist,version,sequence,commit,notes):
     build=json.loads((dist/'esp-update-build.json').read_text())
     result=dict(schema=1,product='waveform-one',hardware='esp32s3-16mb',
-                platform='linux-aarch64',python='3.13',protocol=1,channel='stable',
+                platform='linux-aarch64',python='3.13',protocol=1,channel='stable',source_ref='refs/heads/main',
                 sequence=sequence,version=version,commit=commit,notes=notes,
                 esp_elf_sha256=build['esp_elf_sha256'],assets={})
     if build['commit']!=commit:raise ValueError('ESP artifact belongs to a different commit')

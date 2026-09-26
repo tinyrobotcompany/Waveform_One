@@ -1,13 +1,15 @@
 #!/bin/sh
 # One-time provisioning, after USB migration. Public key and serial path are explicit.
 set -eu
-if [ "$#" -ne 3 ]; then
-  echo 'Usage: sh pi/updater/install.sh PUBLIC_KEY_PEM SERIAL_BY_ID INITIAL_RELEASE_DIRECTORY' >&2
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+  echo 'Usage: sh pi/updater/install.sh PUBLIC_KEY_PEM SERIAL_BY_ID INITIAL_RELEASE_DIRECTORY [production|development]' >&2
   exit 2
 fi
 public_key=$1
 serial=$2
 initial_release=$3
+deployment_mode=${4:-production}
+case "$deployment_mode" in production|development) ;; *) echo 'Invalid deployment mode' >&2; exit 2;; esac
 [ "$(uname -m)" = aarch64 ]
 python3 -c 'import sys; assert sys.version_info[:2] == (3,13)'
 openssl pkey -pubin -in "$public_key" -noout
@@ -34,10 +36,10 @@ try: esp.request('WFU CONFIRM','WFU CONFIRMED')
 finally: esp.close()
 PYCODE
 install -m 644 "$public_key" "$config/update-public.pem"
-python3 - "$config/updater.json" "$serial" "$root" "$initial_release" <<'PY'
+python3 - "$config/updater.json" "$serial" "$root" "$initial_release" "$deployment_mode" <<'PY'
 import json,sys
 from pathlib import Path
-Path(sys.argv[1]).write_text(json.dumps({'serial':sys.argv[2]}))
+Path(sys.argv[1]).write_text(json.dumps({'serial':sys.argv[2],'deployment_mode':sys.argv[5]}))
 release=Path(sys.argv[4]).resolve(strict=True)
 Path(sys.argv[3],'current').symlink_to(release)
 m=json.loads((release/'release.json').read_text())
@@ -71,8 +73,8 @@ exec /usr/bin/python3 "$HOME/.local/share/waveform-one/releases/current/pi/scrip
 LAUNCH
 chmod 755 "$HOME/.local/bin/waveform-kiosk"
 # Keep recovery tooling outside the application being replaced.
-cp "$(dirname "$0")/agent.py" "$(dirname "$0")/updates.py" "$(dirname "$0")/esp.py" "$root/"
-for action in check install recover; do
+cp "$(dirname "$0")/agent.py" "$(dirname "$0")/updates.py" "$(dirname "$0")/esp.py" "$(dirname "$0")/policy.py" "$root/"
+for action in check install recover sync-main; do
   cat > "$units/waveform-update-$action.service" <<UNIT
 [Unit]
 Description=Waveform One update $action
@@ -92,19 +94,14 @@ cat >> "$units/waveform-update-recover.service" <<'UNIT'
 [Install]
 WantedBy=default.target
 UNIT
-cat > "$units/waveform-update-check.timer" <<'UNIT'
-[Unit]
-Description=Check for Waveform One updates
-[Timer]
-OnBootSec=5min
-OnUnitActiveSec=6h
-RandomizedDelaySec=30min
-Persistent=true
-[Install]
-WantedBy=timers.target
-UNIT
+PYTHONPATH="$(dirname "$0")" python3 - "$deployment_mode" "$units/waveform-update-check.timer" <<'PY'
+import sys
+from pathlib import Path
+from policy import timer
+Path(sys.argv[2]).write_text(timer(sys.argv[1]))
+PY
 systemctl --user daemon-reload
 systemctl --user enable waveform-update-recover.service
 systemctl --user enable --now waveform-update-check.timer
 systemctl --user restart waveform-display.service waveform-recognition.service
-printf 'Signed update checking enabled. Installation requires Install in Settings.\n'
+printf 'Signed updates configured in %s mode.\n' "$deployment_mode"

@@ -8,7 +8,7 @@
 | PR | Host tests, changeset validation, five ESP-IDF builds and an ARM64 Pi controller build |
 | Non-draft PR | Codex review of the diff using trusted base-branch code |
 | Push to main | The same tests/builds; publish pending notes, version tag, USB firmware bundle and Pi controller archive |
-| Commissioned device | Signed update checks; explicit Install on touchscreen/phone; recovery to previous application |
+| Commissioned device | Monthly customer checks with Install/Later; automatic development deployment; recovery to previous application |
 
 The release ZIP contains the visualizer application, bootloader, partition table,
 flash arguments, installation instructions and a manifest identifying the commit
@@ -65,8 +65,8 @@ the Pi, with the ESP application transferred over the internal USB connection.
 The USB provisioning bundle is never fed to the OTA installer.
 
 This is application updating, not a Raspberry Pi OS updater. Hardware acceptance
-and commissioning are still required before field distribution. The initial policy
-is explicit Install/Later on the touchscreen or paired phone.
+and commissioning are still required before field distribution. Customer devices check monthly and use Install/Later. The development Pi can
+follow signed main releases automatically using its one-minute deployment agent.
 
 ## Template provenance
 

@@ -17,7 +17,7 @@ LIMITS = {'pi': 256 * 1024 * 1024, 'esp': 3 * 1024 * 1024, 'usb': 8 * 1024 * 102
 
 def validate(m, installed_sequence):
     expected = dict(schema=1, product='waveform-one', hardware='esp32s3-16mb',
-                    platform='linux-aarch64', python='3.13', protocol=1, channel='stable')
+                    platform='linux-aarch64', python='3.13', protocol=1, channel='stable', source_ref='refs/heads/main')
     if not isinstance(m, dict) or any(m.get(k) != v for k, v in expected.items()):
         raise ValueError('Update is incompatible with this device')
     if type(m.get('sequence')) is not int or not installed_sequence < m['sequence'] < 2**53:

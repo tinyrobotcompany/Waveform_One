@@ -21,6 +21,7 @@ function update(data){
  latest=data;
  const u=data.update||{phase:'unconfigured',message:'Updates need one-time device setup.'};
  updating=['installing','recovering'].includes(u.phase);
+ $('updatePolicy').textContent=u.deployment_mode==='development'?'Development device: successful main releases install automatically.':'Updates are checked monthly. You choose when to install.';
  $('updateStatus').textContent=u.message;$('updateVersion').textContent=u.version||'';$('updateNotes').textContent=u.notes||'';
  $('installUpdate').hidden=u.phase!=='available';$('updateNotice').hidden=u.phase!=='available';
  $('checkUpdates').disabled=['downloading','installing','recovering'].includes(u.phase);
