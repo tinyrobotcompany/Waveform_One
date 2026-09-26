@@ -5,12 +5,13 @@
 
 A music-reactive LED display using an ESP32-S3, INMP441 microphone and 64×32
 HUB75 panel. The current working prototype connects the panel directly to the ESP32.
-Raspberry Pi integration is planned.
+The Raspberry Pi can select visual styles over USB using the Rust controller.
 
 - [Wiring, firmware programs and build instructions](firmware/esp32/README.md)
 - [Contributing and local tests](CONTRIBUTING.md)
 - [Release notes](CHANGELOG.md)
 - [CI, releases and OTA roadmap](docs/delivery.md)
+- [Pi setup and visual-style controls](pi/README.md)
 
 The release badge becomes available after the first validated release on `main`.
 Downloads currently support USB installation, not automatic device updates.

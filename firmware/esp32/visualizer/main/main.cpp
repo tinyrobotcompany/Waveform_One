@@ -14,6 +14,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+void control_start();
+
 static const char* TAG = "waveform_fft";
 static constexpr gpio_num_t PIN_BCLK = GPIO_NUM_5;
 static constexpr gpio_num_t PIN_WS = GPIO_NUM_6;
@@ -158,6 +160,7 @@ static void verify_fft_pipeline()
 
 static void print_visualizer(const audio::Frame& frame, bool beat_since_print)
 {
+    flockfile(stdout); // Keep command acknowledgements outside diagnostic lines.
     int visibleBands = 0;
     int peakPixels = 0;
     float cleanPower = 0;
@@ -182,6 +185,7 @@ static void print_visualizer(const audio::Frame& frame, bool beat_since_print)
         printf("%d", std::clamp(int(level * 9.0f), 0, 9));
     }
     printf("|\n");
+    funlockfile(stdout);
 }
 
 extern "C" void app_main()
@@ -201,6 +205,7 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(dsps_fft2r_init_fc32(nullptr, CONFIG_DSP_MAX_FFT_SIZE));
     verify_fft_pipeline();
     panel_start();
+    control_start();
     initialise_i2s();
     for (int i = 0; i < 5; ++i) read_audio_frame();
 

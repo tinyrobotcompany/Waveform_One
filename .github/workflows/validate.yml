@@ -18,9 +18,36 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
+      - name: Select tested Rust toolchain
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          rustup default 1.98.1
       - run: sh scripts/test.sh
         env:
           CXX: clang++
+  pi:
+    name: Pi ARM64 controller
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build and test Pi controller
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          cargo +1.98.1 test --manifest-path pi/core/Cargo.toml --locked
+          cargo +1.98.1 build --manifest-path pi/core/Cargo.toml --release --locked
+          mkdir -p dist
+          tar -czf dist/waveform-control-linux-aarch64.tar.gz -C pi/core/target/release waveform-control
+          cd dist
+          sha256sum waveform-control-linux-aarch64.tar.gz > waveform-control-linux-aarch64.tar.gz.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pi-controller
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
   firmware:
     name: ESP32 ${{ matrix.app }}
     runs-on: ubuntu-latest

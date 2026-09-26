@@ -8,3 +8,4 @@ done
 node --test .github/scripts/*.test.mjs
 python3 -m unittest discover -s scripts/tests -v
 sh firmware/esp32/tests/run.sh
+cargo test --manifest-path pi/core/Cargo.toml --locked

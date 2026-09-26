@@ -5,9 +5,9 @@
 | Event | Behaviour |
 | --- | --- |
 | Local commit | All host unit tests run through `.githooks/pre-commit` after setup |
-| PR | Host tests, changeset validation and five ESP-IDF builds |
+| PR | Host tests, changeset validation, five ESP-IDF builds and an ARM64 Pi controller build |
 | Non-draft PR | Codex review of the diff using trusted base-branch code |
-| Push to main | The same tests/builds; publish pending notes, version tag and USB firmware bundle |
+| Push to main | The same tests/builds; publish pending notes, version tag, USB firmware bundle and Pi controller archive |
 | Device in the field | No automatic installation yet |
 
 The release ZIP contains the visualizer application, bootloader, partition table,
@@ -73,10 +73,11 @@ Official reference: [ESP-IDF ESP32-S3 OTA documentation](https://docs.espressif.
 
 ## Pi deployment and future customer devices
 
-There is currently no Pi application, systemd service or configured deployment
-target in this repo, so an honest deployment pipeline cannot install one yet.
-During Pi integration, add its unit tests to `scripts/test.sh`, its build to the
-shared validation workflow, and its versioned package to the same release.
+The first Pi application is the Rust USB command-line controller in `pi/core`.
+Its tests run through `scripts/test.sh`; CI builds a native ARM64 Linux release
+and publishes its archive alongside the firmware. The persistent service,
+Qt/QML touchscreen interface and automatic installation/updater are not built
+yet. The prototype is installed manually on the development Pi for USB testing.
 
 For the development Pi, use a scoped deployment target with a known service,
 health check and rollback. For customers, prefer an updater on each Pi that pulls

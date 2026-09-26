@@ -133,8 +133,21 @@ against wall-clock timing. Keep hardware-dependent code thin and verify it on
 the board. For Pi integration add protocol and integration tests alongside
 unit tests. Existing hardware bring-up was not consistently test-first.
 
-Next milestones: visual styles first, then Pi integration. Continue on the
-existing `feature/led-panel-test` worktree; preserve this working baseline.
+### Visual styles and Pi control
+
+The visualizer boots into `classic`, preserving the original bar display.
+`mirrored` expands coloured frequency bands symmetrically around the centre.
+`waterfall` adds a new frequency row every 50 ms, with up to 1.6 seconds of
+history below it; colour indicates intensity. Silence scrolls black into the
+history. A stale audio stream clears every mode after the existing 500 ms limit.
+
+Use the [Rust Pi controller](../../pi/README.md) to switch modes over the same
+USB cable. Commands change the renderer only, not calibration or audio gain.
+Mode selections last until reboot. Tests for symmetry, history timing, stale
+data and malformed USB commands run with the existing host suites.
+
+Next milestones: Qt/QML touchscreen controls and the persistent Pi service.
+Continue on the existing `feature/led-panel-test` worktree.
 
 ### Visualizer activity and blanking
 

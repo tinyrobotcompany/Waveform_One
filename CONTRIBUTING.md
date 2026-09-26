@@ -1,7 +1,8 @@
 # Contributing
 
 Install Git, Python 3.9+, Node.js 22+ and a C++17 compiler with AddressSanitizer
-and UndefinedBehaviorSanitizer (Xcode command-line tools on macOS, Clang on Linux).
+and UndefinedBehaviorSanitizer (Xcode command-line tools on macOS, Clang on Linux),
+plus Rust/Cargo (tested toolchain 1.98.1).
 
 ```sh
 sh scripts/setup-hooks.sh
@@ -10,7 +11,9 @@ sh scripts/test.sh
 
 The pre-commit hook runs every host unit-test suite: Codex review helpers, release
 and packaging tooling, FFT/audio processing, LED patterns, frequency bars and
-low-volume sensitivity. A failing suite prevents the commit. It installs no
+low-volume sensitivity, visual styles, USB commands and the Rust Pi controller.
+A failing suite prevents the commit. Cargo may fetch locked dependencies on its
+first run; it does not install a compiler/toolchain. It installs no other
 dependencies and does not flash hardware. Hooks need installing once per clone;
 the local Git setting also applies to worktrees. Hooks test working-tree files:
 stage the complete change, avoiding partially staged source files. CI checks the

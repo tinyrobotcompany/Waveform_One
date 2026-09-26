@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <atomic>
 
 #include "driver/gpio.h"
 #include "esp_err.h"
@@ -14,6 +15,8 @@
 namespace {
 constexpr const char* kTag = "waveform_panel";
 QueueHandle_t frameQueue = nullptr;
+std::atomic<visual::Mode> requestedMode{visual::Mode::Classic};
+visual::Renderer renderer; // Owned exclusively by panel_task; avoid its task stack.
 struct Snapshot { audio::Frame frame; int64_t timestamp; };
 // Agreed breadboard wiring, NOT the Waveshare example's GPIO assignment.
 constexpr gpio_num_t kRgb[] = {
@@ -98,12 +101,12 @@ void initialisePanelDriver()
     ESP_LOGI(kTag, "Initialized FM6124/FM6126A-compatible panel driver");
 }
 
-void scan(const audio::Frame& frame)
+void scan(const visual::Renderer& image)
 {
     for (int row = 0; row < panel::kScanRows; ++row) {
         gpio_set_level(kOutputEnable, 1);
         for (int x = 0; x < panel::kWidth; ++x) {
-            const uint8_t bits = panel::rowPair(frame, x, row);
+            const uint8_t bits = image.rowPair(x, row);
             for (int channel = 0; channel < 6; ++channel)
                 gpio_set_level(kRgb[channel], (bits >> channel) & 1);
             // Keep the clock timing that worked with the direct rainbow cable.
@@ -141,7 +144,9 @@ static void panel_task(void*)
         if (xQueueReceive(frameQueue, &incoming, 0) == pdTRUE) current = incoming;
         // Never leave old bars displayed if capture or FFT stops publishing.
         if (esp_timer_get_time() - current.timestamp > 500000) current.frame = {};
-        scan(current.frame);
+        renderer.setMode(requestedMode.load());
+        renderer.render(current.frame, esp_timer_get_time() / 1000);
+        scan(renderer);
         vTaskDelay(1);
     }
 }
@@ -159,3 +164,6 @@ void panel_publish(const audio::Frame& frame)
     Snapshot next{frame, esp_timer_get_time()};
     xQueueOverwrite(frameQueue, &next);
 }
+
+void panel_set_mode(visual::Mode mode) { requestedMode.store(mode); }
+visual::Mode panel_mode() { return requestedMode.load(); }
