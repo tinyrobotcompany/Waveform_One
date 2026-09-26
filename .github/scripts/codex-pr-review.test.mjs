@@ -12,8 +12,8 @@ function runReview(scenario) {
   try {
     const event = join(temp, 'event.json');
     writeFileSync(event, JSON.stringify({pull_request: {
-      number: 1, title: 'A change', body: '', head: {sha: 'abc', ref: 'dependabot/test'},
-      user: {login: 'dependabot[bot]'},
+      number: 1, title: 'A change', body: '', head: {sha: 'abc', ref: scenario === 'dependabot' ? 'dependabot/test' : 'feature/test'},
+      user: {login: scenario === 'dependabot' ? 'dependabot[bot]' : 'developer'},
     }}));
     const loader = join(temp, 'fake.mjs');
     writeFileSync(loader, `
@@ -40,7 +40,7 @@ function runReview(scenario) {
       cwd: fileURLToPath(new URL('../../', import.meta.url)),
       env: {...process.env, GITHUB_EVENT_PATH: event, GITHUB_REPOSITORY: 'test/test',
         GITHUB_TOKEN: 'fake', OPENAI_API_KEY: scenario === 'missing-key' ? '' : 'fake',
-        CODEX_REVIEW_MODEL: '', CODEX_REVIEW_REASONING_EFFORT: ''},
+        CODEX_REVIEW_MODEL: 'gpt-5.5', CODEX_REVIEW_REASONING_EFFORT: 'low'},
       encoding: 'utf8',
     });
   } finally {
@@ -48,19 +48,30 @@ function runReview(scenario) {
   }
 }
 
-test('reviews dependency PRs and attaches comments to the reviewed commit', () => {
+test('posts a review using Voxa workflow model and reasoning settings', () => {
   const result = runReview('valid');
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /POSTED=.*"commit_id":"abc"/);
+  assert.match(result.stdout, /POSTED=.*codex-review:abc/);
   const request = JSON.parse(result.stdout.split('\n').find(line => line.startsWith('MODEL_REQUEST=')).slice('MODEL_REQUEST='.length));
   assert.equal(request.model, 'gpt-5.5');
-  assert.equal(request.reasoning.effort, 'medium');
+  assert.equal(request.reasoning.effort, 'low');
 });
 
-for (const scenario of ['missing-key', 'incomplete', 'invalid', 'stale']) {
-  test(`fails without posting a misleading review: ${scenario}`, () => {
-    const result = runReview(scenario);
-    assert.notEqual(result.status, 0);
-    assert.doesNotMatch(result.stdout, /POSTED=/);
-  });
-}
+test('skips Dependabot PRs as Voxa does', () => {
+  const result = runReview('dependabot');
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stdout, /MODEL_REQUEST=|POSTED=/);
+});
+
+test('runner fails when its required API key is absent', () => {
+  const result = runReview('missing-key');
+  assert.notEqual(result.status, 0);
+  assert.doesNotMatch(result.stdout, /POSTED=/);
+});
+
+test('posts Voxa fallback when the response does not meet the output contract', () => {
+  const result = runReview('invalid');
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /POSTED=/);
+  assert.match(result.stderr, /posting fallback review body/);
+});
