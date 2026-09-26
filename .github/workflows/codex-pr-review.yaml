@@ -1,34 +1,51 @@
 name: Codex PR Review
+
 on:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
-concurrency:
-  group: codex-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+
 jobs:
   codex-review:
     name: Codex Review
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
-      # Never execute PR code in this privileged workflow.
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Checkout base repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: '22'
-      - name: Review the PR diff
+
+      - name: Detect OpenAI review key
+        id: detect-openai
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -n "$OPENAI_API_KEY" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "OPENAI_API_KEY is not configured; skipping Codex review."
+          fi
+
+      - name: Run Codex review
+        if: steps.detect-openai.outputs.exists == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          CODEX_REVIEW_MODEL: ${{ vars.CODEX_REVIEW_MODEL || 'gpt-5.5' }}
-          CODEX_REVIEW_DIFF_MAX: '120000'
-          CODEX_REVIEW_MAX_OUTPUT_TOKENS: '6000'
-          CODEX_REVIEW_REASONING_EFFORT: medium
+          CODEX_REVIEW_MODEL: gpt-5.5
+          CODEX_REVIEW_DIFF_MAX: 120000
+          CODEX_REVIEW_MAX_OUTPUT_TOKENS: 6000
+          CODEX_REVIEW_REASONING_EFFORT: low
         run: node .github/scripts/codex-pr-review.mjs

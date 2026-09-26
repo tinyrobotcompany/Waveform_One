@@ -183,3 +183,9 @@ mod tests {
         assert_eq!(result, Some(Ok("mirrored".to_string())));
     }
 }
+
+pub mod display;
+
+pub mod capture;
+
+pub mod recognition;

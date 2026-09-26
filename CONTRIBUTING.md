@@ -32,7 +32,8 @@ See the [firmware README](firmware/esp32/README.md) for installation and wiring.
 
 Add a [changeset](.changeset/README.md) with each firmware, Pi, protocol or
 automation PR. PR checks run all host tests and firmware builds. Codex reviews
-non-draft PRs, including dependency PRs; human review is still required.
+non-draft PRs except Dependabot and changeset-release PRs, matching Voxa. Inspect
+the actual review body: a successful check can represent a skip or fallback.
 
 Changes merge into `main` only when approved. A successful main pipeline publishes
 pending changesets as a GitHub release with firmware assets; it does not install

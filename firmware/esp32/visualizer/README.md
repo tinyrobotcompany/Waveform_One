@@ -92,3 +92,21 @@ After the room-listening profile was applied, the user confirmed response at
 much lower playback volumes. The supplied boot log showed the FFT self-test
 passing and no I2S overflow warnings in that excerpt. This is a working bench
 baseline, not a completed long-duration or electrical validation.
+
+### USB audio capture for Pi recognition
+
+`WF1 <id> CAPTURE` starts one eight-second clip. Reply:
+`WF1 <id> AUDIO 16000 128000`, followed by exactly 1000 ordered
+`WF1 <id> PCM <sequence> <512 hex characters> <8-digit FNV-1a checksum>`
+lines, then `WF1 <id> END 1000`. Sequences start at zero; decoded bytes are
+little-endian signed 16-bit mono. The checksum covers each 256-byte payload.
+Diagnostic lines can occur between packets. Another CAPTURE command while capturing
+returns `ERR BUSY`; dropped samples/queue overflow return `ERR AUDIO_LOST`.
+
+A separate low-pass/downsample path converts the 48 kHz left microphone channel
+to 16 kHz. A bounded FreeRTOS queue keeps USB sending out of the audio-analysis
+loop. Capture never changes FFT/gating input, panel GPIOs, LED sensitivity or
+rendering mode. Host clients must enforce a timeout and discard incomplete data.
+
+The LED panel starts in **Mirrored** mode after every ESP boot or reset. Classic
+and Waterfall remain available through the Pi/phone Settings during that session.

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111612"><title>Waveform One</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body>
+<header><div class="brand">WAVEFORM <strong>ONE</strong></div><span id="headerGreeting"></span><time id="headerClock"></time><button id="settingsToggle" aria-controls="settings" aria-expanded="false">Settings</button></header>
+<main id="scene" data-phase="waiting">
+  <div id="record" class="record" aria-label="Album artwork unavailable"><div class="vinyl"><div class="record-label">W<span>ONE</span></div></div><img id="artwork" alt="Album cover" hidden></div>
+  <section class="information"><div class="eyebrow" id="eyebrow">YOUR LISTENING SPACE</div><time id="clock" hidden></time><h1 id="headline">Welcome home.</h1><p id="subtitle">Connecting to your Waveform One</p><p id="album"></p><p id="recognitionNote"></p></section>
+</main>
+<footer><span id="connection">Connecting…</span><span id="sceneStatus">Waiting for the device</span></footer>
+<div id="message" role="status" aria-live="polite"></div>
+<dialog id="pairing"><form id="pairForm"><span class="eyebrow">WELCOME TO WAVEFORM ONE</span><h2>Connect your remote.</h2><p>Scan the QR code in your Pi’s settings, or enter its device token.</p><label>Device token<input id="token" autocomplete="off" type="password" required></label><button class="primary" type="submit">Connect</button><p id="pairError" role="alert"></p></form></dialog>
+<dialog id="settings" aria-labelledby="settingsTitle"><form id="nameForm">
+  <div class="dialog-heading"><h2 id="settingsTitle">Your listening space</h2><button type="button" id="closeSettings" aria-label="Close settings">✕</button></div>
+  <nav class="tabs" aria-label="Settings sections"><button type="button" data-tab="profile" aria-pressed="true">You</button><button type="button" data-tab="styles" aria-pressed="false">Styles</button><button type="button" data-tab="screen" aria-pressed="false">Screen</button><button type="button" data-tab="phone" aria-pressed="false">Phone</button></nav>
+  <div class="settings-scroll">
+    <section data-panel="profile"><label>Your name<input id="name" maxlength="40" autocomplete="given-name" placeholder="e.g. Simon"></label><button type="button" id="keyboardToggle">Open screen keyboard</button><p>Your name and the time stay visible while music plays. When the room is quiet, your personalised clock takes centre stage.</p></section>
+    <section data-panel="styles" hidden><p>Choose how your LED panel moves with the music.</p><div id="styles"><button type="button" class="style" data-mode="classic"><span class="preview">▂▄▆█▅▃</span><span><strong>Classic</strong><small>The original spectrum</small></span><span class="selected">○</span></button><button type="button" class="style" data-mode="mirrored"><span class="preview">▃▆█▆▃</span><span><strong>Mirrored</strong><small>Sound, in symmetry</small></span><span class="selected">○</span></button><button type="button" class="style" data-mode="waterfall"><span class="preview">≋≋≋</span><span><strong>Waterfall</strong><small>A trail of every moment</small></span><span class="selected">○</span></button></div></section>
+    <section data-panel="screen" hidden><p id="quietStatus" role="status"></p><label id="brightnessControl" hidden>Pi screen brightness <output id="brightnessValue">100%</output><input id="screenBrightness" type="range" min="10" max="100" value="100"></label><p>After 30 seconds without substantial sound, the screen dims to a clock. Touch the screen to brighten it while using controls. LED-panel brightness is separate.</p></section>
+    <section data-panel="phone" hidden><p>Scan with your phone camera on the same Wi-Fi.</p><img id="pairQr" alt="Scan to pair your phone" width="180" height="180"><details><summary>Enter a token instead</summary><p>Open <strong>raspberrypi.local:8080</strong> and use:</p><code id="pairCode"></code></details></section>
+  </div>
+  <div class="dialog-actions"><span id="settingsMessage" role="status"></span><button class="primary" type="submit">Save & close</button></div>
+</form></dialog>
+<dialog id="keyboard" aria-labelledby="keyboardTitle"><div class="dialog-heading"><h2 id="keyboardTitle">Your name</h2><button id="keyboardDone" type="button" class="primary">Done</button></div><div id="namePreview" role="status" aria-live="polite"></div><div id="keys"></div></dialog>
+</body></html>

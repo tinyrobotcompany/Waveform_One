@@ -8,6 +8,14 @@ int main() {
     frame.calibrated = true;
     frame.levels[6] = 0.5f;
     renderer.render(frame, 0);
+    int defaultLit = 0;
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 64; ++x) {
+        assert(renderer.pixel(x, y) == renderer.pixel(x, 31-y));
+        defaultLit += renderer.pixel(x, y) != 0;
+    }
+    assert(defaultLit > 0);
+    renderer.setMode(visual::Mode::Classic);
+    renderer.render(frame, 0);
     for (int y = 0; y < 32; ++y)
         for (int x = 0; x < 64; ++x)
             assert(renderer.pixel(x, y) == panel::pixel(frame, x, y));

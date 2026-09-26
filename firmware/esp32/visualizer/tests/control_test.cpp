@@ -10,6 +10,8 @@ int main() {
     for (const char* bad : {"WF2 1 STATUS", "WF1 0 STATUS", "WF1 -1 STATUS", "WF1 65536 STATUS",
             "WF1 1 MODE unknown", "WF1 1 MODE classic extra", "WF1 2 STATUS extra"})
         assert(!control::parse(bad, command));
+    assert(control::parse("WF1 12 CAPTURE", command) && command.capture && !command.changeMode);
+    assert(!control::parse("WF1 12 CAPTURE extra", command));
     control::Lines lines;
     std::vector<std::string> received;
     auto feed = [&](const std::string& input) {

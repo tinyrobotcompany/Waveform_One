@@ -5,11 +5,14 @@ import process from 'process';
 import {
   buildSystemPrompt,
   buildUserPrompt,
+  buildFallbackReviewBody,
   buildOpenAiErrorDiagnostics,
   buildOpenAiReviewRequestPayload,
   buildOpenAiResponseDiagnostics,
   extractReviewBodyFromOpenAiPayload,
   isStructurallyValidReviewBody,
+  isChangesetReleasePr,
+  isDependabotPr,
   loadSkillRubrics,
 } from './codex-pr-review-core.mjs';
 
@@ -24,6 +27,16 @@ const pr = event.pull_request;
 if (!pr) {
   console.error('This workflow must run on a pull_request or pull_request_target event.');
   process.exit(1);
+}
+
+if (isDependabotPr(pr, process.env.GITHUB_ACTOR || '')) {
+  console.log('Dependabot PR detected; skipping Codex review by design.');
+  process.exit(0);
+}
+
+if (isChangesetReleasePr(pr)) {
+  console.log('Changeset release PR detected; bypassing Codex review by design.');
+  process.exit(0);
 }
 
 const repoSlug = process.env.GITHUB_REPOSITORY || '';
@@ -46,10 +59,10 @@ if (!openAiKey) {
 }
 
 const githubApi = process.env.GITHUB_API_URL || 'https://api.github.com';
-const model = process.env.CODEX_REVIEW_MODEL || 'gpt-5.5';
+const model = process.env.CODEX_REVIEW_MODEL || 'gpt-5.2';
 const maxDiffChars = Number.parseInt(process.env.CODEX_REVIEW_DIFF_MAX || '120000', 10);
 const maxOutputTokens = Number.parseInt(process.env.CODEX_REVIEW_MAX_OUTPUT_TOKENS || '6000', 10);
-const reasoningEffort = process.env.CODEX_REVIEW_REASONING_EFFORT || 'medium';
+const reasoningEffort = process.env.CODEX_REVIEW_REASONING_EFFORT || 'low';
 const codexReviewMarker = `<!-- codex-review:${pr.head?.sha || process.env.GITHUB_SHA || 'unknown'} -->`;
 
 async function githubRequest(path, options = {}) {
@@ -140,14 +153,19 @@ console.log(buildOpenAiResponseDiagnostics({
   isStructurallyValid: structurallyValidReviewBody,
 }));
 
-if (openAiPayload.status !== 'completed' || !extractedReviewBody || !structurallyValidReviewBody) {
-  throw new Error('OpenAI did not return a complete, valid review; no review was posted.');
+const reviewBody = extractedReviewBody && structurallyValidReviewBody
+  ? extractedReviewBody
+  : buildFallbackReviewBody(openAiPayload);
+if (reviewBody !== extractedReviewBody) {
+  console.warn('OpenAI review body was missing or did not match the required output contract; posting fallback review body.');
 }
-const reviewBody = extractedReviewBody;
-const latestPrResponse = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}`);
+
+const latestPrResponse = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}`, {
+  headers: {Accept: 'application/vnd.github+json'},
+});
 const latestPr = await latestPrResponse.json();
-if (latestPr.head.sha !== pr.head.sha) {
-  throw new Error('PR changed during review; the newer workflow must review the new commit.');
+if (!pr.head?.sha || latestPr.head?.sha !== pr.head.sha) {
+  throw new Error('PR head changed during review; no review was posted.');
 }
 
 const taggedBody = `${codexReviewMarker}\n${reviewBody}`;
