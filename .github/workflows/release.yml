@@ -43,6 +43,7 @@ jobs:
       - name: Compute version and publish assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_SEQUENCE_OFFSET: ${{ vars.UPDATE_SEQUENCE_OFFSET }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           RELEASE_DIST: ${{ steps.staging.outputs.directory }}
         run: |

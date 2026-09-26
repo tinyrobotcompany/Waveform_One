@@ -36,10 +36,16 @@ fn service_requires_pairing_rejects_invalid_controls_and_persists_greeting() {
     fs::create_dir_all(&config).unwrap();
     let token = "a".repeat(48);
     fs::write(config.join("remote-token"), &token).unwrap();
+    // Isolated systemctl double: exercise successful HTTP dispatch without touching services.
+    use std::os::unix::fs::PermissionsExt;
+    let systemctl=config.join("systemctl");
+    fs::write(&systemctl, "#!/bin/sh\nprintf '%s\n' \"$*\" >> \"$WAVEFORM_CONFIG_DIR/service-calls\"\n").unwrap();
+    fs::set_permissions(&systemctl,fs::Permissions::from_mode(0o755)).unwrap();
     let process = Command::new(env!("CARGO_BIN_EXE_waveform-display"))
         .arg("/missing-waveform-serial")
         .env("WAVEFORM_BIND", format!("127.0.0.1:{port}"))
         .env("WAVEFORM_CONFIG_DIR", &config)
+        .env("PATH", &config)
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -67,6 +73,20 @@ fn service_requires_pairing_rejects_invalid_controls_and_persists_greeting() {
         &format!("POST /api/updates/check HTTP/1.1\r\n{headers}Content-Length: 2\r\n\r\n{{}}")
     )
     .starts_with("HTTP/1.1 409"));
+    fs::write(running.config.join("updater.json"), "{}").unwrap();
+    fs::write(running.config.join("update-public.pem"), "test key").unwrap();
+    for body in ["", "{", "{}"] {
+        let response=http(port,&format!("POST /api/updates/check HTTP/1.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",body.len()));
+        assert!(response.starts_with("HTTP/1.1 202"),"{response}");
+    }
+    let calls=fs::read_to_string(running.config.join("service-calls")).unwrap();
+    assert_eq!(calls.lines().count(),3);
+    assert!(calls.lines().all(|s|s=="--user start --no-block waveform-update-check.service"));
+    for body in ["", "{", "{}"] {
+        let response=http(port,&format!("POST /api/updates/install HTTP/1.1\r\n{headers}Content-Length: {}\r\n\r\n{body}",body.len()));
+        assert!(response.starts_with("HTTP/1.1 409"),"{response}");
+    }
+    assert_eq!(fs::read_to_string(running.config.join("service-calls")).unwrap(),calls);
     let state = http(port, &format!("GET /api/state HTTP/1.1\r\n{headers}\r\n"));
     assert!(state.contains("\"phase\":\"disconnected\""));
     assert!(http(

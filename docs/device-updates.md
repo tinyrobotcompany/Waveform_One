@@ -174,3 +174,30 @@ Pi and ESP artifacts from the same successful validation run before signing.
 Both build metadata files must identify `GITHUB_SHA`, and each payload must match
 its producer-recorded SHA-256. The explicit pre-sign verification step fails on
 missing, substituted or mismatched artifacts; manifest generation repeats it.
+
+
+### Review evidence: discovery, identity and timeout
+
+The discovery URL is `https://github.com/tinyrobotcompany/Waveform_One/releases/latest/download/update.json`
+(and `update.sig`), the standard GitHub latest-release asset route. The agent regression test checks these exact URLs.
+Authenticated HTTP integration tests exercise successful empty/malformed-body check requests via an isolated
+systemctl double, and verify invalid install bodies do not start a service.
+
+ESP-IDF 6.1's `esp_app_get_elf_sha256()` is limited by `CONFIG_APP_RETRIEVE_LEN_ELF_SHA`
+(default 9 characters), even with a larger destination buffer. OTA status now formats all 32 bytes of
+`esp_app_get_description()->app_elf_sha256` directly. Packaging reads that same field from the image
+and rejects a mismatch with the built ELF SHA-256. Every production firmware packaging job performs this check.
+Timeout tests use the production Transfer and Flash classes: after a partial transfer expires,
+storage is closed, protocol state is inactive, and a complete retry succeeds.
+
+### Preserving update sequences during CI migration
+
+The signed sequence is `GITHUB_RUN_NUMBER + UPDATE_SEQUENCE_OFFSET`. The repository Actions variable
+`UPDATE_SEQUENCE_OFFSET` defaults to zero. Before recreating/renaming the release workflow or moving the
+repository, record the highest sequence ever published for this signing key/channel. Set the offset in the
+new repository/workflow to at least that value before its first release, and keep it for all subsequent runs.
+For example, after sequence 100, offset 100 with new run 1 produces 101 and run 2 produces 102.
+Never lower/remove an established offset or reuse a sequence. If an early migrated release was rejected for
+its lower sequence, publish a new version with the corrected offset; do not overwrite a published release.
+Clients retain their anti-downgrade checks. This is an operator-controlled migration procedure, not automatic
+sequence recovery; preserve the channel's published-sequence history and signing key when migrating.

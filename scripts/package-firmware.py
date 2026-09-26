@@ -9,6 +9,16 @@ import subprocess
 import zipfile
 
 
+def image_identity(image, elf):
+    # ESP32-S3 image: 24-byte header + 8-byte first segment header, then
+    # esp_app_desc_t; app_elf_sha256 is at descriptor offset 144 (IDF 6.1).
+    if len(image)<288 or image[0]!=0xe9 or int.from_bytes(image[32:36],'little')!=0xabcd5432:
+        raise ValueError('Missing ESP application descriptor')
+    embedded=bytes(image[176:208])
+    if embedded!=hashlib.sha256(elf).digest():
+        raise ValueError('Firmware image identity does not match the built ELF')
+    return embedded.hex()
+
 def bundle(build, output, commit):
     build = build.resolve()
     config = json.loads((build / 'flasher_args.json').read_text())
@@ -48,7 +58,7 @@ SHA256SUMS detects download corruption; it is not a cryptographic signature.
     if app.exists() and elf.exists():
         names=['waveform-one-esp32s3-ota.bin',archive.name]
         (output / 'esp-update-build.json').write_text(json.dumps({
-            'commit':commit,'esp_elf_sha256':hashlib.sha256(elf.read_bytes()).hexdigest(),
+            'commit':commit,'esp_elf_sha256':image_identity(app.read_bytes(),elf.read_bytes()),
             'sha256':{name:hashlib.sha256((output/name).read_bytes()).hexdigest() for name in names}}))
 
 

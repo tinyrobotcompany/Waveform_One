@@ -21,6 +21,10 @@ public:
     explicit Transfer(Storage& storage):storage_(storage){}
     bool active() const {return active_;}
     void abort(){if(active_)storage_.abort();active_=false;}
+    bool expire(long long idle_microseconds) {
+        if(!active_ || idle_microseconds<=30000000)return false;
+        abort();return true;
+    }
     std::string handle(std::string_view line) {
         if(line=="WFU ABORT"){abort();return "WFU ABORTED";}
         if(line.substr(0,10)=="WFU BEGIN "){

@@ -83,3 +83,15 @@ class InstallTests(unittest.TestCase):
                 self.assertFalse((root/'transaction.json').exists())
                 self.assertNotIn('WFU CONFIRM',[c.args[0] for c in esp.request.call_args_list])
                 services.assert_called_with('start')
+
+class DiscoveryTests(unittest.TestCase):
+    def test_latest_release_urls_and_signature_checked_before_validation(self):
+        data=b'{"sequence":2,"version":"v1.0.0"}'
+        with patch.object(agent,'download',side_effect=[data,b'signature']) as fetch, \
+             patch.object(agent,'verify_signature') as verify,patch.object(agent,'validate') as validate:
+            agent.candidate({'sequence':1})
+            self.assertEqual([c.args[0] for c in fetch.call_args_list],[
+                'https://github.com/tinyrobotcompany/Waveform_One/releases/latest/download/update.json',
+                'https://github.com/tinyrobotcompany/Waveform_One/releases/latest/download/update.sig'])
+            verify.assert_called_once_with(data,b'signature',agent.CONFIG/'update-public.pem')
+            validate.assert_called_once_with(json.loads(data),1)

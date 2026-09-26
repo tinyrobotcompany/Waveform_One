@@ -30,6 +30,13 @@ def manifest(dist,version,sequence,commit,notes):
         result['assets'][key]=dict(name=name,size=len(data),sha256=digest)
     return validate(result,0)
 
+def release_sequence(run_number, offset=''):
+    # Keep the offset across runs after a workflow/repository counter migration.
+    run=int(run_number);base=int(offset or '0')
+    if run<1 or base<0 or run+base>=2**53:
+        raise ValueError('Invalid release sequence or migration offset')
+    return run+base
+
 def record_pi(dist,commit):
     name=NAMES['pi']
     (dist/'pi-update-build.json').write_text(json.dumps({'commit':commit,
@@ -47,7 +54,7 @@ if __name__=='__main__':
 
     p=argparse.ArgumentParser();p.add_argument('dist',type=Path);p.add_argument('plan',type=Path)
     args=p.parse_args();plan=json.loads(args.plan.read_text())
-    result=manifest(args.dist,plan['tag'],int(os.environ['GITHUB_RUN_NUMBER']),os.environ['GITHUB_SHA'],plan['notes'])
+    result=manifest(args.dist,plan['tag'],release_sequence(os.environ['GITHUB_RUN_NUMBER'],os.environ.get('UPDATE_SEQUENCE_OFFSET','')),os.environ['GITHUB_SHA'],plan['notes'])
     (args.dist/'update.json').write_text(json.dumps(result,sort_keys=True,separators=(',',':'))+'\n')
     key=os.environ.get('UPDATE_SIGNING_KEY','')
     if not key:raise RuntimeError('UPDATE_SIGNING_KEY must be configured before publishing updates')

@@ -2,6 +2,7 @@
 #include <cstring>
 #include <string>
 #include "update_flash.h"
+#include "update_identity.h"
 namespace {
 esp_partition_t slot{3*1024*1024};
 bool live=false;
@@ -24,6 +25,9 @@ int psa_hash_finish(psa_hash_operation_t* hash,unsigned char* data,size_t,size_t
 }
 int psa_hash_abort(psa_hash_operation_t* hash){hash->active=false;return 0;}
 int main(){
+    unsigned char identity[32];
+    for(unsigned i=0;i<32;i++)identity[i]=i;
+    assert(update::identity_hex(identity)=="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
     update::Flash flash;
     const auto digest=std::string(64,'a');
     unsigned char bytes[4]{};
@@ -40,4 +44,18 @@ int main(){
         assert(flash.begin(4,digest.c_str()));assert(flash.write(bytes,4));assert(flash.finish());
         assert(!live);flash.abort();
     }
+    update::Transfer transfer(flash);
+    assert(transfer.handle("WFU BEGIN 4 "+digest)=="WFU READY 0");
+    assert(transfer.handle("WFU DATA 0 0000")=="WFU READY 2");
+    assert(!transfer.expire(30000000));
+    assert(transfer.active() && live);
+    assert(transfer.expire(30000001));
+    assert(!transfer.active() && !live);
+    assert(!transfer.expire(60000000));
+    assert(transfer.handle("WFU DATA 2 0000")=="WFU ERR INACTIVE");
+    assert(transfer.handle("WFU BEGIN 4 "+digest)=="WFU READY 0");
+    assert(transfer.handle("WFU DATA 0 00000000")=="WFU READY 4");
+    assert(transfer.handle("WFU END")=="WFU STAGED");
+    assert(!transfer.active() && !live);
+
 }

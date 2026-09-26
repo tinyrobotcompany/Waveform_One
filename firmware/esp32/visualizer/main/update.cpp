@@ -7,6 +7,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "update_flash.h"
+#include "update_identity.h"
 #include "freertos/task.h"
 #include <atomic>
 #include <cstdio>
@@ -23,7 +24,7 @@ void update_healthy(){healthy.store(true);}
 void update_tick(){
     static const int64_t boot=esp_timer_get_time();
     const int64_t now=esp_timer_get_time();
-    if(transfer.active() && now-activity>30000000)transfer.abort();
+    transfer.expire(now-activity);
     // A wedged or unconfirmed new release must not become permanent.
     if(now-boot>120000000 && pending())esp_restart();
 }
@@ -31,7 +32,7 @@ bool update_handle(std::string_view line){
     if(line.substr(0,4)!="WFU ")return false;
     activity=esp_timer_get_time();
     if(line=="WFU STATUS"){
-        char digest[65];esp_app_get_elf_sha256(digest,sizeof(digest));
+        const auto digest=update::identity_hex(esp_app_get_description()->app_elf_sha256);
         reply(std::string("WFU STATUS ")+digest+" "+(pending()?"pending":"valid")+" "+(healthy.load()?"healthy":"starting")+" wf1-esp32s3-16mb");
     }else if(line=="WFU CONFIRM"){
         reply(healthy.load() && esp_ota_get_boot_partition()==esp_ota_get_running_partition() && esp_ota_mark_app_valid_cancel_rollback()==ESP_OK?"WFU CONFIRMED":"WFU ERR HEALTH");

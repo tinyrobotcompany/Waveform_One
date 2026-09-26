@@ -45,3 +45,11 @@ class UpdatePackageTests(unittest.TestCase):
                 with self.subTest(component=component),self.assertRaises(ValueError):
                     package.manifest(dist,'v1.0.0',1,'a'*40,'notes')
                 path.write_bytes(original)
+
+    def test_migration_offset_preserves_sequence_after_run_counter_restart(self):
+        self.assertEqual(package.release_sequence('100',''),100)
+        self.assertEqual(package.release_sequence('1','100'),101)
+        self.assertGreater(package.release_sequence('2','100'),101)
+        for run,offset in [('0','0'),('1','-1'),('1','oops'),('1',str(2**53))]:
+            with self.subTest(run=run,offset=offset),self.assertRaises(ValueError):
+                package.release_sequence(run,offset)
