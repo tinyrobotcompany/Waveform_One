@@ -92,3 +92,40 @@ and POST `/api/preferences` with a JSON name and optional screen_brightness.
 All APIs require `Authorization: Bearer <device-token>`; no cross-origin access
 is enabled. Integration tests start a real local HTTP server with no serial
 hardware and verify pairing, validation, disconnected behaviour and persistence.
+
+### Touchscreen and idle-mode refinement
+
+The main screen now prioritizes the clock, greeting and track/artwork area. Styles
+are in Settings → Styles. Settings uses separate You/Styles/Screen/Phone tabs,
+a scrolling content pane and fixed action buttons. On the Pi kiosk, tapping the
+name opens an embedded keyboard; other browsers retain their native keyboard
+and can optionally open the embedded one. The kiosk URL must include `?kiosk=1`.
+
+Screen activity no longer equates every ESP OPEN diagnostic with music. It
+requires at least three bands at level 2/9, a peak of 3/9, total level 12/216,
+and one second of sustained qualifying activity before updating the screen's
+music timer. Weak readings and isolated narrow-band vibration do not reset the
+30-second hold. These are display heuristics, not a music classifier; confirm
+quiet-room and low-volume playback on the actual hardware. LED gating is unchanged.
+The authenticated `/api/wake` endpoint holds the selected backlight for 60 seconds
+following touch/keyboard interaction without altering audio activity state.
+
+Real artwork still requires recognition/metadata integration. The default vinyl
+illustration is not album artwork. The UI can render supplied track metadata,
+but this service currently has no producer for those fields.
+
+Browser regression checks use a synthetic backend and exercise 800×480, 390×844
+and 844×390 layouts, keyboard entry/save, styles, scrolling and quiet-screen
+presentation. Run `pi/web/browser-check.cjs` with `PLAYWRIGHT_MODULE` pointing to
+an installed Playwright module and `CHROME_BIN` pointing to Chrome/Chromium.
+For example, install Playwright into a temporary directory using
+`npm install --prefix /tmp/waveform-browser-tests playwright`, then:
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/waveform-browser-tests/node_modules/playwright \
+CHROME_BIN='/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
+node pi/web/browser-check.cjs
+```
+
+These browser checks complement the Rust activity tests and actual Pi inspection;
+they do not claim physical touchscreen or iPhone Safari validation.

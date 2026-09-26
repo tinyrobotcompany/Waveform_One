@@ -175,7 +175,7 @@ fn respond(req: tiny_http::Request, status: u16, content: String, mime: &str) {
     for (name, value) in [
         ("Content-Type", mime), ("Cache-Control", "no-store"),
         ("X-Content-Type-Options", "nosniff"), ("Referrer-Policy", "no-referrer"),
-        ("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        ("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
     ] { response.add_header(Header::from_bytes(name, value).unwrap()); }
     let _ = req.respond(response);
 }
@@ -237,9 +237,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .is_some_and(|p| p.join("brightness").exists());
     let (tx, rx) = mpsc::sync_channel::<Command>(4);
     let start = Instant::now();
+    let wake_until = Arc::new(Mutex::new(0u64));
     if let Some(path) = backlight {
         let state = state.clone();
         let preferences = preferences.clone();
+        let wake_until = wake_until.clone();
         thread::spawn(move || {
             let maximum = fs::read_to_string(path.join("max_brightness"))
                 .ok()
@@ -249,7 +251,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 let idle = state.lock().unwrap().view(seconds(start)).phase == "idle";
                 let chosen = preferences.lock().unwrap().screen_brightness;
-                let percent = if idle { chosen.min(15) } else { chosen };
+                let percent = if idle && seconds(start) >= *wake_until.lock().unwrap() {
+                    chosen.min(15)
+                } else {
+                    chosen
+                };
                 if last != Some(percent) {
                     if fs::write(
                         path.join("brightness"),
@@ -287,11 +293,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             preferences_path.clone(),
         );
         let qr = qr.clone();
+        let wake_until = wake_until.clone();
         workers.push(thread::spawn(move || for mut req in server.incoming_requests() {
-            let path = req.url().to_string();
+            let path = req.url().split('?').next().unwrap_or("/").to_string();
             if req.method() == &Method::Get {
                 let asset = match path.as_str() {
                     "/" => Some((include_str!("../../../web/index.html"), "text/html; charset=utf-8")),
+                    "/ui.mjs" => Some((include_str!("../../../web/ui.mjs"), "text/javascript; charset=utf-8")),
                     "/app.js" => Some((include_str!("../../../web/app.js"), "text/javascript; charset=utf-8")),
                     "/style.css" => Some((include_str!("../../../web/style.css"), "text/css; charset=utf-8")),
                     _ => None,
@@ -302,6 +310,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !authorized { respond(req, 401, "Pair this browser using the device token".into(), "text/plain"); continue; }
             if req.method() == &Method::Get && path == "/api/pairing-qr" {
                 respond(req, 200, qr.clone(), "image/svg+xml");
+            } else if req.method() == &Method::Post && path == "/api/wake" {
+                *wake_until.lock().unwrap() = seconds(start) + 60;
+                respond(req, 200, "{}".into(), "application/json");
             } else if req.method() == &Method::Get && path == "/api/state" {
                 let view = state.lock().unwrap().view(seconds(start));
                 let prefs = preferences.lock().unwrap().clone();

@@ -48,6 +48,7 @@ pub struct DisplayState {
     error: String,
     last_audio: Option<u64>,
     last_music: Option<u64>,
+    music_candidate: Option<u64>,
     telemetry: Option<Telemetry>,
 }
 #[derive(Serialize)]
@@ -57,6 +58,7 @@ pub struct View {
     pub mode: String,
     pub bands: [u8; 24],
     pub error: String,
+    pub idle_in_seconds: u64,
 }
 impl DisplayState {
     pub fn connected(&mut self, mode: &str, _now: u64) {
@@ -69,11 +71,26 @@ impl DisplayState {
         self.error = error.to_string();
         self.last_audio = None;
         self.last_music = None;
+        self.music_candidate = None;
         self.telemetry = None;
     }
     pub fn telemetry(&mut self, data: Telemetry, now: u64) {
-        if data.active {
-            self.last_music = Some(now);
+        // The visualizer gate is intentionally sensitive. Screen idle detection
+        // requires sustained, meaningful spectral activity instead of any OPEN.
+        let substantial = data.active
+            && data.bands.iter().filter(|&&v| v >= 2).count() >= 3
+            && data.bands.iter().any(|&v| v >= 3)
+            && data.bands.iter().map(|&v| u16::from(v)).sum::<u16>() >= 12;
+        if substantial {
+            if self.last_audio.is_some_and(|t| now.saturating_sub(t) > 2) {
+                self.music_candidate = None;
+            }
+            let since = *self.music_candidate.get_or_insert(now);
+            if now.saturating_sub(since) >= 1 {
+                self.last_music = Some(now);
+            }
+        } else {
+            self.music_candidate = None;
         }
         self.last_audio = Some(now);
         self.telemetry = Some(data);
@@ -101,6 +118,9 @@ impl DisplayState {
                 [0; 24]
             },
             error: self.error.clone(),
+            idle_in_seconds: self
+                .last_music
+                .map_or(0, |t| 30u64.saturating_sub(now.saturating_sub(t))),
         }
     }
 }

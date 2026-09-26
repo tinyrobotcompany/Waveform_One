@@ -113,6 +113,16 @@ fn service_requires_pairing_rejects_invalid_controls_and_persists_greeting() {
         &format!("GET /api/pairing-qr HTTP/1.1\r\n{headers}\r\n")
     )
     .contains("<svg"));
+    assert!(http(
+        port,
+        "GET /?kiosk=1 HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+    )
+    .starts_with("HTTP/1.1 200"));
+    assert!(http(
+        port,
+        &format!("POST /api/wake HTTP/1.1\r\n{headers}Content-Length: 0\r\n\r\n")
+    )
+    .starts_with("HTTP/1.1 200"));
     let asset = http(
         port,
         "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",

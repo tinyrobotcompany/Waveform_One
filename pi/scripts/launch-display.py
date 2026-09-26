@@ -21,4 +21,4 @@ os.environ.setdefault('WAYLAND_DISPLAY', 'wayland-0')
 os.execvp('chromium', ['chromium', '--ozone-platform=wayland', '--kiosk',
     '--no-first-run', '--noerrdialogs', '--password-store=basic',
     '--user-data-dir=' + str(config / 'chromium'),
-    'http://127.0.0.1:8080/#token=' + token])
+    'http://127.0.0.1:8080/?kiosk=1#token=' + token])
