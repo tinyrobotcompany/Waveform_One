@@ -1,3 +1,4 @@
+#include "capture.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -216,6 +217,7 @@ extern "C" void app_main()
     uint32_t last_overflows = receive_overflows();
     while (true) {
         if (!read_audio_frame()) {
+            capture_discontinuity();
             pipeline.discontinuity();
             beat_since_print = false;
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -226,10 +228,12 @@ extern "C" void app_main()
             ESP_LOGW(TAG, "I2S dropped %lu buffers; discarding frame and re-priming detection",
                      static_cast<unsigned long>(overflows - last_overflows));
             last_overflows = overflows;
+            capture_discontinuity();
             pipeline.discontinuity();
             beat_since_print = false;
             continue;
         }
+        capture_audio(i2s_words, audio::kFftSize);
         const float rms = spectrum.prepare(i2s_words, fft_data);
         if (!calculate_fft()) {
             pipeline.discontinuity();

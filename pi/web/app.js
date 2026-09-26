@@ -20,7 +20,7 @@ function update(data){
  $('scene').dataset.phase=d.phase;
  $('connection').textContent=d.connected?'● Connected':'○ Reconnecting';
  $('headerGreeting').textContent=name?`Hello ${name}`:'Your listening space';
- const view=presentation(d.phase,name,data.track);
+ const view=presentation(d.phase,name,data.track,data.recognition);
  $('eyebrow').textContent=view.eyebrow;$('headline').textContent=view.title;$('subtitle').textContent=view.subtitle;
  $('album').textContent=view.album;$('recognitionNote').textContent=view.note;
  $('record').setAttribute('aria-label',view.artwork?'Album artwork':'Record illustration; album artwork unavailable');

@@ -41,8 +41,8 @@ impl Telemetry {
     }
 }
 
-#[derive(Default)]
 pub struct DisplayState {
+    session: u64,
     mode: String,
     connected: bool,
     error: String,
@@ -51,8 +51,27 @@ pub struct DisplayState {
     music_candidate: Option<u64>,
     telemetry: Option<Telemetry>,
 }
+impl Default for DisplayState {
+    fn default() -> Self {
+        let session = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros() as u64;
+        Self {
+            session,
+            mode: String::new(),
+            connected: false,
+            error: String::new(),
+            last_audio: None,
+            last_music: None,
+            music_candidate: None,
+            telemetry: None,
+        }
+    }
+}
 #[derive(Serialize)]
 pub struct View {
+    pub session: u64,
     pub phase: &'static str,
     pub connected: bool,
     pub mode: String,
@@ -75,6 +94,7 @@ impl DisplayState {
         self.telemetry = None;
     }
     pub fn telemetry(&mut self, data: Telemetry, now: u64) {
+        let was_playing = self.view(now).phase == "playing";
         // The visualizer gate is intentionally sensitive. Screen idle detection
         // requires sustained, meaningful spectral activity instead of any OPEN.
         let substantial = data.active
@@ -94,6 +114,9 @@ impl DisplayState {
         }
         self.last_audio = Some(now);
         self.telemetry = Some(data);
+        if !was_playing && self.view(now).phase == "playing" {
+            self.session = self.session.wrapping_add(1);
+        }
     }
     pub fn view(&self, now: u64) -> View {
         let fresh = self.last_audio.is_some_and(|t| now.saturating_sub(t) < 5);
@@ -109,6 +132,7 @@ impl DisplayState {
             "idle"
         };
         View {
+            session: self.session,
             phase,
             connected: self.connected,
             mode: self.mode.clone(),

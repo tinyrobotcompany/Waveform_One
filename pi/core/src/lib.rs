@@ -185,3 +185,7 @@ mod tests {
 }
 
 pub mod display;
+
+pub mod capture;
+
+pub mod recognition;

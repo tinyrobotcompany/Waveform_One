@@ -23,12 +23,12 @@ Agreed scope for `feature/pi-display-remote`. OTA installation is the next phase
 - Use the existing ESP microphone; add bounded short PCM sample transfer over USB.
 - Verify transfer does not disrupt audio processing or smooth panel refresh before
   relying on this capture path. No additional wiring is planned.
-- Trial AudD recognition, with a replaceable provider interface. Use returned
+- Use ShazamIO recognition on the Pi (user selected no-subscription recognition). Use returned
   track/artist/album/artwork for both displays. Discogs is optional release
   enrichment; OpenAI is optional future conversation, not the recognition engine.
 - Prefer source-provided metadata when an appropriate player integration exists.
-- Recognition requests need explicit setup of runtime credentials, a usage budget,
-  rate limits and backoff. GitHub review secrets are not runtime credentials.
+- ShazamIO requires no API key. Rate limits, backoff and bounded clip capture
+  apply; the unofficial service is not a guaranteed commercial product dependency.
 - Show identifying/unidentified/offline states honestly. No matches must not
   interrupt LEDs or imply silence. Avoid presenting stale artwork as a new match.
 - A recognized recording does not establish the exact vinyl pressing or edition.
@@ -45,7 +45,7 @@ Agreed scope for `feature/pi-display-remote`. OTA installation is the next phase
    before choosing the display integration. Existing architecture proposes Qt/QML.
 3. Extend ESP controls and telemetry for the agreed settings and visualization;
    test ranges, persistence policy and rendering/audio behaviour.
-4. PCM capture/USB transport, then bounded AudD integration and artwork handling.
+4. PCM capture/USB transport, then bounded ShazamIO integration and artwork handling.
    Test no-match, network failure, stale responses, track transitions and budgets.
 5. Deploy to the Pi and physically verify touchscreen, phone synchronization,
    prolonged music playback, quiet passages, true silence and reconnection.
@@ -72,6 +72,15 @@ Rust linting, ARM64 native build, actual ESP acknowledgements for all three
 styles, and screenshots at the Pi's 800x480 and phone's 390x844 dimensions.
 Physical touch and prolonged pause/resume behaviour still need user observation.
 
-Remaining: richer ESP controls, PCM transfer, AudD credentials/integration,
-actual album metadata/artwork, idle preferences, recognition budget/backoff and
-end-to-end tests for those capabilities. OTA installation remains a later phase.
+Remaining at this milestone: richer ESP controls, PCM transfer, recognition,
+actual album metadata/artwork and end-to-end tests for those capabilities.
+OTA installation remains a later phase.
+
+## ShazamIO implementation — 2026-09-26
+
+Added a checked, bounded eight-second ESP audio capture, Pi recognition worker,
+metadata expiry/session checks and actual track/artwork presentation. No key or
+AudD account is used. The live Pi identified the ShazamIO reference recording,
+including an eight-second 16 kHz version, and returned artwork. Firmware build
+and host/browser checks pass. Deployment and microphone-to-screen verification
+require the ESP restart/calibration and music playback on the physical device.

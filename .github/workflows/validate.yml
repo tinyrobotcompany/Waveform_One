@@ -72,8 +72,9 @@ jobs:
           rustup toolchain install 1.98.1 --profile minimal
           cargo +1.98.1 test --manifest-path pi/core/Cargo.toml --locked
           cargo +1.98.1 build --manifest-path pi/core/Cargo.toml --release --locked
+          WAVEFORM_TEST_BIN=pi/core/target/release/waveform-display python3 pi/recognition/transport_check.py
           mkdir -p dist
-          tar -czf dist/waveform-control-linux-aarch64.tar.gz -C pi/core/target/release waveform-control waveform-display
+          tar -czf dist/waveform-control-linux-aarch64.tar.gz -C pi/core/target/release waveform-control waveform-display -C "$GITHUB_WORKSPACE" pi/recognition pi/scripts
           cd dist
           sha256sum waveform-control-linux-aarch64.tar.gz > waveform-control-linux-aarch64.tar.gz.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

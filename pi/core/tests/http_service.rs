@@ -73,6 +73,12 @@ fn service_requires_pairing_rejects_invalid_controls_and_persists_greeting() {
         &format!("POST /api/mode/bogus HTTP/1.1\r\n{headers}Content-Length: 0\r\n\r\n")
     )
     .starts_with("HTTP/1.1 400"));
+    assert!(http(port,"POST /api/capture HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").starts_with("HTTP/1.1 401"));
+    assert!(http(
+        port,
+        &format!("POST /api/capture HTTP/1.1\r\n{headers}Content-Length: 0\r\n\r\n")
+    )
+    .starts_with("HTTP/1.1 409"));
     let body = r#"{"name":"Simon"}"#;
     assert!(http(
         port,

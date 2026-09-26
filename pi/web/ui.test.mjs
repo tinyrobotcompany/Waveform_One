@@ -21,3 +21,8 @@ test('matched metadata is rendered only with safe artwork URL',()=>{
  assert.equal(presentation('playing','Simon',track).artwork,null);
  assert.equal(presentation('playing','Simon',track).title,'Track');
 });
+test('recognition progress and no-match are distinct from a matched song',()=>{
+ assert.match(presentation('playing','Simon',null,'recognizing').note,/Identifying/);
+ assert.match(presentation('playing','Simon',null,'no_match').note,/recognise/);
+ assert.equal(presentation('playing','Simon',{title:'Song',artist:'Artist',album:'Record'},'matched').eyebrow,'NOW PLAYING');
+});

@@ -13,16 +13,22 @@ use waveform_control::{
     request, Replies,
 };
 
+#[derive(Debug)]
+enum Answer {
+    Mode(String),
+    Audio(Vec<u8>),
+}
 type Shared = Arc<Mutex<DisplayState>>;
 struct Pending {
     expected: String,
     sent: Instant,
-    reply: Option<mpsc::Sender<Result<String, String>>>,
+    reply: Option<mpsc::Sender<Result<Answer, String>>>,
     decoder: Replies,
+    capture: Option<waveform_control::capture::Capture>,
 }
 struct Command {
     mode: String,
-    reply: mpsc::Sender<Result<String, String>>,
+    reply: mpsc::Sender<Result<Answer, String>>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -71,7 +77,14 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                         next.map_or(("status".to_string(), None), |c| (c.mode, Some(c.reply)));
                     id = if id == u16::MAX { 1 } else { id + 1 };
                     if port
-                        .write_all(request(id, &mode).unwrap().as_bytes())
+                        .write_all(
+                            (if mode == "capture" {
+                                format!("WF1 {id} CAPTURE\n")
+                            } else {
+                                request(id, &mode).unwrap()
+                            })
+                            .as_bytes(),
+                        )
                         .is_err()
                     {
                         if let Some(tx) = reply {
@@ -80,6 +93,11 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                         break;
                     }
                     pending = Some(Pending {
+                        capture: if mode == "capture" {
+                            Some(waveform_control::capture::Capture::new(id))
+                        } else {
+                            None
+                        },
                         expected: mode,
                         sent: Instant::now(),
                         reply,
@@ -92,9 +110,15 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                 Ok(0) => break,
                 Ok(n) => {
                     for byte in &bytes[..n] {
+                        let mut captured = None;
                         if *byte == b'\n' {
                             if !overflow {
                                 if let Ok(text) = std::str::from_utf8(&line) {
+                                    if let Some(capture) =
+                                        pending.as_mut().and_then(|p| p.capture.as_mut())
+                                    {
+                                        captured = capture.line(text).map(|r| r.map(Answer::Audio));
+                                    }
                                     if let Some(data) = Telemetry::parse(text) {
                                         state.lock().unwrap().telemetry(data, seconds(start));
                                     }
@@ -109,20 +133,30 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                                 line.push(*byte);
                             }
                         }
-                        let answer = pending.as_mut().and_then(|p| p.decoder.push(*byte));
+                        let answer = captured.or_else(|| {
+                            pending
+                                .as_mut()
+                                .filter(|p| p.capture.is_none())
+                                .and_then(|p| p.decoder.push(*byte))
+                                .map(|r| r.map(Answer::Mode))
+                        });
                         if let Some(answer) = answer {
                             let Pending {
                                 expected, reply, ..
                             } = pending.take().unwrap();
-                            let answer = answer.and_then(|mode| {
-                                if expected == "status" || expected == mode {
-                                    Ok(mode)
-                                } else {
+                            let answer = answer.and_then(|answer| match answer {
+                                Answer::Mode(ref mode)
+                                    if expected != "status" && expected != *mode =>
+                                {
                                     Err("ESP acknowledged a different mode".into())
                                 }
+                                other => Ok(other),
                             });
                             match &answer {
-                                Ok(mode) => state.lock().unwrap().connected(mode, seconds(start)),
+                                Ok(Answer::Mode(mode)) => {
+                                    state.lock().unwrap().connected(mode, seconds(start))
+                                }
+                                Ok(Answer::Audio(_)) => {}
                                 Err(_) => state
                                     .lock()
                                     .unwrap()
@@ -148,10 +182,9 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                     ) => {}
                 Err(_) => break,
             }
-            if pending
-                .as_ref()
-                .is_some_and(|p| p.sent.elapsed() >= Duration::from_secs(3))
-            {
+            if pending.as_ref().is_some_and(|p| {
+                p.sent.elapsed() >= Duration::from_secs(if p.capture.is_some() { 15 } else { 3 })
+            }) {
                 break;
             }
         }
@@ -282,6 +315,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Waveform display listening on {bind}; pairing token stored in {}",
         token_path.display()
     );
+    let capture_lock = Arc::new(Mutex::new(()));
     let mut workers = vec![];
     for _ in 0..4 {
         let (server, state, preferences, tx, token, preferences_path) = (
@@ -292,6 +326,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             token.clone(),
             preferences_path.clone(),
         );
+        let capture_lock = capture_lock.clone();
+        let recognition_path = dir.join("recognition.json");
         let qr = qr.clone();
         let wake_until = wake_until.clone();
         workers.push(thread::spawn(move || for mut req in server.incoming_requests() {
@@ -316,7 +352,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else if req.method() == &Method::Get && path == "/api/state" {
                 let view = state.lock().unwrap().view(seconds(start));
                 let prefs = preferences.lock().unwrap().clone();
-                respond(req, 200, serde_json::json!({"device":view,"preferences":prefs,"recognition":"not_configured","screen_brightness_supported":brightness_supported}).to_string(), "application/json");
+                let (recognition,track)=waveform_control::recognition::snapshot(&recognition_path,&view);
+                respond(req, 200, serde_json::json!({"device":view,"preferences":prefs,"recognition":recognition,"track":track,"screen_brightness_supported":brightness_supported}).to_string(), "application/json");
+            } else if req.method() == &Method::Post && path == "/api/capture" {
+                if !req.remote_addr().is_some_and(|a|a.ip().is_loopback()) {respond(req,403,"Audio capture is local to the Pi".into(),"text/plain");continue;}
+                let view=state.lock().unwrap().view(seconds(start));
+                if view.phase!="playing" {respond(req,409,"Waiting for music".into(),"text/plain");continue;}
+                let (reply,received)=mpsc::channel();
+                // One capture at a time, including queued requests. Never hold up HTTP status.
+                let Ok(_guard)=capture_lock.try_lock() else {respond(req,409,"Capture already running".into(),"text/plain");continue;};
+                if tx.try_send(Command{mode:"capture".into(),reply}).is_err(){respond(req,503,"Device busy".into(),"text/plain");continue;}
+                match received.recv_timeout(Duration::from_secs(20)) {
+                    Ok(Ok(Answer::Audio(bytes))) => {
+                        let current=state.lock().unwrap().view(seconds(start));
+                        if current.phase!="playing" || current.session!=view.session {respond(req,409,"Listening session changed".into(),"text/plain");continue;}
+                        let mut response=Response::from_data(bytes);
+                        response.add_header(Header::from_bytes("Content-Type","application/octet-stream").unwrap());
+                        response.add_header(Header::from_bytes("Cache-Control","no-store").unwrap());
+                        let _=req.respond(response);
+                    },
+                    _=>respond(req,503,"Could not capture a complete audio clip".into(),"text/plain"),
+                }
             } else if req.method() == &Method::Post && path.starts_with("/api/mode/") {
                 let mode = path.trim_start_matches("/api/mode/");
                 if !matches!(mode, "classic" | "mirrored" | "waterfall") { respond(req, 400, "Unknown style".into(), "text/plain"); continue; }
@@ -324,7 +380,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let (reply, received) = mpsc::channel();
                 if tx.try_send(Command { mode: mode.into(), reply }).is_err() { respond(req, 503, "Device busy; try again".into(), "text/plain"); continue; }
                 match received.recv_timeout(Duration::from_secs(16)) {
-                    Ok(Ok(mode)) => respond(req, 200, serde_json::json!({"mode":mode}).to_string(), "application/json"),
+                    Ok(Ok(Answer::Mode(mode))) => respond(req, 200, serde_json::json!({"mode":mode}).to_string(), "application/json"),
+                    Ok(Ok(Answer::Audio(_))) => respond(req, 500, "Unexpected audio reply".into(), "text/plain"),
                     Ok(Err(e)) => respond(req, 503, e, "text/plain"),
                     Err(_) => respond(req, 504, "Device command timed out; refresh status".into(), "text/plain"),
                 }

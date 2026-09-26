@@ -110,9 +110,9 @@ quiet-room and low-volume playback on the actual hardware. LED gating is unchang
 The authenticated `/api/wake` endpoint holds the selected backlight for 60 seconds
 following touch/keyboard interaction without altering audio activity state.
 
-Real artwork still requires recognition/metadata integration. The default vinyl
-illustration is not album artwork. The UI can render supplied track metadata,
-but this service currently has no producer for those fields.
+The optional ShazamIO service below supplies real track metadata and artwork.
+The default vinyl illustration is a placeholder when no match or cover is
+available; it is never presented as an identified album cover.
 
 Browser regression checks use a synthetic backend and exercise 800×480, 390×844
 and 844×390 layouts, keyboard entry/save, styles, scrolling and quiet-screen
@@ -129,3 +129,52 @@ node pi/web/browser-check.cjs
 
 These browser checks complement the Rust activity tests and actual Pi inspection;
 they do not claim physical touchscreen or iPhone Safari validation.
+
+## Music recognition and album artwork
+
+The optional `waveform-recognition` user service uses **ShazamIO 0.8.1**. No API
+key, AudD account or subscription is used. It is an unofficial Shazam client;
+service availability and compatibility are not guaranteed for a commercial
+product. Tested runtime: Raspberry Pi OS ARM64, Python 3.13.
+
+Update the ESP visualizer firmware first, then run on the Pi from this checkout:
+
+```sh
+sh pi/scripts/install-display.sh
+sh pi/scripts/install-recognition.sh
+```
+
+During sustained music the worker requests eight seconds of 16 kHz, signed
+16-bit mono PCM from the existing INMP441 microphone, over USB. It generates
+an acoustic fingerprint locally with ShazamIO and sends the fingerprint to
+Shazam. Raw audio is kept in memory, not written to disk. Cover images load
+from the HTTPS URL returned by the provider. No new wiring is needed.
+
+A successful match supplies title, artist, album (when provided), artwork
+(when provided), and the **Now Playing** tag. A recording can occur on several
+releases, so the provider's album/cover is not proof of the physical edition
+being played. Unmatched music shows a listening message, never invented data.
+The worker waits 30 seconds after each result before another capture; errors
+back off from 60 to 300 seconds. A no-match response clears the previous song.
+Matches expire after 90 seconds without confirmation and are hidden immediately
+in quiet mode or on disconnection. A playback-session identifier prevents a
+late result from being shown for a later listening session.
+
+```sh
+systemctl --user status waveform-recognition
+journalctl --user -u waveform-recognition -n 30 --no-pager
+systemctl --user stop waveform-recognition  # disable recognition temporarily
+systemctl --user disable --now waveform-recognition  # also disable at login
+```
+
+`recognition.json` in `~/.config/waveform-one/` contains a short-lived metadata
+snapshot. The worker reuses the local remote token to call the display service;
+it never opens the ESP serial device itself. `/api/capture` additionally rejects
+non-loopback callers. It rejects captures outside active listening, overlapping captures, incomplete
+clips, checksum/sequence errors, and changed listening sessions. Capture may
+queue a style change for approximately eight seconds, while the LED rendering
+continues. Stop both services before manually flashing or monitoring the ESP.
+
+Host tests: `PYTHONPATH=pi/recognition python3 -m unittest discover -s
+pi/recognition/tests -v` (also part of `scripts/test.sh`). Real recognition
+requires internet and music; unit tests do not make external requests.
