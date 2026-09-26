@@ -107,3 +107,6 @@ A separate low-pass/downsample path converts the 48 kHz left microphone channel
 to 16 kHz. A bounded FreeRTOS queue keeps USB sending out of the audio-analysis
 loop. Capture never changes FFT/gating input, panel GPIOs, LED sensitivity or
 rendering mode. Host clients must enforce a timeout and discard incomplete data.
+
+The LED panel starts in **Mirrored** mode after every ESP boot or reset. Classic
+and Waterfall remain available through the Pi/phone Settings during that session.

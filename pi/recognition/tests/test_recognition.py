@@ -25,6 +25,12 @@ class RecognitionTests(unittest.TestCase):
         self.assertIsNone(s.view(1,40)['track'])
         s.fail(40);self.assertGreaterEqual(s.next_attempt,100)
         s.fail(100);self.assertGreaterEqual(s.next_attempt,220)
+    def test_next_capture_starts_two_seconds_after_a_result(self):
+        s=RecognitionState();s.begin(1,0);s.finish({'title':'Song'},1,10)
+        self.assertEqual(s.next_attempt,12)
+        s.begin(1,12);s.finish(None,1,22)
+        self.assertEqual(s.next_attempt,24)
+
     def test_disconnect_does_not_cancel_failure_backoff(self):
         s=RecognitionState();s.begin(1,0);s.fail(10)
         deadline=s.next_attempt

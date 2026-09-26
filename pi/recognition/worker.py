@@ -77,7 +77,7 @@ class RecognitionState:
             self.track = None
         self.session = session
         self.status = 'listening'
-        self.next_attempt = now + 30
+        self.next_attempt = now + 2
 
     def finish(self, track, session, now):
         if self.session != session:
@@ -86,7 +86,7 @@ class RecognitionState:
         self.matched_at = now
         self.status = 'matched' if track else 'no_match'
         self.failures = 0
-        self.next_attempt = now + 30
+        self.next_attempt = now + 2
 
     def fail(self, now):
         self.status = 'unavailable'

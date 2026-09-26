@@ -5,6 +5,7 @@
 
 namespace visual {
 enum class Mode { Classic, Mirrored, Waterfall };
+inline constexpr Mode kDefaultMode = Mode::Mirrored;
 inline const char* name(Mode mode) {
     switch (mode) {
         case Mode::Classic: return "classic";
@@ -65,7 +66,7 @@ public:
 private:
     static float safe(float x) { return std::isfinite(x) ? std::clamp(x, 0.0f, 1.0f) : 0; }
     void clear() { pixels_.fill(0); started_ = false; }
-    Mode mode_ = Mode::Classic;
+    Mode mode_ = kDefaultMode;
     std::array<uint8_t, 64*32> pixels_{};
     uint64_t lastStep_ = 0;
     bool started_ = false;

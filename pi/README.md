@@ -154,7 +154,7 @@ A successful match supplies title, artist, album (when provided), artwork
 (when provided), and the **Now Playing** tag. A recording can occur on several
 releases, so the provider's album/cover is not proof of the physical edition
 being played. Unmatched music shows a listening message, never invented data.
-The worker waits 30 seconds after each result before another capture; errors
+The worker waits two seconds after each result before another eight-second capture; errors
 back off from 60 to 300 seconds. A no-match response clears the previous song.
 Matches expire after 90 seconds without confirmation and are hidden immediately
 in quiet mode or on disconnection. A playback-session identifier prevents a

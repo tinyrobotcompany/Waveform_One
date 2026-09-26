@@ -15,7 +15,7 @@
 namespace {
 constexpr const char* kTag = "waveform_panel";
 QueueHandle_t frameQueue = nullptr;
-std::atomic<visual::Mode> requestedMode{visual::Mode::Classic};
+std::atomic<visual::Mode> requestedMode{visual::kDefaultMode};
 visual::Renderer renderer; // Owned exclusively by panel_task; avoid its task stack.
 struct Snapshot { audio::Frame frame; int64_t timestamp; };
 // Agreed breadboard wiring, NOT the Waveshare example's GPIO assignment.
