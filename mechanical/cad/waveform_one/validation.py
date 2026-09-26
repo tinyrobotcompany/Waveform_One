@@ -9,6 +9,7 @@ from waveform_one.geometry import Placeholder, PrintedPart, Vec3
 
 OVERLAP_TOLERANCE_MM3 = 1e-3
 BOUNDS_TOLERANCE_MM = 1e-6
+PRINT_TOLERANCE_MM = 1e-3  # absorbs modelling-kernel tolerance on boolean results
 
 
 class ValidationError(Exception):
@@ -69,7 +70,7 @@ def print_envelope_violations(shape: Shape) -> list[str]:
     return [
         f"{axis} extent {extent:.1f} mm exceeds {limit:.1f} mm print limit"
         for axis, extent, limit in zip("XYZ", (size.X, size.Y, size.Z), limits)
-        if extent > limit
+        if extent > limit + PRINT_TOLERANCE_MM
     ]
 
 

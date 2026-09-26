@@ -106,3 +106,38 @@ def test_printed_part_files_are_named_and_on_the_bed(tmp_path, parts):
     stl = import_stl(tmp_path / "stl" / f"{stem}.stl").bounding_box()
     assert stl.min.Z == pytest.approx(0.0, abs=1e-3)
     assert stl.size.Z == pytest.approx(p.FRONT_BEZEL_THICKNESS.v, abs=1e-3)
+
+
+def test_brand_text_is_engraved_into_the_side_strips_only():
+    s = front_panel.seam_x()
+    left, right = front_panel.build_brand_cuts()
+    for cut, sign in ((left, -1), (right, 1)):
+        box = cut.bounding_box()
+        assert box.min.Y == pytest.approx(0.0, abs=1e-6)
+        assert box.max.Y == pytest.approx(p.BRAND_DEPTH.v, abs=1e-6)
+        inner, outer = sorted((sign * s, sign * p.CASE_WIDTH.v / 2))
+        assert inner + p.BRAND_SIDE_MARGIN.v - 1e-6 <= box.min.X
+        assert box.max.X <= outer - p.BRAND_SIDE_MARGIN.v + 1e-6
+    assert left.bounding_box().max.Z == pytest.approx(front_panel.display_window()[1][1])
+
+
+def test_brand_text_is_legible_and_left_label_is_the_widest_fit():
+    size = front_panel.brand_font_size()
+    left, _ = front_panel.build_brand_cuts()
+    assert left.bounding_box().size.Z >= p.BRAND_MIN_CAP_HEIGHT.v
+    available = p.CASE_WIDTH.v / 2 - front_panel.seam_x() - 2 * p.BRAND_SIDE_MARGIN.v
+    assert left.bounding_box().size.X == pytest.approx(available, rel=1e-3) or size == p.BRAND_MAX_FONT_SIZE.v
+
+
+def test_engraving_leaves_the_centre_piece_untouched(parts):
+    centre = parts["front_center"].body
+    for cut in front_panel.build_brand_cuts():
+        assert (centre & cut).volume == pytest.approx(0.0, abs=1e-6)
+
+
+def test_too_long_text_fails_clearly(monkeypatch):
+    from waveform_one.validation import ValidationError
+
+    monkeypatch.setattr(p, "BRAND_TEXT_LEFT", "WAVEFORM ONE HIGH FIDELITY VISUALISER")
+    with pytest.raises(ValidationError, match="below BRAND_MIN_CAP_HEIGHT"):
+        front_panel.build_brand_cuts()

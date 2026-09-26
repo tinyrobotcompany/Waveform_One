@@ -4,15 +4,20 @@ The panel occupies the front-bezel slab (Y 0..FRONT_BEZEL_THICKNESS). Windows
 reveal the display's visible area and the LED matrix. Seams are vertical and
 sit in the blank bands beside the windows, so no seam crosses a window.
 
+The side strips carry the name, engraved into the front face and top-aligned
+with the display window: BRAND_TEXT_LEFT on the left, BRAND_TEXT_RIGHT on the
+right, both at one font size fitted to the strip width.
+
 Every piece prints face-down (front face on the bed): no supports, and the
 visible face gets the bed's surface finish.
 """
 
-from build123d import Axis, Location, Part, Rot, chamfer
+from build123d import Align, Axis, FontStyle, Location, Part, Plane, Rot, Text, chamfer, extrude
 
 from waveform_one import layout
 from waveform_one import parameters as p
 from waveform_one.geometry import CUT_OVERSHOOT, PrintedPart, box, box_between
+from waveform_one.validation import ValidationError
 
 FACE_DOWN = Location(Rot(90, 0, 0))
 FACE_DOWN_NOTE = "Front face down on the bed; no supports."
@@ -40,6 +45,38 @@ def matrix_window() -> tuple[tuple[float, float], tuple[float, float]]:
     return (x + lip, x + p.MATRIX_W.v - lip), (z + lip, z + p.MATRIX_H.v - lip)
 
 
+def _text(label: str, font_size: float) -> Text:
+    return Text(label, font_size, font=p.BRAND_FONT, font_style=FontStyle.BOLD, align=(Align.CENTER, Align.MAX))
+
+
+def brand_font_size() -> float:
+    """Largest size (up to the maximum) at which both labels fit their strips."""
+    strip = p.CASE_WIDTH.v / 2 - seam_x()
+    available = strip - 2 * p.BRAND_SIDE_MARGIN.v
+    size = p.BRAND_MAX_FONT_SIZE.v
+    widest = max(_text(label, size).bounding_box().size.X for label in (p.BRAND_TEXT_LEFT, p.BRAND_TEXT_RIGHT))
+    return min(size, size * available / widest)
+
+
+def build_brand_cuts() -> list[Part]:
+    """Solids to subtract from the panel: each label, readable from the front."""
+    strip_centre = (p.CASE_WIDTH.v / 2 + seam_x()) / 2
+    (_, _), (_, top) = display_window()
+    size = brand_font_size()
+    cap_height = _text(p.BRAND_TEXT_LEFT, size).bounding_box().size.Y
+    if cap_height < p.BRAND_MIN_CAP_HEIGHT.v:
+        raise ValidationError(
+            f"Engraved text would be {cap_height:.2f} mm tall, below BRAND_MIN_CAP_HEIGHT "
+            f"({p.BRAND_MIN_CAP_HEIGHT.v} mm); shorten the text or widen the side strips"
+        )
+    cuts = []
+    for label, sign in ((p.BRAND_TEXT_LEFT, -1), (p.BRAND_TEXT_RIGHT, 1)):
+        # Plane facing the viewer (-Y) with X to the right, so text reads correctly from the front.
+        plane = Plane(origin=(sign * strip_centre, 0, top), x_dir=(1, 0, 0), z_dir=(0, -1, 0))
+        cuts.append(extrude(plane * _text(label, size), amount=-p.BRAND_DEPTH.v))
+    return cuts
+
+
 def build_full_panel() -> Part:
     thickness = p.FRONT_BEZEL_THICKNESS.v
     half = p.CASE_WIDTH.v / 2
@@ -47,7 +84,10 @@ def build_full_panel() -> Part:
     for (x0, x1), (z0, z1) in (display_window(), matrix_window()):
         panel -= box_between((x0, -thickness, z0), (x1, 2 * thickness, z1))
     front = panel.faces().sort_by(Axis.Y)[0]
-    return chamfer(front.inner_wires().edges(), p.WINDOW_CHAMFER.v)
+    panel = chamfer(front.inner_wires().edges(), p.WINDOW_CHAMFER.v)
+    for cut in build_brand_cuts():
+        panel -= cut
+    return panel
 
 
 def build_pieces() -> list[PrintedPart]:

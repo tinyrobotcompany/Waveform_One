@@ -161,6 +161,14 @@ WINDOW_CHAMFER = Param(1.0, "mm", P, "45-degree chamfer on the front edge of eac
 FRONT_SEAM_MARGIN = Param(12.0, "mm", P, "Seams sit this far outside the widest front component.")
 MIN_SIDE_PIECE_WIDTH = Param(30.0, "mm", POL, "Narrowest side strip worth printing and handling.")
 
+BRAND_TEXT_LEFT = "WAVEFORM ONE"
+BRAND_TEXT_RIGHT = "MARK I"
+BRAND_FONT = "Futura"  # bold; macOS system font
+BRAND_DEPTH = Param(0.6, "mm", P, "Engraved into the front face: three 0.2 mm layers.")
+BRAND_SIDE_MARGIN = Param(6.0, "mm", P, "Clear band either side of the text within each side strip.")
+BRAND_MAX_FONT_SIZE = Param(8.0, "mm", POL, "Upper limit when fitting the text to the strip width.")
+BRAND_MIN_CAP_HEIGHT = Param(3.5, "mm", POL, "Smallest engraved lettering treated as legible on a 0.4 mm nozzle.")
+
 SPLICE_WIDTH = Param(20.0, "mm", P, "Rear plate bridging each seam, glued on.")
 SPLICE_THICKNESS = Param(2.0, "mm", P, "Rear plate thickness.")
 SPLICE_END_MARGIN = Param(20.0, "mm", P, "Splice stops short of the top and bottom edges.")

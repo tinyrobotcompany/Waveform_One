@@ -76,7 +76,7 @@ is not the final enclosure front: no mounting features, no calibrated fits.
 | File | Qty | Time* | Notes |
 |---|---|---|---|
 | `front_center_revA_PLA.3mf` | 1 | 3 h 02 m | 218 × 245 mm; fills the bed on its own |
-| `front_left_revA_PLA.3mf`, `front_right_revA_PLA.3mf` | 1 each | 1 h 26 m each | Side strips |
+| `front_left_revA_PLA.3mf`, `front_right_revA_PLA.3mf` | 1 each | ~1 h 29 m each | Side strips, engraved "WAVEFORM ONE" / "MARK I" |
 | `front_splice_left_revA_PLA.3mf`, `front_splice_right_revA_PLA.3mf` | 1 each | 29 m each | Glue across the seams |
 | `stand_left_revA_PLA.3mf`, `stand_right_revA_PLA.3mf` | 1 each | 1 h 23 m each | Hold the panel upright |
 
@@ -91,6 +91,9 @@ parts together on one plate is quicker than the sum.
   don't rotate them.
 - Panel pieces print **front face down**, so the visible face takes the bed's
   surface finish. The textured side of the plate gives a matte front.
+- The name is engraved 0.6 mm into the front of the side strips (Futura Bold,
+  ~3.8 mm tall), top-aligned with the display window. Engraving, not raised
+  lettering, because raised text on the bed side would need supports.
 - Plate 1: the centre piece alone. Plate 2 (or 2 and 3): everything else, then
   *Arrange*.
 
