@@ -132,12 +132,13 @@ Frame Pipeline::process(float rms, const Bands& power) {
     }
     primed_ = true;
 
-    if (!active_ && rms >= frame.openRms && cleanPower > 0.0f) {
+    frame.gateRms = config_.gateOnCleanSpectrum ? std::sqrt(cleanPower) : rms;
+    if (!active_ && frame.gateRms >= frame.openRms && cleanPower > 0.0f) {
         active_ = true;
         quietSeconds_ = 0.0f;
     }
     if (active_) {
-        quietSeconds_ = rms < frame.closeRms || cleanPower == 0.0f
+        quietSeconds_ = frame.gateRms < frame.closeRms || cleanPower == 0.0f
             ? quietSeconds_ + kFrameSeconds : 0.0f;
         if (quietSeconds_ >= config_.closeHoldSeconds) active_ = false;
     }
@@ -147,7 +148,7 @@ Frame Pipeline::process(float rms, const Bands& power) {
     frame.fluxThreshold = std::max(config_.minimumFlux,
         fluxMean_ + config_.fluxThresholdDeviations * fluxDeviation_);
     sinceBeatSeconds_ += kFrameSeconds;
-    frame.beat = active_ && rms >= frame.openRms
+    frame.beat = active_ && frame.gateRms >= frame.openRms
         && sinceBeatSeconds_ >= config_.beatRefractorySeconds
         && frame.flux > frame.fluxThreshold;
     if (frame.beat) sinceBeatSeconds_ = 0.0f;

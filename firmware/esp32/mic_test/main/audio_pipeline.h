@@ -14,6 +14,7 @@ using Bands = std::array<float, kBandCount>;
 
 // All amplitudes are relative to PCM full scale, before display processing.
 struct Config {
+    bool gateOnCleanSpectrum = false; // Reference mic test retains its raw-RMS gate.
     float minimumOpenRms = 0.0002f;
     float minimumCloseRms = 0.00012f;
     float openNoiseRatio = 2.0f;
@@ -36,6 +37,7 @@ struct Frame {
     float fluxThreshold = 0.0f;
     float openRms = 0.0f;
     float closeRms = 0.0f;
+    float gateRms = 0.0f; // Actual gate input: raw or noise-subtracted RMS.
     bool calibrated = false;
     bool active = false;
     bool beat = false;

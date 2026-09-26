@@ -20,6 +20,27 @@ static int height(const audio::Frame& f)
 }
 int main()
 {
+    // Regression: a louder calibration reference must not hide quieter music
+    // in bands that remain above their own noise floors. Mirrors the logged
+    // RMS < 0.007558 while CLEAN is 0.001343 or greater.
+    audio::Pipeline prolonged(visualizerConfig());
+    constexpr float loggedNoise = 0.007558f / 1.25f;
+    audio::Bands roomNoise{};
+    roomNoise[0] = loggedNoise * loggedNoise;
+    for (int i = 0; i < audio::kCalibrationFrames; ++i)
+        prolonged.process(loggedNoise, roomNoise);
+    auto quietMusic = roomNoise;
+    quietMusic[0] = 0.004f * 0.004f;
+    quietMusic[14] = 0.001343f * 0.001343f;
+    for (int i = 0; i < 5000; ++i) {
+        auto frame = prolonged.process(std::sqrt(quietMusic[0] + quietMusic[14]), quietMusic);
+        assert(frame.active);
+        if (i > 10) assert(height(frame) > 0);
+    }
+    for (int i = 0; i < 150; ++i) {
+        auto frame = prolonged.process(loggedNoise, roomNoise);
+        if (i > 100) assert(!frame.active && height(frame) == 0);
+    }
     audio::Pipeline oldProfile, room(visualizerConfig());
     constexpr float ambient = 0.002202f; // Noise RMS observed on the user's bench.
     calibrate(oldProfile, ambient);

@@ -172,12 +172,12 @@ static void print_visualizer(const audio::Frame& frame, bool beat_since_print)
         : !frame.active ? "GATE_CLOSED"
         : cleanPower == 0 ? "NO_CLEAN_BANDS" : "BELOW_DISPLAY";
     printf("%s %s RMS=%.6f dB=%.1f FLUX=%.5f THR=%.5f OPEN=%.6f CLOSE=%.6f "
-           "CLEAN=%.6f DISPLAY=%s BANDS=%d PEAK_PX=%d |",
+           "CLEAN=%.6f GATE_RMS=%.6f DISPLAY=%s BANDS=%d PEAK_PX=%d |",
            beat_since_print ? "BEAT" : "    ",
            !frame.calibrated ? "CAL " : frame.active ? "OPEN" : "SHUT",
            frame.rms, 20.0f * std::log10(std::max(frame.rms, 1e-9f)),
            frame.flux, frame.fluxThreshold, frame.openRms, frame.closeRms,
-           std::sqrt(cleanPower), displayState, visibleBands, peakPixels);
+           std::sqrt(cleanPower), frame.gateRms, displayState, visibleBands, peakPixels);
     for (float level : frame.levels) {
         printf("%d", std::clamp(int(level * 9.0f), 0, 9));
     }
@@ -188,7 +188,7 @@ extern "C" void app_main()
 {
     ESP_LOGI(TAG, "Waveform One FFT pipeline v2: independent detection / fixed dB display");
     const auto config = visualizerConfig();
-    ESP_LOGI(TAG, "Room-listening profile: gate %.2fx/%.2fx noise; hold %.2fs; display %.0f to %.0f dBFS",
+    ESP_LOGI(TAG, "Room-listening profile: CLEAN spectrum gate %.2fx/%.2fx noise; hold %.2fs; display %.0f to %.0f dBFS",
              config.openNoiseRatio, config.closeNoiseRatio, config.closeHoldSeconds,
              config.displayFloorDb, config.displayCeilingDb);
     ESP_LOGI(TAG, "INMP441 GPIO5/6/7; %d Hz / %d FFT / %d bands",

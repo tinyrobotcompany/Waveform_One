@@ -135,3 +135,24 @@ unit tests. Existing hardware bring-up was not consistently test-first.
 
 Next milestones: visual styles first, then Pi integration. Continue on the
 existing `feature/led-panel-test` worktree; preserve this working baseline.
+
+### Visualizer activity and blanking
+
+The visualizer now gates on noise-subtracted spectral RMS, not total microphone
+RMS. Startup calibration is fixed after three seconds; it does not adapt upward
+while music plays. Pause music and keep the room quiet during calibration.
+The opening threshold is 15% of calibrated room RMS (minimum 0.00010), and closing
+is 10% (minimum 0.00007), both applied **after** per-band noise subtraction.
+The 0.4-second closing hold and display decay remain in place. These ratios are
+an initial room-listening tuning, not a guarantee of distinguishing all noise
+from all music; sustained changing ambient sounds can also activate the display.
+
+`RMS` is raw sound level; `CLEAN` and `GATE_RMS` are the cleaned signal level.
+Compare `GATE_RMS` with `OPEN`/`CLOSE`. `SHUT` means the activity gate has closed;
+`DISPLAY=BARS` may still appear briefly while existing bars fade. `GATE_CLOSED`
+means that fade has reached black. `BEAT` records any detected beat since the
+last printed line, so it need not match that line's instantaneous flux/RMS.
+
+The host regression covers sustained quiet spectral activity below the old raw
+threshold, and return to black when only calibrated ambient noise remains.
+Confirm responsiveness and silence behaviour on the real panel after flashing.
