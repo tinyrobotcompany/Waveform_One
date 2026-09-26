@@ -9,6 +9,8 @@ concurrency:
 jobs:
   validate:
     uses: ./.github/workflows/validate.yml
+    with:
+      changed-only: true
   changeset:
     name: Changeset
     runs-on: ubuntu-latest

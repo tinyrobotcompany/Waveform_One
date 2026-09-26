@@ -1,10 +1,42 @@
 name: Validate
 on:
   workflow_call:
+    inputs:
+      changed-only:
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
+  scope:
+    name: Select affected components
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      firmware: ${{ steps.select.outputs.firmware }}
+      pi: ${{ steps.select.outputs.pi }}
+      tests: ${{ steps.select.outputs.tests }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select validation scope
+        id: select
+        env:
+          CHANGED_ONLY: ${{ inputs.changed-only }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "$CHANGED_ONLY" = true ]; then
+            test -n "$BASE_SHA" && test -n "$HEAD_SHA"
+            python3 scripts/ci-scope.py --base "$BASE_SHA" --head "$HEAD_SHA"
+          else
+            python3 scripts/ci-scope.py
+          fi
   tests:
+    needs: scope
+    if: needs.scope.outputs.tests == 'true'
     name: Host unit tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -26,6 +58,8 @@ jobs:
         env:
           CXX: clang++
   pi:
+    needs: scope
+    if: needs.scope.outputs.pi == 'true'
     name: Pi ARM64 controller
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
@@ -49,6 +83,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
   firmware:
+    needs: scope
+    if: needs.scope.outputs.firmware != '[]'
     name: ESP32 ${{ matrix.app }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -56,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [led_test, mic_test, visualizer, kovi_scroll, quinie_scroll]
+        app: ${{ fromJSON(needs.scope.outputs.firmware) }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:

@@ -106,3 +106,16 @@ disabled and Node 22 selected explicitly. Waveform One uses medium reasoning
 instead of Voxa's low setting, and keeps its stricter missing-key/invalid-response
 failures and commit-bound comments. No remote ruleset is changed from this feature
 branch; the imported enforcement runs once installed on main with its secret.
+
+### Affected-component PR checks
+
+PR validation compares the merge base with the PR head, including deleted files
+and both sides of renames. Each ESP32 application builds only when its files
+change; mic-test changes also select the visualizer because it compiles the
+shared audio pipeline. Shared firmware code selects all firmware builds.
+Documentation and changeset-only edits skip builds and unit tests, while the
+changeset policy check still runs. Pi changes select the ARM64 build, automation
+changes select host tests, and firmware packaging changes select the visualizer.
+Changes to the validation workflows or scope selector run the complete suite.
+The complete PR diff is considered on every update, not only the latest commit.
+Main-branch release validation retains full builds to supply all release assets.
