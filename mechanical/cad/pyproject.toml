@@ -1,0 +1,20 @@
+[project]
+name = "waveform-one-cad"
+version = "0.1.0"
+description = "Code-first parametric CAD for the Waveform One enclosure (build123d)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "build123d>=0.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

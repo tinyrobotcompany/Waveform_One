@@ -1,5 +1,14 @@
 # WAVEFORM ONE — Mechanical CAD & 3D Printing PRD
 
+> **Revision note (2026-09-26).** Two decisions supersede parts of this PRD:
+> - CAD source of truth is **build123d** (Python) under `mechanical/cad/`; Fusion
+>   is the viewer for exported STEP files. Read "Fusion script/component" as
+>   "build123d module/labelled sub-shape". See
+>   `mechanical/docs/decisions/0001-code-first-cad.md`.
+> - Prototype hardware is a Raspberry Pi 4 and the official Pi 7-inch
+>   touchscreen; encoders are deferred; nominal height is 265 mm (provisional).
+>   See `mechanical/docs/decisions/0002-hardware-and-envelope.md`.
+
 ## 1. Document purpose
 
 This document defines the mechanical design, CAD automation, prototyping, 3D-printing, assembly, validation and iteration requirements for the **Waveform One** enclosure and related mechanical parts.
