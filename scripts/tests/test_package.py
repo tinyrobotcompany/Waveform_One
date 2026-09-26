@@ -1,0 +1,45 @@
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import tempfile
+import unittest
+import zipfile
+
+SPEC = importlib.util.spec_from_file_location('package', Path(__file__).parents[1] / 'package-firmware.py')
+package = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(package)
+
+
+class PackageTests(unittest.TestCase):
+    def test_bundle_preserves_flash_paths_and_records_checksums(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            build = root / 'build'
+            (build / 'bootloader').mkdir(parents=True)
+            (build / 'bootloader/bootloader.bin').write_bytes(b'boot')
+            (build / 'app.bin').write_bytes(b'app')
+            (build / 'flash_args').write_text('0x0 bootloader/bootloader.bin\n0x10000 app.bin\n')
+            (build / 'flasher_args.json').write_text(json.dumps({
+                'flash_files': {'0x0': 'bootloader/bootloader.bin', '0x10000': 'app.bin'},
+                'extra_esptool_args': {'chip': 'esp32s3'}}))
+            output = root / 'dist'
+            package.bundle(build, output, 'abc123')
+            archive = output / 'waveform-one-esp32s3-usb.zip'
+            with zipfile.ZipFile(archive) as z:
+                self.assertEqual(z.read('app.bin'), b'app')
+                self.assertEqual(z.read('bootloader/bootloader.bin'), b'boot')
+                manifest = json.loads(z.read('manifest.json'))
+                self.assertEqual(manifest['commit'], 'abc123')
+                self.assertFalse(manifest['otaReady'])
+                self.assertEqual(manifest['sha256']['app.bin'], hashlib.sha256(b'app').hexdigest())
+            self.assertIn(hashlib.sha256(archive.read_bytes()).hexdigest(),
+                          (output / 'SHA256SUMS').read_text())
+
+    def test_rejects_files_outside_build(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / 'flasher_args.json').write_text(json.dumps({
+                'flash_files': {'0x0': '../secret'}, 'extra_esptool_args': {'chip': 'esp32s3'}}))
+            with self.assertRaises(ValueError):
+                package.bundle(root, root / 'out', 'abc')
