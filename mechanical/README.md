@@ -94,8 +94,14 @@ parts together on one plate is quicker than the sum.
 - The name is engraved 0.6 mm into the front of the side strips (Futura Bold,
   ~3.8 mm tall), top-aligned with the display window. Engraving, not raised
   lettering, because raised text on the bed side would need supports.
-- Plate 1: the centre piece alone. Plate 2 (or 2 and 3): everything else, then
-  *Arrange*.
+- **Print 1:** `front_center` alone (it fills the bed).
+- **Prints 2 and 3:** import the other six files into one new project and press
+  **A** (Arrange). ElegooSlicer splits them over two plates: one strip, both
+  splices and one stand (~3 h 34 m), then the other strip and stand (~2 h 42 m).
+  Print one plate, clear the bed, print the other.
+- They can't share one plate: the Centauri Carbon profile keeps the front
+  ~23 mm of the bed clear for its purge line, and the 245 mm strips plus the
+  slicer's spacing don't fit together in what remains.
 
 ### Assembly
 
