@@ -55,10 +55,13 @@ def test_case_too_narrow_for_front_components_fails_clearly():
     assert len(errors) == 1 and "Widest front component" in errors[0]
 
 
-@pytest.mark.parametrize("module", sorted(PACKAGE.glob("components/*.py")) + [PACKAGE / "layout.py"])
+@pytest.mark.parametrize(
+    "module",
+    sorted(PACKAGE.glob("components/*.py")) + sorted(PACKAGE.glob("enclosure/*.py")) + [PACKAGE / "layout.py"],
+)
 def test_geometry_modules_have_no_dimensional_literals(module):
-    """Dimensions come from parameters.py; colours and 0, 1, 2 and the marker size are allowed."""
-    allowed = {0, 0.0, 1, 2, 0.2}
+    """Dimensions come from parameters.py; colours, 0, 1, 2, the marker size and 90-degree turns are allowed."""
+    allowed = {0, 0.0, 1, 2, 0.2, 90}
     tree = ast.parse(module.read_text())
     colour_args = {
         id(arg)

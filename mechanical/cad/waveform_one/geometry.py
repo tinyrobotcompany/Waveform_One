@@ -2,12 +2,14 @@
 
 from dataclasses import dataclass, field
 
-from build123d import Align, Box, Color, Compound, Part, Pos
+from build123d import Align, Box, Color, Compound, Location, Part, Pos
 
 Vec3 = tuple[float, float, float]
 
 MIN_ALIGN = (Align.MIN, Align.MIN, Align.MIN)
 KEEPOUT_COLOR = Color(1.0, 0.45, 0.1, 0.35)
+# How far a cutting tool extends past the faces it cuts, so no zero-thickness skins remain.
+CUT_OVERSHOOT = 1.0
 
 
 def box(min_corner: Vec3, size: Vec3) -> Part:
@@ -46,3 +48,34 @@ class Placeholder:
             keepout.color = KEEPOUT_COLOR
             children.append(keepout)
         return Compound(label=self.name, children=children)
+
+
+PRINT_BLACK = Color(0.12, 0.12, 0.13)
+
+
+@dataclass
+class PrintedPart:
+    """A part to be printed.
+
+    `body` is in assembly position (world coordinates). `print_pose` rotates it
+    into its recommended print orientation; `on_bed()` then sits it on Z=0,
+    centred on the bed origin.
+    """
+
+    name: str
+    body: Part
+    print_pose: Location
+    orientation_note: str
+    # Mock-up-only accessories (e.g. stands) never exist inside the real
+    # enclosure, so they are excluded from internal collision checks.
+    mockup_only: bool = False
+
+    def on_bed(self) -> Part:
+        posed = self.print_pose * self.body
+        box = posed.bounding_box()
+        return Pos(-box.center().X, -box.center().Y, -box.min.Z) * posed
+
+    def compound(self) -> Part:
+        self.body.label = self.name
+        self.body.color = PRINT_BLACK
+        return self.body

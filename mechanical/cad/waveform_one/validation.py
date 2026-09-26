@@ -5,7 +5,7 @@ from itertools import combinations
 from build123d import Part, Shape
 
 from waveform_one import parameters as p
-from waveform_one.geometry import Placeholder, Vec3
+from waveform_one.geometry import Placeholder, PrintedPart, Vec3
 
 OVERLAP_TOLERANCE_MM3 = 1e-3
 BOUNDS_TOLERANCE_MM = 1e-6
@@ -113,9 +113,19 @@ def collision_errors(placeholders: list[Placeholder]) -> list[str]:
     return errors
 
 
-def require_valid_layout(placeholders: list[Placeholder], bounds: tuple[Vec3, Vec3]) -> None:
+def require_valid_layout(placeholders: list[Placeholder], bounds: tuple[Vec3, Vec3] | None) -> None:
+    """Unique names, no collisions and, when bounds are given, everything inside them."""
     names = [ph.name for ph in placeholders]
     errors = [f"Duplicate component name {n}" for n in set(names) if names.count(n) > 1]
-    errors += outside_bounds_errors(placeholders, bounds) + collision_errors(placeholders)
+    if bounds is not None:
+        errors += outside_bounds_errors(placeholders, bounds)
+    errors += collision_errors(placeholders)
     if errors:
         raise ValidationError("Invalid layout:\n  " + "\n  ".join(errors))
+
+
+def require_printable(parts: list[PrintedPart]) -> None:
+    """Every part must fit the engineering print envelope in its print orientation."""
+    errors = [f"{part.name}: {v}" for part in parts for v in print_envelope_violations(part.on_bed())]
+    if errors:
+        raise ValidationError("Parts exceed the print envelope:\n  " + "\n  ".join(errors))

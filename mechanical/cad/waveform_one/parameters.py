@@ -19,7 +19,7 @@ from enum import Enum
 
 # Milestone currently being built. Parameters needed only by later milestones
 # may stay unset until then.
-CURRENT_MILESTONE = 2
+CURRENT_MILESTONE = 3
 
 
 class Status(str, Enum):
@@ -147,6 +147,33 @@ MIC_BOARD_T = Param(3.0, "mm", P, "PCB plus microphone can.")
 MIC_WIRE_KEEPOUT = Param(15.0, "mm", P, "Header and I2S wires in front of the board.")
 MIC_CENTRE_X = Param(100.0, "mm", P, "Right side: away from the Pi's heat and the HUB75 ribbon.")
 MIC_CENTRE_Z = Param(55.0, "mm", P, "Low on the rear panel, keeping I2S wires to the ESP32 short.")
+
+# --- M3 front-layout mock-up ------------------------------------------------
+# A flat front panel printed face-down in three pieces, joined by rear splice
+# plates and stood upright on two slotted feet. For judging proportions only.
+
+PRINT_MATERIAL = "PLA"
+PRINT_REVISION = "A"
+
+DISPLAY_WINDOW_MARGIN = Param(1.0, "mm", P, "Window extends this far beyond the visible area on each side.")
+MATRIX_WINDOW_LIP = Param(1.0, "mm", P, "Bezel overlaps the panel edge by this much on each side.")
+WINDOW_CHAMFER = Param(1.0, "mm", P, "45-degree chamfer on the front edge of each window.")
+FRONT_SEAM_MARGIN = Param(12.0, "mm", P, "Seams sit this far outside the widest front component.")
+MIN_SIDE_PIECE_WIDTH = Param(30.0, "mm", POL, "Narrowest side strip worth printing and handling.")
+
+SPLICE_WIDTH = Param(20.0, "mm", P, "Rear plate bridging each seam, glued on.")
+SPLICE_THICKNESS = Param(2.0, "mm", P, "Rear plate thickness.")
+SPLICE_END_MARGIN = Param(20.0, "mm", P, "Splice stops short of the top and bottom edges.")
+
+STAND_WIDTH = Param(40.0, "mm", P, "Along X; each stand straddles a seam.")
+STAND_FRONT = Param(20.0, "mm", P, "Stand length in front of the panel.")
+STAND_REAR = Param(60.0, "mm", P, "Stand length behind the panel, resisting a leaning LP.")
+STAND_HEIGHT = Param(20.0, "mm", P, "Overall stand height.")
+STAND_SLOT_DEPTH = Param(12.0, "mm", P, "How far the panel sits into the stand.")
+STAND_SLOT_CLEARANCE = Param(0.4, "mm", P, "Total slot play; uncalibrated, shim with tape if loose.")
+
+ALBUM_THICKNESS = Param(3.0, "mm", P, "Reference sleeve thickness (single LP).")
+ALBUM_REAR_OFFSET = Param(20.0, "mm", P, "Sleeve's lower edge sits this far in front of the rear face.")
 
 # --- LP sleeve support (M5) --------------------------------------------------
 

@@ -11,12 +11,16 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from build123d import Compound, Shape, export_step
+from build123d import Compound, Mesher, Shape, export_step, export_stl
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
+from waveform_one import parameters as p
+from waveform_one.geometry import PrintedPart
+
 EXPORT_ROOT = Path(__file__).resolve().parents[2] / "exports"
-REVISION = "m2"
+REVISION = "m3"
 ENVELOPE_LABEL = "Envelope"
+MESH_TOLERANCE = 0.01  # mm; well below the 0.4 mm nozzle
 
 # (title, elevation, azimuth) in matplotlib's camera terms; front is -Y, left is -X.
 VIEWS = (
@@ -102,3 +106,26 @@ def export_model(model: Compound, root: Path) -> list[Path]:
     render_views(model, png_path)
 
     return [step_path, png_path]
+
+
+def printed_part_stem(part: PrintedPart) -> str:
+    return f"{part.name}_rev{p.PRINT_REVISION}_{p.PRINT_MATERIAL}"
+
+
+def export_printed_parts(parts: list[PrintedPart], root: Path) -> list[Path]:
+    """3MF and STL per part, already in print orientation and sitting on the bed."""
+    written = []
+    for part in parts:
+        on_bed = part.on_bed()
+        stem = printed_part_stem(part)
+        mf_path = root / "3mf" / f"{stem}.3mf"
+        stl_path = root / "stl" / f"{stem}.stl"
+        for path in (mf_path, stl_path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+        mesher = Mesher()
+        mesher.add_shape(on_bed, linear_deflection=MESH_TOLERANCE, part_number=part.name)
+        mesher.write(mf_path)
+        if not export_stl(on_bed, stl_path, tolerance=MESH_TOLERANCE):
+            raise RuntimeError(f"STL export failed: {stl_path}")
+        written += [mf_path, stl_path]
+    return written

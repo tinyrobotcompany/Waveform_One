@@ -13,9 +13,10 @@ for why.
 | Milestone | State |
 |---|---|
 | M0 — CAD bootstrap (reference envelope) | Done |
-| M1 — parameter system | Implemented, awaiting review |
-| M2 — electronics placeholders | Implemented, awaiting review |
-| M3–M8 | Not started |
+| M1 — parameter system | Done |
+| M2 — electronics placeholders | Done |
+| M3 — front-layout mock-up | Ready to print, awaiting physical review |
+| M4–M8 | Not started |
 
 ## Coordinate system
 
@@ -45,16 +46,16 @@ uv run python -m waveform_one.build
 
 Outputs (regenerated and overwritten on every run, not committed):
 
-- `exports/step/waveform_one_m2_layout.step` — open this in Fusion
-- `exports/previews/waveform_one_m2_views.png` — four shaded views
+- `exports/step/waveform_one_m3_layout.step` — whole assembly; open in Fusion
+- `exports/previews/waveform_one_m3_views.png` — four shaded views
+- `exports/3mf/<part>_revA_PLA.3mf` and `exports/stl/…` — printable parts,
+  already in print orientation
 
 The build stops with a clear message if parameters are inconsistent, a
 component leaves the interior, or anything collides with another component or
 its keep-out space.
 
-## What M2 contains
-
-Reference only; nothing here is printable yet.
+## What the model contains
 
 - **Envelope** — 330 × 145 × 245 mm outer volume
 - **Electronics** — Display, Diffuser, Matrix (P3 64×32), RaspberryPi (4B, with
@@ -62,6 +63,60 @@ Reference only; nothing here is printable yet.
   (INMP441 on the rear panel)
 - **KeepOut_\*** bodies (orange) — space reserved for plugs, ribbons, cable
   bends and header wiring. Nothing else may enter them.
+- **FrontLayoutMockup** — the M3 printable parts (below)
+- **AlbumReference** — a 12-inch sleeve leaning back 8° from the top rear
+
+## M3: printing the front-layout mock-up
+
+A flat, full-size front panel to judge proportions next to your turntable. It
+is not the final enclosure front: no mounting features, no calibrated fits.
+
+### Parts
+
+| File | Qty | Time* | Notes |
+|---|---|---|---|
+| `front_center_revA_PLA.3mf` | 1 | 3 h 02 m | 218 × 245 mm; fills the bed on its own |
+| `front_left_revA_PLA.3mf`, `front_right_revA_PLA.3mf` | 1 each | 1 h 26 m each | Side strips |
+| `front_splice_left_revA_PLA.3mf`, `front_splice_right_revA_PLA.3mf` | 1 each | 29 m each | Glue across the seams |
+| `stand_left_revA_PLA.3mf`, `stand_right_revA_PLA.3mf` | 1 each | 1 h 23 m each | Hold the panel upright |
+
+\*ElegooSlicer "0.20mm Standard @Elegoo CC 0.4 nozzle" with Elegoo PLA, each
+part sliced alone. About 165 cm³ (~205 g) of PLA in total. Printing the small
+parts together on one plate is quicker than the sum.
+
+### Settings
+
+- **Black PLA**, profile *0.20mm Standard @Elegoo CC 0.4 nozzle*.
+- **No supports, no brim.** Parts open already lying in print orientation;
+  don't rotate them.
+- Panel pieces print **front face down**, so the visible face takes the bed's
+  surface finish. The textured side of the plate gives a matte front.
+- Plate 1: the centre piece alone. Plate 2 (or 2 and 3): everything else, then
+  *Arrange*.
+
+### Assembly
+
+1. Lay the three panel pieces face-down on a flat table, seams butted tight.
+2. Glue a splice plate along the back of each seam, centred on it (superglue,
+   or strong double-sided tape if you want to take it apart again).
+3. Stand the panel up and push its bottom edge into both stands; each stand
+   straddles a seam. The slot fit is uncalibrated: wrap tape round the panel
+   edge if it's loose.
+
+### What to judge (M3 review)
+
+Place it where Waveform One will live, with a real LP sleeve behind it.
+Optionally hold the display and LED panel behind their windows.
+
+- Overall width and height beside the turntable
+- Display and LED panel size relative to the front
+- The ~68 mm blank bands left and right of the windows: keep, or narrow the case?
+- Gap between display and LED panel
+- LP sleeve height above the unit
+- Overall balance
+
+Record the verdict in `prototype-notes/`; the envelope is frozen only after
+this review.
 
 ### Viewing in Fusion
 
