@@ -7,7 +7,7 @@
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "patterns.h"
+#include "message.h"
 
 namespace {
 constexpr const char* kTag = "waveform_led";
@@ -22,16 +22,14 @@ constexpr gpio_num_t kAddress[] = {
 constexpr gpio_num_t kClock = GPIO_NUM_17;
 constexpr gpio_num_t kLatch = GPIO_NUM_18;
 constexpr gpio_num_t kOutputEnable = GPIO_NUM_21;
-constexpr int kPatternSeconds = 4;
-// Keep each row enabled long enough to be clearly visible during the
-// breadboard diagnostic.  15 us made the panel appear completely dead.
+
+// Retain the row timing of the working panel diagnostic.
 constexpr uint32_t kOnUs = 500;
 portMUX_TYPE outputLock = portMUX_INITIALIZER_UNLOCKED;
 
 void initialise()
 {
-    // Preload OE high before enabling the pin. The external 10k pull-up to
-    // ESP32 3V3 holds it high during reset; both HCT chips must be powered.
+    // Blank the panel before enabling the other GPIO outputs.
     ESP_ERROR_CHECK(gpio_set_level(kOutputEnable, 1));
     gpio_config_t config = {};
     config.pin_bit_mask = 1ULL << kOutputEnable;
@@ -53,10 +51,7 @@ void initialise()
     ESP_ERROR_CHECK(gpio_config(&config));
 }
 
-// The Waveshare P3 panels commonly use FM6124/FM6126A-compatible constant
-// current drivers.  They remain blank until these two 16-bit control words
-// have been shifted through every driver on the panel.  This is the same
-// pre-initialisation sequence used by Waveshare's HUB75 driver library.
+// Retain the startup sequence used by the working diagnostic.
 void initialisePanelDriver()
 {
     constexpr uint8_t kBrightnessRegister[16] = {
@@ -99,15 +94,15 @@ void initialisePanelDriver()
     ESP_LOGI(kTag, "Initialized FM6124/FM6126A-compatible panel driver");
 }
 
-void scan(panel::Pattern pattern, int step)
+void scan(int offset)
 {
     for (int row = 0; row < panel::kScanRows; ++row) {
         gpio_set_level(kOutputEnable, 1);
         for (int x = 0; x < panel::kWidth; ++x) {
-            const uint8_t bits = panel::rowPair(pattern, step, x, row);
+            const uint8_t bits = panel::rowPair(offset, x, row);
             for (int channel = 0; channel < 6; ++channel)
                 gpio_set_level(kRgb[channel], (bits >> channel) & 1);
-            // Deliberately slow clock for breadboard wiring and HCT buffers.
+            // Keep the clock timing that worked with the direct rainbow cable.
             esp_rom_delay_us(1);
             gpio_set_level(kClock, 1);
             esp_rom_delay_us(1);
@@ -136,24 +131,13 @@ extern "C" void app_main()
 {
     initialise();
     initialisePanelDriver();
-    ESP_LOGI(kTag, "Waveform One: dim P3 64x32 HUB75 wiring diagnostic (1/16 scan)");
-    ESP_LOGI(kTag, "RGB=4,8,9,10,11,12 ABCD=13,14,15,16 CLK=17 LAT=18 OE=21");
-    ESP_LOGI(kTag, "GPIO5/6/7 microphone pins untouched; no audio capture in this test");
-    ESP_LOGI(kTag, "Patterns change every %d seconds; row on-time %lu us",
-             kPatternSeconds, static_cast<unsigned long>(kOnUs));
+    ESP_LOGI(kTag, "Scrolling: %s", panel::kMessage);
     const int64_t started = esp_timer_get_time();
-    int previous = -1;
     while (true) {
-        const int64_t elapsed = esp_timer_get_time() - started;
-        const int index = (elapsed / (kPatternSeconds * 1000000LL))
-            % static_cast<int>(panel::Pattern::Count);
-        const int step = (elapsed % (kPatternSeconds * 1000000LL)) / 60000;
-        if (index != previous) {
-            ESP_LOGI(kTag, "Pattern: %s", panel::kNames[index]);
-            previous = index;
-        }
-        scan(static_cast<panel::Pattern>(index), step);
-        // OE is high here. Yield every frame so idle/watchdog remain healthy.
+        const auto steps = (esp_timer_get_time() - started) / 40000;
+        const int offset = panel::kWidth - static_cast<int>(
+            steps % (panel::kWidth + panel::kTextWidth + 16));
+        scan(offset);
         vTaskDelay(1);
     }
 }

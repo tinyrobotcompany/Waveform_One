@@ -1,5 +1,11 @@
 # LED panel wiring diagnostic
 
+> **Current wiring reference:** [ESP32 panel + microphone README](../README.md).
+> The panel now works with the supplied rainbow cable connected directly to
+> the ESP32, bypassing both buffer chips. The buffered wiring and September 22
+> validation notes below are historical. The current code uses **500 us** row
+> on-time, superseding the original 15 us setting described below.
+
 Standalone ESP-IDF application for the actual Waveshare **RGB-Matrix-P3-64x32**
 (192 x 96 mm, 1/16 scan), ESP32-S3 and two SN74HCT245N buffers. This temporarily
 replaces the running mic application when flashed; `../mic_test` remains intact
