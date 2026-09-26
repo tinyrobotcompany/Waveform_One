@@ -160,6 +160,14 @@ if (reviewBody !== extractedReviewBody) {
   console.warn('OpenAI review body was missing or did not match the required output contract; posting fallback review body.');
 }
 
+const latestPrResponse = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}`, {
+  headers: {Accept: 'application/vnd.github+json'},
+});
+const latestPr = await latestPrResponse.json();
+if (!pr.head?.sha || latestPr.head?.sha !== pr.head.sha) {
+  throw new Error('PR head changed during review; no review was posted.');
+}
+
 const taggedBody = `${codexReviewMarker}\n${reviewBody}`;
 
 await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, {
@@ -171,6 +179,7 @@ await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, {
   body: JSON.stringify({
     body: taggedBody,
     event: 'COMMENT',
+    commit_id: pr.head.sha,
   }),
 });
 

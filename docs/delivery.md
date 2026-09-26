@@ -51,7 +51,9 @@ out or executes PR code, including fork code: it fetches the diff as untrusted
 text. The model cannot run tools. Large diffs are truncated at 120,000 characters
 and the review prompt records the limitation. The Voxa runner posts a fallback
 comment when the response does not meet its output contract; it skips Dependabot
-and changeset-release PRs. Its comment marker records the head SHA.
+and changeset-release PRs. Before posting either result, the runner rechecks the
+PR head and refuses to post if it changed. Reviews include the reviewed commit
+SHA in both the comment marker and GitHub’s `commit_id` field.
 
 ## ESP32 OTA: possible, not enabled yet
 
@@ -99,10 +101,11 @@ The review setup was subsequently replaced with the exact Voxa files described b
 Hooks, changeset handling and CI follow the template's approach but use the existing
 C++ host tests and ESP-IDF builds instead of its Node/.NET/Azure deployment targets.
 
-The review workflow, runner, core helper, core tests and three review rubrics now
+The review workflow, core helper, core tests and three review rubrics
 match [Voxa commit 714ac8f](https://github.com/simonholmes001/voxa/tree/714ac8fb5f70d617a50def04f159d483c4e4a167/.github)
-byte for byte, as requested. The additional local runner integration tests verify
-Voxa's model settings, dependency-PR skip and fallback behaviour. The imported
+byte for byte, as requested. The runner additionally prevents stale-head posts
+and anchors reviews to the reviewed commit. Local integration tests verify these
+guards along with Voxa's model settings, dependency-PR skip and fallback behaviour. The imported
 ruleset enforcement runs on main with its configured secret.
 
 ### Affected-component PR checks

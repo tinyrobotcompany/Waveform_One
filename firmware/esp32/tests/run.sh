@@ -35,3 +35,11 @@ for suite in styles control capture; do
     "$build_dir/$suite"
     printf 'PASS: %s\n' "$suite"
 done
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/visualizer/tests/stubs" \
+    -I "$esp_dir/visualizer/main" -I "$esp_dir/mic_test/main" \
+    "$esp_dir/visualizer/tests/capture_transport_test.cpp" -o "$build_dir/capture_transport"
+"$build_dir/capture_transport"
+printf '%s\n' 'PASS: production capture/control transport, overflow recovery and failed headers'

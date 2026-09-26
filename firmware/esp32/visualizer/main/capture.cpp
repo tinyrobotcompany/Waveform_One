@@ -1,12 +1,13 @@
 #include "capture.h"
 #include "capture_samples.h"
 #include "esp_err.h"
-#include "driver/usb_serial_jtag.h"
+#include "protocol_write.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include <atomic>
 #include <cstdio>
+#include <mutex>
 namespace {
 struct Packet {
   unsigned id;
@@ -17,42 +18,47 @@ QueueHandle_t packets = nullptr;
 std::atomic<unsigned> active{0}, failed{0};
 constexpr unsigned packet_count =
     1000; // eight seconds of mono 16 kHz signed PCM
-bool send_line(const char *data, size_t size) {
-  // VFS writes each character separately and may report success after dropping
-  // bytes. The driver queues the complete packet atomically or reports failure.
-  return usb_serial_jtag_write_bytes(data, size, pdMS_TO_TICKS(100)) == int(size);
-}
+// Serialize the producer with start/abort so no old frame can refill a reset
+// queue. USB writes never hold this mutex.
+std::mutex producer_mutex;
+capture::Samples samples;
+Packet building{};
+unsigned position = 0;
 } // namespace
 void capture_init() {
   packets = xQueueCreate(32, sizeof(Packet));
   ESP_ERROR_CHECK(packets ? ESP_OK : ESP_ERR_NO_MEM);
 }
 bool capture_start(unsigned id) {
-  if (active.load())
+  std::lock_guard<std::mutex> lock(producer_mutex);
+  if (!id || active.load())
     return false;
+  xQueueReset(packets);
+  samples = capture::Samples{};
+  building = {};
+  building.id = id;
+  position = 0;
   failed.store(0);
   active.store(id);
   return true;
 }
+void capture_abort(unsigned id) {
+  std::lock_guard<std::mutex> lock(producer_mutex);
+  if (active.load() != id) return;
+  active.store(0);
+  xQueueReset(packets);
+}
 void capture_discontinuity() {
+  std::lock_guard<std::mutex> lock(producer_mutex);
   const unsigned id = active.load();
   if (id)
     failed.store(id);
 }
 void capture_audio(const int32_t *stereo, size_t frames) {
-  static unsigned previous = 0, position = 0;
-  static capture::Samples samples;
-  static Packet packet{};
+  std::lock_guard<std::mutex> lock(producer_mutex);
   const unsigned id = active.load();
-  if (!id || failed.load() == id)
-    return;
-  if (id != previous) {
-    previous = id;
-    position = 0;
-    samples = capture::Samples{};
-    packet = {};
-    packet.id = id;
-  }
+  if (!id || failed.load() == id) return;
+  auto& packet = building;
   if (packet.sequence >= packet_count)
     return;
   for (size_t i = 0; i < frames; i++) {
@@ -78,8 +84,8 @@ void capture_send() {
   char line[600];
   if (failed.load() == id) {
     const int n = snprintf(line, sizeof(line), "\nWF1 %u ERR AUDIO_LOST\n", id);
-    send_line(line, n);
-    active.store(0);
+    control::write_reply(line, n);
+    capture_abort(id);
     return;
   }
   Packet packet{};
@@ -97,14 +103,14 @@ void capture_send() {
     n += snprintf(
         line + n, sizeof(line) - n, " %08lx\n",
         static_cast<unsigned long>(capture::checksum(packet.bytes, 256)));
-    if (!send_line(line, n)) {
+    if (!control::write_reply(line, n)) {
       failed.store(id);
       return;
     }
     if (packet.sequence + 1 == packet_count) {
       n = snprintf(line, sizeof(line), "\nWF1 %u END %u\n", id, packet_count);
-      send_line(line, n);
-      active.store(0);
+      control::write_reply(line, n);
+      capture_abort(id);
       return;
     }
   }

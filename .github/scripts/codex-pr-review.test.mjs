@@ -22,7 +22,7 @@ function runReview(scenario) {
         if (url.includes('api.openai.com')) {
           console.log('MODEL_REQUEST=' + JSON.stringify(JSON.parse(options.body)));
           return Response.json({status: scenario === 'incomplete' ? 'incomplete' : 'completed',
-            output_text: scenario === 'invalid' ? 'unparseable' : JSON.stringify({
+            output_text: scenario.includes('invalid') ? 'unparseable' : JSON.stringify({
               summary: 'Reviewed', findings: [], testsVerification: ['Not run'],
               risksFollowups: ['Hardware validation remains']})});
         }
@@ -32,7 +32,7 @@ function runReview(scenario) {
         }
         if (url.includes('/reviews?')) return Response.json([]);
         if (options.headers?.Accept === 'application/vnd.github.v3.diff') return new Response('diff');
-        return Response.json({head: {sha: scenario === 'stale' ? 'def' : 'abc'}});
+        return Response.json({head: {sha: scenario.includes('stale') ? 'def' : 'abc'}});
       };
     `);
     return spawnSync(process.execPath, ['--import', loader,
@@ -52,6 +52,7 @@ test('posts a review using Voxa workflow model and reasoning settings', () => {
   const result = runReview('valid');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /POSTED=.*codex-review:abc/);
+  assert.match(result.stdout, /POSTED=.*\"commit_id\":\"abc\"/);
   const request = JSON.parse(result.stdout.split('\n').find(line => line.startsWith('MODEL_REQUEST=')).slice('MODEL_REQUEST='.length));
   assert.equal(request.model, 'gpt-5.5');
   assert.equal(request.reasoning.effort, 'low');
@@ -75,3 +76,11 @@ test('posts Voxa fallback when the response does not meet the output contract', 
   assert.match(result.stdout, /POSTED=/);
   assert.match(result.stderr, /posting fallback review body/);
 });
+
+for (const scenario of ['stale', 'stale-invalid']) {
+  test(`does not post a review or fallback after the head changes: ${scenario}`, () => {
+    const result = runReview(scenario);
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stdout, /POSTED=/);
+  });
+}
