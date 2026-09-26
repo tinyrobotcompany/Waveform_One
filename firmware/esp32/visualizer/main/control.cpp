@@ -11,8 +11,10 @@
 #include "panel.h"
 #include "capture.h"
 #include "protocol_write.h"
+#include "update.h"
 
 static void control_handle_line(std::string_view line) {
+    if (update_handle(line)) return;
     control::Command command{};
     char reply[64];
     int size;
@@ -20,7 +22,7 @@ static void control_handle_line(std::string_view line) {
     if (!control::parse(line, command)) {
         size = snprintf(reply, sizeof(reply), "\nWF1 0 ERR BAD_COMMAND\n");
     } else if (command.capture) {
-        started = capture_start(command.id);
+        started = !update_active() && capture_start(command.id);
         size = snprintf(reply, sizeof(reply), started ? "\nWF1 %u AUDIO 16000 128000\n" : "\nWF1 %u ERR BUSY\n", command.id);
     } else {
         if (command.changeMode) panel_set_mode(command.mode);
@@ -57,11 +59,12 @@ static void control_task(void*) {
             control_handle_line(line);
         });
         capture_send();
+        update_tick();
         vTaskDelay(pdMS_TO_TICKS(2));
     }
 }
 void control_start() {
     capture_init();
-    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(control_task, "usb_control", 4096,
+    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(control_task, "usb_control", 8192,
         nullptr, 1, nullptr, 0) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }

@@ -33,6 +33,13 @@ Waveform One ESP32-S3 16 MB hardware and wiring. This is NOT an OTA package.
 SHA256SUMS detects download corruption; it is not a cryptographic signature.
 '''
     output.mkdir(parents=True, exist_ok=True)
+    # Application-only image for provisioned A/B devices; never OTA the USB ZIP.
+    app = build / 'waveform_visualizer.bin'
+    elf = build / 'waveform_visualizer.elf'
+    if app.exists() and elf.exists():
+        (output / 'waveform-one-esp32s3-ota.bin').write_bytes(app.read_bytes())
+        (output / 'esp-update-build.json').write_text(json.dumps({
+            'commit': commit, 'esp_elf_sha256': hashlib.sha256(elf.read_bytes()).hexdigest()}))
     archive = output / 'waveform-one-esp32s3-usb.zip'
     with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as z:
         for name, data in sorted(files.items()):

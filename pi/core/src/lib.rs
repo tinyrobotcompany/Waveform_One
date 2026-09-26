@@ -1,3 +1,4 @@
+pub mod updates;
 use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
 

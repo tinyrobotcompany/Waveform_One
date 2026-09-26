@@ -61,6 +61,12 @@ fn service_requires_pairing_rejects_invalid_controls_and_persists_greeting() {
     .starts_with("HTTP/1.1 401"));
     let headers =
         format!("Host: localhost\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n");
+    assert!(http(port,"POST /api/updates/install HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").starts_with("HTTP/1.1 401"));
+    assert!(http(
+        port,
+        &format!("POST /api/updates/check HTTP/1.1\r\n{headers}Content-Length: 2\r\n\r\n{{}}")
+    )
+    .starts_with("HTTP/1.1 409"));
     let state = http(port, &format!("GET /api/state HTTP/1.1\r\n{headers}\r\n"));
     assert!(state.contains("\"phase\":\"disconnected\""));
     assert!(http(

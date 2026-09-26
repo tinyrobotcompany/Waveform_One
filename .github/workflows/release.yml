@@ -33,6 +33,7 @@ jobs:
       - name: Compute version and publish assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           python3 scripts/release.py plan --output /tmp/release-plan.json
           if [ "$(cat /tmp/release-plan.json)" = null ]; then
@@ -44,6 +45,7 @@ jobs:
             echo 'Superseded main commit; the latest run will release accumulated changesets.'
             exit 0
           fi
+          python3 scripts/package-update.py dist /tmp/release-plan.json
           tag=$(jq -r .tag /tmp/release-plan.json)
           jq -r .notes /tmp/release-plan.json > /tmp/release-notes.md
           if ! gh release view "$tag" >/dev/null 2>&1; then

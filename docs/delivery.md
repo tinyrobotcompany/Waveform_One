@@ -8,11 +8,12 @@
 | PR | Host tests, changeset validation, five ESP-IDF builds and an ARM64 Pi controller build |
 | Non-draft PR | Codex review of the diff using trusted base-branch code |
 | Push to main | The same tests/builds; publish pending notes, version tag, USB firmware bundle and Pi controller archive |
-| Device in the field | No automatic installation yet |
+| Commissioned device | Signed update checks; explicit Install on touchscreen/phone; recovery to previous application |
 
 The release ZIP contains the visualizer application, bootloader, partition table,
 flash arguments, installation instructions and a manifest identifying the commit
-and file hashes. `SHA256SUMS` checks the ZIP for corruption; it is **not a signature**.
+and file hashes. `SHA256SUMS` checks the ZIP for corruption; it is **not a signature**. The separate
+`update.json` / `update.sig` authenticates the complete release assets.
 Demo programs are build-checked but are not distributed as production updates.
 An interrupted release can resume its draft on a rerun; published assets are not
 overwritten. Docs-only pushes without new changesets publish nothing.
@@ -55,43 +56,17 @@ and changeset-release PRs. Before posting either result, the runner rechecks the
 PR head and refuses to post if it changed. Reviews include the reviewed commit
 SHA in both the comment marker and GitHub’s `commit_id` field.
 
-## ESP32 OTA: possible, not enabled yet
+## Device updates
 
-The current partition table has a single factory application. ESP-IDF OTA requires
-an OTA data partition and alternating application slots. Plan one initial USB
-migration to an OTA-capable partition table and updater firmware. Do not try to
-feed the current full USB bundle into an OTA app installer.
+See [Signed device updates](device-updates.md) for the release-signing secret,
+first-install preparation, one-time USB partition migration, device services and
+recovery procedure. Ordinary updates are outbound HTTPS downloads coordinated by
+the Pi, with the ESP application transferred over the internal USB connection.
+The USB provisioning bundle is never fed to the OTA installer.
 
-Before enabling updates, implement and test:
-
-- Wi-Fi provisioning or an authenticated Pi-to-ESP transport.
-- Two adequately sized OTA app slots and boot validation/rollback.
-- Signed firmware/manifest verification, hardware and protocol compatibility checks,
-  version policy, and HTTPS download with certificate validation.
-- Recovery tests for power loss, corrupt downloads, failed boot and unavailable network.
-- A startup health check before marking the new app valid, plus USB recovery.
-
-Official reference: [ESP-IDF ESP32-S3 OTA documentation](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/system/ota.html).
-
-## Pi deployment and future customer devices
-
-The first Pi application is the Rust USB command-line controller in `pi/core`.
-Its tests run through `scripts/test.sh`; CI builds a native ARM64 Linux release
-and publishes its archive alongside the firmware. The persistent service,
-Qt/QML touchscreen interface and automatic installation/updater are not built
-yet. The prototype is installed manually on the development Pi for USB testing.
-
-For the development Pi, use a scoped deployment target with a known service,
-health check and rollback. For customers, prefer an updater on each Pi that pulls
-signed releases over HTTPS; customers should not need inbound SSH, GitHub runner
-credentials or access to our signing keys. Use stable/beta channels, explicit
-update preferences and staged rollout. Retain the previous working Pi release.
-Coordinate ESP/Pi protocol compatibility before updating either component.
-
-The Pi can eventually coordinate ESP updates over local Wi-Fi or USB. That choice
-belongs with Pi integration and enclosure/connectivity requirements. Publishing
-releases now gives both updaters a future distribution source; it does not itself
-provide OTA, rollback, signatures or fleet management.
+This is application updating, not a Raspberry Pi OS updater. Hardware acceptance
+and commissioning are still required before field distribution. The initial policy
+is explicit Install/Later on the touchscreen or paired phone.
 
 ## Template provenance
 

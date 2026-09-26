@@ -43,3 +43,17 @@ class PackageTests(unittest.TestCase):
                 'flash_files': {'0x0': '../secret'}, 'extra_esptool_args': {'chip': 'esp32s3'}}))
             with self.assertRaises(ValueError):
                 package.bundle(root, root / 'out', 'abc')
+
+    def test_ota_asset_and_build_identity_are_published_separately(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);build=root/'build';build.mkdir()
+            (build/'waveform_visualizer.bin').write_bytes(b'app')
+            (build/'waveform_visualizer.elf').write_bytes(b'elf')
+            (build/'flash_args').write_text('0x20000 waveform_visualizer.bin')
+            (build/'flasher_args.json').write_text(json.dumps({
+                'flash_files':{'0x20000':'waveform_visualizer.bin'},
+                'extra_esptool_args':{'chip':'esp32s3'}}))
+            package.bundle(build,root/'dist','a'*40)
+            self.assertEqual((root/'dist/waveform-one-esp32s3-ota.bin').read_bytes(),b'app')
+            metadata=json.loads((root/'dist/esp-update-build.json').read_text())
+            self.assertEqual(metadata['esp_elf_sha256'],hashlib.sha256(b'elf').hexdigest())
