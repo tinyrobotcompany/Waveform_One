@@ -18,14 +18,21 @@ const server=http.createServer((req,res)=>{
  const browser=await chromium.launch({executablePath:process.env.CHROME_BIN,headless:true});
  try{
  for(const [width,height,kiosk] of [[800,480,true],[390,844,false],[844,390,false]]){
-  state.device.phase='playing';state.preferences.name='Simon';
+  state.device.phase='playing';state.preferences.name='Simon';delete state.track;
   const page=await browser.newPage({viewport:{width,height},hasTouch:true});
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`http://127.0.0.1:${server.address().port}/?kiosk=${kiosk?1:0}#token=test`);
   await page.getByRole('heading',{name:'Music is playing.'}).waitFor();
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'horizontal overflow');
   assert(!(await page.locator('[data-mode="classic"]').isVisible()),'styles must not occupy main screen');
+  assert.equal(await page.locator('#spectrum, #currentStyle').count(),0,'LED visuals stay off the listening screen');
   await page.screenshot({path:`/tmp/waveform-playing-${width}.png`});
+  // Synthetic metadata verifies presentation only, not live recognition.
+  state.track={title:'A song for this moment',artist:'Test artist',album:'Test album'};
+  await page.getByRole('heading',{name:'A song for this moment'}).waitFor();
+  assert.equal(await page.locator('#eyebrow').textContent(),'NOW PLAYING');
+  assert.equal(await page.locator('#album').textContent(),'Test album');
+  delete state.track;
   await page.locator('#settingsToggle').click();
   if(kiosk)await page.locator('#name').click();else await page.locator('#keyboardToggle').click();
   await page.locator('#keyboard').waitFor({state:'visible'});

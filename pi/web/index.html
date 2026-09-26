@@ -4,9 +4,9 @@
 <header><div class="brand">WAVEFORM <strong>ONE</strong></div><span id="headerGreeting"></span><time id="headerClock"></time><button id="settingsToggle" aria-controls="settings" aria-expanded="false">Settings</button></header>
 <main id="scene" data-phase="waiting">
   <div id="record" class="record" aria-label="Album artwork unavailable"><div class="vinyl"><div class="record-label">W<span>ONE</span></div></div><img id="artwork" alt="Album cover" hidden></div>
-  <section class="information"><div class="eyebrow" id="eyebrow">YOUR LISTENING SPACE</div><time id="clock" hidden></time><h1 id="headline">Welcome home.</h1><p id="subtitle">Connecting to your Waveform One</p><p id="album"></p><p id="recognitionNote"></p><canvas id="spectrum" width="720" height="120" aria-label="Live microphone frequency levels"></canvas></section>
+  <section class="information"><div class="eyebrow" id="eyebrow">YOUR LISTENING SPACE</div><time id="clock" hidden></time><h1 id="headline">Welcome home.</h1><p id="subtitle">Connecting to your Waveform One</p><p id="album"></p><p id="recognitionNote"></p></section>
 </main>
-<footer><span id="connection">Connecting…</span><span id="sceneStatus">Waiting for the device</span><span id="currentStyle">—</span></footer>
+<footer><span id="connection">Connecting…</span><span id="sceneStatus">Waiting for the device</span></footer>
 <div id="message" role="status" aria-live="polite"></div>
 <dialog id="pairing"><form id="pairForm"><span class="eyebrow">WELCOME TO WAVEFORM ONE</span><h2>Connect your remote.</h2><p>Scan the QR code in your Pi’s settings, or enter its device token.</p><label>Device token<input id="token" autocomplete="off" type="password" required></label><button class="primary" type="submit">Connect</button><p id="pairError" role="alert"></p></form></dialog>
 <dialog id="settings" aria-labelledby="settingsTitle"><form id="nameForm">

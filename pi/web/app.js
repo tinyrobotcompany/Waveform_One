@@ -19,7 +19,6 @@ function update(data){
  latest=data;const d=data.device,name=data.preferences.name;
  $('scene').dataset.phase=d.phase;
  $('connection').textContent=d.connected?'● Connected':'○ Reconnecting';
- $('currentStyle').textContent=d.mode||'No style received';
  $('headerGreeting').textContent=name?`Hello ${name}`:'Your listening space';
  const view=presentation(d.phase,name,data.track);
  $('eyebrow').textContent=view.eyebrow;$('headline').textContent=view.title;$('subtitle').textContent=view.subtitle;
@@ -66,5 +65,4 @@ $('keyboardToggle').addEventListener('click',openKeyboard);
 $('keyboardDone').addEventListener('click',()=>{$('name').value=draft;$('keyboard').close();});
 $('keyboard').addEventListener('keydown',e=>{if(e.key==='Backspace'){e.preventDefault();draft=editName(draft,'backspace');keys();}else if(e.key.length===1&&!e.ctrlKey&&!e.metaKey){e.preventDefault();draft=editName(draft,e.key);keys();}});
 function clock(){const text=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});$('clock').textContent=text;$('headerClock').textContent=text;}clock();setInterval(clock,1000);
-const canvas=$('spectrum'),ctx=canvas.getContext('2d'),levels=Array(24).fill(0);
-function draw(){ctx.clearRect(0,0,720,120);for(let i=0;i<24;i++){const target=latest?latest.device.bands[i]/9:0;levels[i]+=(target-levels[i])*.15;const h=Math.max(2,levels[i]*110);ctx.fillStyle=`hsl(${80+i*3},30%,${45+levels[i]*25}%)`;ctx.fillRect(i*30+5,latest?.device.mode==='mirrored'?60-h/2:120-h,20,h);}requestAnimationFrame(draw);}draw();poll();
+poll();
