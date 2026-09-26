@@ -115,3 +115,5 @@ void capture_send() {
     }
   }
 }
+
+bool capture_active() { return active.load() != 0; }

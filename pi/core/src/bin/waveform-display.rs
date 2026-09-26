@@ -333,6 +333,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         let capture_lock = capture_lock.clone();
         let recognition_path = dir.join("recognition.json");
+        let update_dir = dir.clone();
         let qr = qr.clone();
         let wake_until = wake_until.clone();
         workers.push(thread::spawn(move || for mut req in server.incoming_requests() {
@@ -358,7 +359,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let view = state.lock().unwrap().view(seconds(start));
                 let prefs = preferences.lock().unwrap().clone();
                 let (recognition,track)=waveform_control::recognition::snapshot(&recognition_path,&view);
-                respond(req, 200, serde_json::json!({"device":view,"preferences":prefs,"recognition":recognition,"track":track,"screen_brightness_supported":brightness_supported}).to_string(), "application/json");
+                respond(req, 200, serde_json::json!({"build":option_env!("WAVEFORM_BUILD_ID").unwrap_or("development"),"device":view,"preferences":prefs,"recognition":recognition,"track":track,"screen_brightness_supported":brightness_supported,"update":waveform_control::updates::snapshot(&update_dir)}).to_string(), "application/json");
+            } else if req.method() == &Method::Post && (path == "/api/updates/check" || path == "/api/updates/install") {
+                if req.body_length().is_none_or(|size| size > 256) { respond(req, 413, "Request too large".into(), "text/plain"); continue; }
+                let mut body=String::new();
+                if req.as_reader().take(257).read_to_string(&mut body).is_err() { respond(req,400,"Invalid request".into(),"text/plain"); continue; }
+                let value: serde_json::Value=serde_json::from_str(&body).unwrap_or(serde_json::Value::Null);
+                let version=value["version"].as_str().unwrap_or("");
+                let action=if path.ends_with("/install") {"install"} else {"check"};
+                match waveform_control::updates::start(&update_dir,action,version) {
+                    Ok(())=>respond(req,202,"{}".into(),"application/json"),
+                    Err(e)=>respond(req,409,e,"text/plain"),
+                }
             } else if req.method() == &Method::Post && path == "/api/capture" {
                 if !req.remote_addr().is_some_and(|a|a.ip().is_loopback()) {respond(req,403,"Audio capture is local to the Pi".into(),"text/plain");continue;}
                 let view=state.lock().unwrap().view(seconds(start));
