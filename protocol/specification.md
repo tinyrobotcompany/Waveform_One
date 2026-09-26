@@ -28,3 +28,12 @@ audio sensitivity are unaffected. Boot always selects classic. There is no PCM
 streaming, brightness control, OTA or authentication in WF1. The future binary
 protocol will use separate framing/version negotiation and CRC; do not mix raw
 audio with this line protocol.
+
+Firmware initializes the USB Serial/JTAG driver before nonblocking VFS reads.
+Acknowledgements use one backend-locked write with a leading newline to recover
+from diagnostic lines truncated while the host is not reading. Ignore blank lines.
+
+Hardware verification (2026-09-26): the Pi 4 controller received matching replies
+for STATUS, mirrored, waterfall, classic and mirrored again from the ESP32-S3.
+This verifies command transport and accepted state; visual quality still needs
+observation on the physical panel.
