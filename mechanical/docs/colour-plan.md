@@ -1,30 +1,17 @@
-# Colour plan (CANVAS four-colour)
+# Colour plan
 
-Available filaments: black, orange, red, blue — in both PLA and PETG.
-Resin printer: red and green resin.
+**Decision (owner, 2026-09-26): the enclosure is printed entirely in black.**
 
-## Principles
+- Every printed enclosure part uses black filament: PLA for fit prototypes,
+  PETG for the functional enclosure.
+- The LED matrix is the only colour on the product.
+- The CANVAS four-colour add-on is not needed for the enclosure. It stays
+  available for test coupons or accessories if that becomes useful.
+- Parts are still modelled as separate bodies, so a colour accent could be
+  added later without restructuring the CAD.
 
-- The LED matrix is the only strong colour on the product; the enclosure frames it.
-- Colour zones are **separate bodies** in the CAD and exported as a multi-body
-  3MF, so ElegooSlicer assigns one filament per body. No painting in the slicer.
-- Keep colour changes to small areas (inlays, lettering, trim). Alternating
-  colours on large faces costs purge waste and hours of print time.
+## Resin printer (red and green resin)
 
-## Assignment
-
-| Colour | Use | Visible? |
-|---|---|---|
-| Black (matte) | Main shell, front bezel, matrix pixel grid | Yes — dominant |
-| Orange | One accent: thin trim line, logo, small markings | Yes — sparing |
-| Blue | Electronics tray and component carriers | Internal only |
-| Red | Joint keys, alignment pins, calibration coupons | Internal only |
-
-Colour-coding the internal parts makes assembly self-explanatory and keeps
-prototype pieces and coupons easy to tell apart.
-
-## Resin
-
-Good for small, precise, non-structural parts: microphone grille, logo/badge
-inlay, later knob caps. Not for structural or warm parts (brittle, yellows with
-heat/UV), and never in front of the LED matrix (tinted resin distorts colour).
+Not used for enclosure parts: tinted resin would break the all-black look, and
+resin is brittle and yellows with heat and UV. Possible later use for small
+precise internal parts where colour does not show.

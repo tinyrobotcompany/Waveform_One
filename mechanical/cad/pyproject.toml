@@ -5,6 +5,7 @@ description = "Code-first parametric CAD for the Waveform One enclosure (build12
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "build123d>=0.9",
+    "matplotlib>=3.11.2",
 ]
 
 [dependency-groups]

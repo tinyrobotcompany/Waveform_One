@@ -17,12 +17,13 @@ Measure the real units; do not infer from diagonal sizes or old BOM values.
 
 ## Raspberry Pi 4 Model B
 - [ ] Board outline, mounting hole positions (confirm against 58 × 49 mm pattern)
-- [ ] Height including cooler/heatsink/fan
+- [ ] Height including cooler/heatsink/fan (none fitted yet; 28 mm reserved above the board)
 - [ ] USB-C, USB-A, Ethernet, micro-HDMI protrusions past the board edge
 - [ ] Space for USB-C power plug and USB-A→ESP32 cable plug + bend
 
-## Waveshare 64×32 HUB75 panel (P4)
-- [ ] Outline (expected ~256 × 128 mm) and module frame depth
+## Waveshare 64×32 HUB75 panel (P3)
+- [x] Rough outline ~195 × 100 × 12 mm (owner, 2026-09-26; see hub75_panel.md)
+- [ ] Caliper outline (expected 192 × 96 mm) and module frame depth
 - [ ] Mounting points: positions, thread size or magnet posts
 - [ ] Depth including HUB75 IDC connectors and power terminal
 - [ ] HUB75 ribbon bend space; power lead exit

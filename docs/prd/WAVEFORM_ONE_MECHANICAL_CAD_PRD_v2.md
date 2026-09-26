@@ -5,9 +5,11 @@
 >   is the viewer for exported STEP files. Read "Fusion script/component" as
 >   "build123d module/labelled sub-shape". See
 >   `mechanical/docs/decisions/0001-code-first-cad.md`.
-> - Prototype hardware is a Raspberry Pi 4 and the official Pi 7-inch
->   touchscreen; encoders are deferred; nominal height is 265 mm (provisional).
->   See `mechanical/docs/decisions/0002-hardware-and-envelope.md`.
+> - Prototype hardware is a Raspberry Pi 4, the official Pi 7-inch touchscreen
+>   and a Waveshare **P3** 64×32 panel (192×96 mm, not P4); encoders are
+>   deferred; the 330×145×245 mm envelope is unchanged. The enclosure is
+>   printed entirely in black. See
+>   `mechanical/docs/decisions/0002-hardware-and-envelope.md`.
 
 ## 1. Document purpose
 
