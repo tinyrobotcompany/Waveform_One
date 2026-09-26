@@ -38,3 +38,14 @@ fn missing_corrupt_or_oversize_audio_is_rejected() {
         .unwrap()
         .is_err());
 }
+
+#[test]
+fn capture_failure_reports_progress_without_audio_payload() {
+    let mut c = Capture::new(7);
+    c.line("WF1 7 AUDIO 16000 128000");
+    c.line(&packet(0, &[42; 256]));
+    let error = c.line(&packet(3, &[42; 256])).unwrap().unwrap_err();
+    assert!(error.contains("expected packet 1"), "{error}");
+    assert!(error.contains("received packet 3"), "{error}");
+    assert!(!error.contains("2a2a"));
+}

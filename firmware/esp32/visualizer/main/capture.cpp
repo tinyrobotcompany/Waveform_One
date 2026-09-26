@@ -1,12 +1,12 @@
 #include "capture.h"
 #include "capture_samples.h"
 #include "esp_err.h"
+#include "driver/usb_serial_jtag.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include <atomic>
 #include <cstdio>
-#include <unistd.h>
 namespace {
 struct Packet {
   unsigned id;
@@ -17,20 +17,10 @@ QueueHandle_t packets = nullptr;
 std::atomic<unsigned> active{0}, failed{0};
 constexpr unsigned packet_count =
     1000; // eight seconds of mono 16 kHz signed PCM
-bool send_line(int fd, const char *data, size_t size) {
-  const TickType_t start = xTaskGetTickCount();
-  size_t done = 0;
-  while (done < size) {
-    const auto n = write(fd, data + done, size - done);
-    if (n > 0)
-      done += size_t(n);
-    else {
-      if (xTaskGetTickCount() - start > pdMS_TO_TICKS(100))
-        return false;
-      vTaskDelay(1);
-    }
-  }
-  return true;
+bool send_line(const char *data, size_t size) {
+  // VFS writes each character separately and may report success after dropping
+  // bytes. The driver queues the complete packet atomically or reports failure.
+  return usb_serial_jtag_write_bytes(data, size, pdMS_TO_TICKS(100)) == int(size);
 }
 } // namespace
 void capture_init() {
@@ -81,14 +71,14 @@ void capture_audio(const int32_t *stereo, size_t frames) {
     });
   }
 }
-void capture_send(int fd) {
+void capture_send() {
   const unsigned id = active.load();
   if (!id)
     return;
   char line[600];
   if (failed.load() == id) {
     const int n = snprintf(line, sizeof(line), "\nWF1 %u ERR AUDIO_LOST\n", id);
-    send_line(fd, line, n);
+    send_line(line, n);
     active.store(0);
     return;
   }
@@ -107,13 +97,13 @@ void capture_send(int fd) {
     n += snprintf(
         line + n, sizeof(line) - n, " %08lx\n",
         static_cast<unsigned long>(capture::checksum(packet.bytes, 256)));
-    if (!send_line(fd, line, n)) {
+    if (!send_line(line, n)) {
       failed.store(id);
       return;
     }
     if (packet.sequence + 1 == packet_count) {
       n = snprintf(line, sizeof(line), "\nWF1 %u END %u\n", id, packet_count);
-      send_line(fd, line, n);
+      send_line(line, n);
       active.store(0);
       return;
     }

@@ -48,7 +48,7 @@ static void control_task(void*) {
             // from diagnostic lines truncated while no host was reading.
             write(fd, reply, size);
         });
-        capture_send(fd);
+        capture_send();
         vTaskDelay(pdMS_TO_TICKS(2));
     }
 }

@@ -25,4 +25,11 @@ class RecognitionTests(unittest.TestCase):
         self.assertIsNone(s.view(1,40)['track'])
         s.fail(40);self.assertGreaterEqual(s.next_attempt,100)
         s.fail(100);self.assertGreaterEqual(s.next_attempt,220)
+    def test_disconnect_does_not_cancel_failure_backoff(self):
+        s=RecognitionState();s.begin(1,0);s.fail(10)
+        deadline=s.next_attempt
+        s.clear()  # ESP reconnects after capture failure
+        self.assertEqual(s.next_attempt,deadline)
+        s.fail(20)
+        self.assertGreaterEqual(s.next_attempt,140)
 if __name__=='__main__':unittest.main()

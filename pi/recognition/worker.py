@@ -67,8 +67,10 @@ class RecognitionState:
         self.session = None
         self.track = None
         self.status = 'waiting'
-        self.next_attempt = 0
-        self.failures = 0
+        # A capture failure can disconnect the ESP. Keep the retry deadline
+        # across that transition instead of retrying on every reconnect.
+        if not self.failures:
+            self.next_attempt = 0
 
     def begin(self, session, now):
         if self.session != session:

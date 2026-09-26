@@ -3,13 +3,13 @@
 No physical serial port or external recognition service is used. macOS PTYs
 are not supported by the serialport crate, so run this on Linux.
 """
-import os, pty, select, socket, subprocess, tempfile, threading, time, urllib.request, json
+import os, pty, select, socket, subprocess, tempfile, threading, time, urllib.request, urllib.error, json
 from pathlib import Path
 master, slave=pty.openpty()
 port=socket.socket();port.bind(('127.0.0.1',0)); number=port.getsockname()[1];port.close()
 stop=threading.Event(); errors=[]
 def fake_esp():
-    buf=b'';last=0
+    buf=b'';last=0; captures=0
     try:
         while not stop.is_set():
             if time.monotonic()-last>.15:
@@ -21,6 +21,10 @@ def fake_esp():
                 if len(parts)<3 or parts[0]!=b'WF1':continue
                 ident=parts[1].decode()
                 if parts[2]==b'CAPTURE':
+                    captures+=1
+                    if captures==1:
+                        os.write(master,f'\nWF1 {ident} ERR AUDIO_LOST\n'.encode())
+                        continue
                     os.write(master,f'\nWF1 {ident} AUDIO 16000 128000\n'.encode())
                     for seq in range(1000):
                         payload=bytes([seq%256])*256
@@ -48,6 +52,15 @@ with tempfile.TemporaryDirectory() as directory:
             except OSError:pass
             if time.monotonic()>deadline:raise RuntimeError('fake serial did not become ready: '+request('/api/state').decode()+' errors='+str(errors))
             time.sleep(.1)
+        session=json.loads(request('/api/state'))['device']['session']
+        try:
+            request('/api/capture',True)
+            raise AssertionError('ESP audio loss must reject the clip')
+        except urllib.error.HTTPError as error:
+            assert error.code==503
+        after=json.loads(request('/api/state'))['device']
+        assert after['connected'], 'A rejected clip must not disconnect the visualizer'
+        assert after['session']==session, 'A rejected clip must preserve the listening session'
         audio=request('/api/capture',True)
         assert len(audio)==256000
         assert all(audio[i*256:(i+1)*256]==bytes([i%256])*256 for i in range(1000))

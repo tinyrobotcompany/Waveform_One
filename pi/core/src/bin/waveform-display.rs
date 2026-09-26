@@ -118,6 +118,9 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                                         pending.as_mut().and_then(|p| p.capture.as_mut())
                                     {
                                         captured = capture.line(text).map(|r| r.map(Answer::Audio));
+                                        if let Some(Err(error)) = &captured {
+                                            eprintln!("Audio transfer rejected: {error}");
+                                        }
                                     }
                                     if let Some(data) = Telemetry::parse(text) {
                                         state.lock().unwrap().telemetry(data, seconds(start));
@@ -157,12 +160,14 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                                     state.lock().unwrap().connected(mode, seconds(start))
                                 }
                                 Ok(Answer::Audio(_)) => {}
+                                // Clip validation failure is not a USB disconnect.
+                                Err(_) if expected == "capture" => {}
                                 Err(_) => state
                                     .lock()
                                     .unwrap()
                                     .disconnected("ESP rejected a command; reconnecting…"),
                             }
-                            let failed = answer.is_err();
+                            let failed = answer.is_err() && expected != "capture";
                             if let Some(tx) = reply {
                                 let _ = tx.send(answer);
                             }

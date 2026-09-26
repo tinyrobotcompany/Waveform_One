@@ -58,8 +58,23 @@ impl Capture {
         {
             return Some(Ok(std::mem::take(&mut self.bytes)));
         }
-        Some(Err(
-            "Audio capture incomplete, corrupted or unsupported".into()
-        ))
+        let expected = self.bytes.len() / 256;
+        let detail = if p[2] == "PCM" {
+            match p.get(3).and_then(|s| s.parse::<usize>().ok()) {
+                Some(received) => format!("expected packet {expected}, received packet {received}; header={}, fields={}, payload_chars={}", self.started, p.len(), p.get(4).map_or(0, |s| s.len())),
+                None => format!("invalid sequence after {expected} packets"),
+            }
+        } else if p[2] == "ERR" {
+            match p.get(3).copied() {
+                Some("AUDIO_LOST") => format!("ESP reported AUDIO_LOST after {expected} packets"),
+                Some("BUSY") => "ESP reported BUSY".into(),
+                _ => "ESP reported an unknown capture error".into(),
+            }
+        } else {
+            format!("invalid capture response after {expected} packets")
+        };
+        Some(Err(format!(
+            "Audio capture incomplete, corrupted or unsupported: {detail}"
+        )))
     }
 }

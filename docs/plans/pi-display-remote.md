@@ -84,3 +84,22 @@ AudD account is used. The live Pi identified the ShazamIO reference recording,
 including an eight-second 16 kHz version, and returned artwork. Firmware build
 and host/browser checks pass. Deployment and microphone-to-screen verification
 require the ESP restart/calibration and music playback on the physical device.
+
+## Microphone capture recovery — 2026-09-26
+
+The initial physical capture failed before Shazam: the ESP reported AUDIO_LOST
+following 36 packets. The ESP-IDF console VFS sends characters individually and
+can return success after dropping characters; capture now uses the USB driver's
+bounded all-or-nothing packet write. The first physical capture after this change
+returned all 256,000 PCM bytes with sequence/checksum validation and retained the
+ESP connection. Bootloader, partition table and application readbacks during
+recovery matched their files; no flash corruption was found.
+
+A failed clip previously forced the Pi serial worker to reconnect, and recognition
+then cleared its retry delay. Both behaviours now have regression coverage:
+failed clips preserve the device/session, and backoff survives reconnects. The
+Linux PTY test exercises audio loss followed by a complete 1,000-packet capture.
+
+End-to-end microphone recognition then identified **Seconds — U2 — War**, with
+an HTTPS album-art URL returned to the live display API while the ESP remained
+connected. This was the user's music, not the reference recording.
