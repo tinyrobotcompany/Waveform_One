@@ -1,0 +1,36 @@
+name: Ensure Codex Review Ruleset
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ensure-ruleset:
+    name: Ensure Codex Review Required
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+
+      - name: Ensure Codex ruleset
+        env:
+          REPO_ADMIN_TOKEN: ${{ secrets.REPO_ADMIN_TOKEN }}
+          CODEX_RULESET_NAME: Require Codex Review
+          CODEX_REVIEW_CHECK: Codex Review
+          CODEX_REQUIRED_CHECKS: Codex Review
+          CODEX_RULESET_BRANCH: refs/heads/main
+          CODEX_BYPASS_REPOSITORY_ROLE_IDS: "2"
+          CODEX_BYPASS_INTEGRATION_ID: "15368"
+        run: node .github/scripts/ensure-codex-ruleset.mjs

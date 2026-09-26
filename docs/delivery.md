@@ -25,18 +25,25 @@ overwritten. Docs-only pushes without new changesets publish nothing.
    Use a project key with an appropriate spending limit. Do not commit it or paste
    it into chat. The review job intentionally fails if the key is missing.
 3. Optionally set repository variable `CODEX_REVIEW_MODEL` (default `gpt-5.5`,
-   inherited from the template); the chosen model must support Responses structured
+   matching Voxa), with `medium` reasoning; the chosen model must support Responses structured
    output and the configured reasoning effort.
 4. Enable GitHub Actions and allow it to submit pull-request reviews if repository
    or organisation policy disables that feature. The workflow grants only contents
    read and PR write. The release job separately has contents write.
-5. Once checks have appeared, protect `main` with required host tests, changeset
-   and all five firmware build checks. Require `Codex Review` once the key is set.
+5. Add `REPO_ADMIN_TOKEN`, a token scoped to this repository with administration
+   read/write permission, to enable Voxa's `Ensure Codex Review Ruleset` workflow.
+   On main pushes it creates or updates `Require Codex Review` for `refs/heads/main`.
+   It preserves Voxa's bypass settings (repository role ID `2`, integration ID
+   `15368`, with a role-only fallback if GitHub rejects the integration).
+   Configure both secrets before merging to activate reviews and enforcement.
+   Once checks have appeared, also protect `main` with required host tests,
+   changeset and all five firmware build checks.
    The Codex check means a review was completed, not that all findings were resolved;
    the script posts comments rather than approving or rejecting a PR.
 
 The repository had no OpenAI secret or release at integration time. Repository
-rulesets and secrets are not silently changed by these files. No release is
+secrets are not supplied by these files. The enforcement workflow requires the
+admin token and will fail clearly if it is absent. No release is
 published until a tested main build runs. The README links to the Releases page
 and displays the latest version automatically after that first release.
 
@@ -90,3 +97,11 @@ Codex review scripts, tests and rubrics were imported from
 The runner was adapted to review all non-draft PRs and fail on incomplete responses.
 Hooks, changeset handling and CI follow the template's approach but use the existing
 C++ host tests and ESP-IDF builds instead of its Node/.NET/Azure deployment targets.
+
+The review setup was also checked against
+[Voxa's main-branch workflow](https://github.com/simonholmes001/voxa/blob/main/.github/workflows/codex-pr-review.yaml).
+Its ruleset script/workflow were imported, with trusted checkout credentials
+disabled and Node 22 selected explicitly. Waveform One uses medium reasoning
+instead of Voxa's low setting, and keeps its stricter missing-key/invalid-response
+failures and commit-bound comments. No remote ruleset is changed from this feature
+branch; the imported enforcement runs once installed on main with its secret.

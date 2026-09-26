@@ -20,6 +20,7 @@ function runReview(scenario) {
       const scenario = ${JSON.stringify(scenario)};
       globalThis.fetch = async (url, options = {}) => {
         if (url.includes('api.openai.com')) {
+          console.log('MODEL_REQUEST=' + JSON.stringify(JSON.parse(options.body)));
           return Response.json({status: scenario === 'incomplete' ? 'incomplete' : 'completed',
             output_text: scenario === 'invalid' ? 'unparseable' : JSON.stringify({
               summary: 'Reviewed', findings: [], testsVerification: ['Not run'],
@@ -38,7 +39,8 @@ function runReview(scenario) {
       fileURLToPath(new URL('./codex-pr-review.mjs', import.meta.url))], {
       cwd: fileURLToPath(new URL('../../', import.meta.url)),
       env: {...process.env, GITHUB_EVENT_PATH: event, GITHUB_REPOSITORY: 'test/test',
-        GITHUB_TOKEN: 'fake', OPENAI_API_KEY: scenario === 'missing-key' ? '' : 'fake'},
+        GITHUB_TOKEN: 'fake', OPENAI_API_KEY: scenario === 'missing-key' ? '' : 'fake',
+        CODEX_REVIEW_MODEL: '', CODEX_REVIEW_REASONING_EFFORT: ''},
       encoding: 'utf8',
     });
   } finally {
@@ -50,6 +52,9 @@ test('reviews dependency PRs and attaches comments to the reviewed commit', () =
   const result = runReview('valid');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /POSTED=.*"commit_id":"abc"/);
+  const request = JSON.parse(result.stdout.split('\n').find(line => line.startsWith('MODEL_REQUEST=')).slice('MODEL_REQUEST='.length));
+  assert.equal(request.model, 'gpt-5.5');
+  assert.equal(request.reasoning.effort, 'medium');
 });
 
 for (const scenario of ['missing-key', 'incomplete', 'invalid', 'stale']) {
