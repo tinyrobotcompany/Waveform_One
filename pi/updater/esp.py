@@ -43,9 +43,20 @@ class Esp:
         if len(fields)!=6 or fields[5]!='wf1-esp32s3-16mb':raise ValueError('Incompatible ESP hardware or protocol')
         return dict(digest=fields[2],state=fields[3],health=fields[4])
 
+    def begin(self, size, digest):
+        # A capture already accepted by the ESP may outlive its Pi client.
+        deadline=time.monotonic()+15
+        while True:
+            try:
+                reply=self.request(f'WFU BEGIN {size} {digest}','WFU READY ',30)
+                if reply!='WFU READY 0':raise ValueError('Unexpected ESP start offset')
+                return
+            except RuntimeError as error:
+                if str(error)!='WFU ERR BUSY' or time.monotonic()>=deadline:raise
+                time.sleep(.25)
+
     def transfer(self, data, digest, progress=lambda _:None):
-        if self.request(f'WFU BEGIN {len(data)} {digest}','WFU READY ',30)!='WFU READY 0':
-            raise ValueError('Unexpected ESP start offset')
+        self.begin(len(data),digest)
         for offset in range(0,len(data),24):
             packet=data[offset:offset+24]
             if self.request(f'WFU DATA {offset} {packet.hex()}','WFU READY ')!=f'WFU READY {offset+len(packet)}':

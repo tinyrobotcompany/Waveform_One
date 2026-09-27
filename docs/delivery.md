@@ -66,7 +66,7 @@ The USB provisioning bundle is never fed to the OTA installer.
 
 This is application updating, not a Raspberry Pi OS updater. Hardware acceptance
 and commissioning are still required before field distribution. Customer devices check monthly and use Install/Later. The development Pi can
-follow signed main releases automatically using its one-minute deployment agent.
+follow signed main releases automatically using its hourly deployment agent.
 
 ## Template provenance
 

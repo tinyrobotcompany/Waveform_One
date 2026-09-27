@@ -13,7 +13,7 @@ class PolicyTests(unittest.TestCase):
         config={'deployment_mode':'development'}
         self.assertTrue(automatic_install(config,'sync-main'))
         self.assertFalse(automatic_install(config,'check'))
-        self.assertIn('OnUnitActiveSec=1min',timer('development'))
+        self.assertIn('OnUnitActiveSec=1h',timer('development'))
         self.assertIn('Unit=waveform-update-sync-main.service',timer('development'))
 
     def test_unknown_mode_cannot_enable_automatic_updates(self):

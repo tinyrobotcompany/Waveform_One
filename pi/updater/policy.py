@@ -17,7 +17,7 @@ def automatic_install(config, action):
 
 def timer(selected):
     mode({'deployment_mode': selected})
-    schedule = ('OnBootSec=30s\nOnUnitActiveSec=1min\nUnit=waveform-update-sync-main.service\n'
+    schedule = ('OnBootSec=30s\nOnUnitActiveSec=1h\nUnit=waveform-update-sync-main.service\n'
                 if selected == 'development' else
                 'OnCalendar=monthly\nRandomizedDelaySec=6h\nPersistent=true\nUnit=waveform-update-check.service\n')
     return ('[Unit]\nDescription=Waveform One update policy\n[Timer]\n' + schedule +

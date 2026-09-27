@@ -22,7 +22,7 @@ checks report an error and retry at the next scheduled check or manual request.
 
 Customer devices use explicit installation. The development Pi instead uses
 `development` mode: an outbound agent checks for newly signed main releases every
-minute and installs them automatically after CI has published them. There is no
+hour and installs them automatically after CI has published them. There is no
 Install-button requirement on this device. This is a pull-based deployment agent,
 not inbound SSH or a GitHub runner on the home network. If it was offline when a
 release happened, it catches up after restarting. A failed version is not retried
