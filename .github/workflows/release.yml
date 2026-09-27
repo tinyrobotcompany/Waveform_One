@@ -22,17 +22,30 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Prepare empty release staging directory
+        id: staging
+        run: |
+          directory=$(mktemp -d "$RUNNER_TEMP/waveform-release.XXXXXX")
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
+      # Both artifacts come from this run's successful validate job, not another run.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: esp32-visualizer
-          path: dist
+          path: ${{ steps.staging.outputs.directory }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: pi-controller
-          path: dist
+          path: ${{ steps.staging.outputs.directory }}
+      - name: Verify complete validated artifacts before signing
+        env:
+          RELEASE_DIST: ${{ steps.staging.outputs.directory }}
+        run: python3 scripts/package-update.py --verify "$RELEASE_DIST"
       - name: Compute version and publish assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPDATE_SEQUENCE_OFFSET: ${{ vars.UPDATE_SEQUENCE_OFFSET }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          RELEASE_DIST: ${{ steps.staging.outputs.directory }}
         run: |
           python3 scripts/release.py plan --output /tmp/release-plan.json
           if [ "$(cat /tmp/release-plan.json)" = null ]; then
@@ -44,6 +57,7 @@ jobs:
             echo 'Superseded main commit; the latest run will release accumulated changesets.'
             exit 0
           fi
+          python3 scripts/package-update.py "$RELEASE_DIST" /tmp/release-plan.json
           tag=$(jq -r .tag /tmp/release-plan.json)
           jq -r .notes /tmp/release-plan.json > /tmp/release-notes.md
           if ! gh release view "$tag" >/dev/null 2>&1; then
@@ -52,7 +66,7 @@ jobs:
           # Only resume our draft for this commit; never overwrite published assets.
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ]; then
             test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA"
-            gh release upload "$tag" dist/* --clobber
+            gh release upload "$tag" "$RELEASE_DIST"/* --clobber
             gh release edit "$tag" --draft=false --latest
           else
             test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)" = "$GITHUB_SHA"

@@ -1,4 +1,5 @@
 #include "capture.h"
+#include "update.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -243,6 +244,7 @@ extern "C" void app_main()
         const bool was_calibrated = pipeline.calibrated();
         const audio::Frame frame = pipeline.process(rms, spectrum.power(fft_data));
         panel_publish(frame);
+        if (frame.calibrated && frame_number >= 24) update_healthy();
         if (!was_calibrated && frame.calibrated) {
             ESP_LOGI(TAG, "Calibration complete: noise RMS=%.6f; open=%.6f; close=%.6f",
                      pipeline.noiseRms(), frame.openRms, frame.closeRms);

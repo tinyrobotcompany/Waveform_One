@@ -1,7 +1,7 @@
 // Run with PLAYWRIGHT_MODULE and CHROME_BIN set; see pi/README.md.
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const state={device:{connected:true,phase:'playing',mode:'mirrored',bands:Array(24).fill(3)},preferences:{name:'Simon',screen_brightness:100},screen_brightness_supported:true};
+const state={device:{connected:true,phase:'playing',mode:'mirrored',bands:Array(24).fill(3)},preferences:{name:'Simon',screen_brightness:100},screen_brightness_supported:true,update:{phase:'available',version:'v0.2.0',message:'An update is available.',notes:'Verified release notes'}};
 const server=http.createServer((req,res)=>{
  const pathname=new URL(req.url,'http://localhost').pathname;
  if(pathname==='/api/state'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify(state));return;}
@@ -47,6 +47,10 @@ const server=http.createServer((req,res)=>{
   await page.locator('#settingsToggle').click();await page.locator('[data-tab="styles"]').click();
   await page.locator('[data-mode="classic"]').click();
   await page.waitForFunction(()=>document.querySelector('[data-mode="classic"]').getAttribute('aria-pressed')==='true');
+  await page.locator('[data-tab="updates"]').click();
+  assert(await page.locator('#installUpdate').isVisible());
+  assert.equal(await page.locator('#updateVersion').textContent(),'v0.2.0');
+  await page.screenshot({path:`/tmp/waveform-updates-${width}.png`});
   await page.locator('[data-tab="phone"]').click();
   await page.locator('summary').click();
   await page.locator('.settings-scroll').evaluate(e=>e.scrollTop=e.scrollHeight);

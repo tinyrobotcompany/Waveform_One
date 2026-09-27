@@ -4,7 +4,7 @@ const fragment=new URLSearchParams(location.hash.slice(1));
 const kiosk=new URLSearchParams(location.search).get('kiosk')==='1';
 let token=fragment.get('token')||localStorage.getItem('waveform-token')||'';
 if(fragment.has('token')){localStorage.setItem('waveform-token',token);history.replaceState(null,'',location.pathname+location.search);}
-let busy=false,latest=null,lastWake=0,messageUntil=0,artworkUrl=null;
+let busy=false,latest=null,lastWake=0,messageUntil=0,artworkUrl=null,updating=false,build=null;
 async function api(path,options={}){
  const response=await fetch(path,{...options,headers:{...options.headers,Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(18000)});
  if(response.status===401){if(!$('pairing').open)$('pairing').showModal();throw new Error('Connect this browser with your device token.');}
@@ -16,7 +16,16 @@ document.addEventListener('pointerdown',wake,{passive:true});
 document.addEventListener('keydown',wake);
 async function loadQr(){try{const r=await fetch('/api/pairing-qr',{headers:{Authorization:`Bearer ${token}`}});if(!r.ok)throw new Error('Pairing code unavailable');$('pairQr').src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(await r.text());}catch(e){message(e.message);}}
 function update(data){
- latest=data;const d=data.device,name=data.preferences.name;
+ if(build&&data.build&&build!==data.build){location.reload();return;}
+ build=data.build||build;
+ latest=data;
+ const u=data.update||{phase:'unconfigured',message:'Updates need one-time device setup.'};
+ updating=['installing','recovering'].includes(u.phase);
+ $('updatePolicy').textContent=u.deployment_mode==='development'?'Development device: successful main releases install automatically.':'Updates are checked monthly. You choose when to install.';
+ $('updateStatus').textContent=u.message;$('updateVersion').textContent=u.version||'';$('updateNotes').textContent=u.notes||'';
+ $('installUpdate').hidden=u.phase!=='available';$('updateNotice').hidden=u.phase!=='available';
+ $('checkUpdates').disabled=['downloading','installing','recovering'].includes(u.phase);
+ const d=data.device,name=data.preferences.name;
  $('scene').dataset.phase=d.phase;
  $('connection').textContent=d.connected?'● Connected':'○ Reconnecting';
  $('headerGreeting').textContent=name?`Hello ${name}`:'Your listening space';
@@ -35,7 +44,7 @@ $('artwork').addEventListener('load',()=>{$('artwork').hidden=false;});
 $('artwork').addEventListener('error',()=>{$('artwork').hidden=true;});
 async function poll(){
  try{update(await api('/api/state'));if(!busy&&Date.now()>messageUntil){$('message').textContent='';$('settingsMessage').textContent='';}}
- catch(e){message(e.message);$('connection').textContent='○ Pi unreachable';document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=true);latest=null;$('scene').dataset.phase='disconnected';$('headline').textContent='Connecting to your Pi.';$('subtitle').textContent='We’ll reconnect automatically when your Pi is available.';$('album').textContent='';$('recognitionNote').textContent='';$('artwork').hidden=true;$('sceneStatus').textContent='Pi connection unavailable';$('clock').hidden=true;}
+ catch(e){if(updating){message('Installing update. Keep the power connected; the display will reconnect automatically.');$('connection').textContent='● Updating…';setTimeout(poll,1500);return;}message(e.message);$('connection').textContent='○ Pi unreachable';document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=true);latest=null;$('scene').dataset.phase='disconnected';$('headline').textContent='Connecting to your Pi.';$('subtitle').textContent='We’ll reconnect automatically when your Pi is available.';$('album').textContent='';$('recognitionNote').textContent='';$('artwork').hidden=true;$('sceneStatus').textContent='Pi connection unavailable';$('clock').hidden=true;}
  setTimeout(poll,650);
 }
 document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',async()=>{
@@ -66,3 +75,12 @@ $('keyboardDone').addEventListener('click',()=>{$('name').value=draft;$('keyboar
 $('keyboard').addEventListener('keydown',e=>{if(e.key==='Backspace'){e.preventDefault();draft=editName(draft,'backspace');keys();}else if(e.key.length===1&&!e.ctrlKey&&!e.metaKey){e.preventDefault();draft=editName(draft,e.key);keys();}});
 function clock(){const text=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});$('clock').textContent=text;$('headerClock').textContent=text;}clock();setInterval(clock,1000);
 poll();
+
+$('updateNotice').addEventListener('click',()=>{tab('updates');$('settings').showModal();});
+for(const [id,action] of [['checkUpdates','check'],['installUpdate','install']]){
+ $(id).addEventListener('click',async()=>{
+  $(id).disabled=true;
+  try{await api(`/api/updates/${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:latest?.update?.version})});if(action==='install')updating=true;message(action==='check'?'Checking for updates…':'Update requested. The display will reconnect after installation.');}
+  catch(e){message(e.message);}finally{$(id).disabled=false;}
+ });
+}

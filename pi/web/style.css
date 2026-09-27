@@ -24,3 +24,5 @@ main[data-phase=playing] #album{font-size:18px;line-height:1.35}
  main[data-phase=playing] .record{width:100%;max-width:380px}
  main[data-phase=playing] h1{font-size:34px;margin:14px 0 12px}
 }
+
+#updateNotes{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit} .tabs{overflow-x:auto} #updateNotice{font-size:.8rem;padding:.3rem .6rem}

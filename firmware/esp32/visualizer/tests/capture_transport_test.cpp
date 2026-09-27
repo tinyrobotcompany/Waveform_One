@@ -4,6 +4,10 @@
 #include "../main/capture.cpp"
 #include "../main/control.cpp"
 
+bool update_handle(std::string_view) { return false; }
+bool update_active() { return false; }
+void update_tick() {}
+
 static visual::Mode mode = visual::Mode::Mirrored;
 void panel_set_mode(visual::Mode next) {mode=next;}
 visual::Mode panel_mode() {return mode;}
