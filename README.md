@@ -10,8 +10,10 @@ The Raspberry Pi can select visual styles over USB using the Rust controller.
 - [Wiring, firmware programs and build instructions](firmware/esp32/README.md)
 - [Contributing and local tests](CONTRIBUTING.md)
 - [Release notes](CHANGELOG.md)
-- [CI, releases and OTA roadmap](docs/delivery.md)
+- [Over-the-air updates: development and production](pi/updater/README.md)
+- [CI and releases](docs/delivery.md)
 - [Pi setup and visual-style controls](pi/README.md)
 
-The release badge becomes available after the first validated release on `main`.
-Downloads currently support USB installation, not automatic device updates.
+Signed releases support Pi application and ESP firmware updates on commissioned devices.
+Development devices install automatically; production devices ask the user to install.
+Existing factory-layout ESP boards need a one-time USB migration before OTA updates.

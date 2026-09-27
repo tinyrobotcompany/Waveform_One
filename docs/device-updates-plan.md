@@ -15,7 +15,7 @@ release notes, progress, restart requirements, failures and recovery state.
 A native iOS app is not required.
 
 Customer devices check monthly and use Install/Later. The development Pi follows
-successful signed main releases automatically via a one-minute outbound agent.
+successful signed main releases automatically via a hourly outbound agent.
 Checking for an update must never interrupt listening or recording. Losing the
 internet must leave installed visualisation and local controls working.
 
