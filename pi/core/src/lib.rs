@@ -190,3 +190,5 @@ pub mod display;
 pub mod capture;
 
 pub mod recognition;
+
+pub mod diagnostics;

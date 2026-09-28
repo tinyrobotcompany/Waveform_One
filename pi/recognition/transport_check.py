@@ -25,14 +25,15 @@ def fake_esp():
                     if captures==1:
                         os.write(master,f'\nWF1 {ident} ERR AUDIO_LOST\n'.encode())
                         continue
-                    os.write(master,f'\nWF1 {ident} AUDIO 16000 128000\n'.encode())
-                    for seq in range(1000):
+                    packets=250 if parts[3:]==[b'2'] else 1000
+                    os.write(master,f'\nWF1 {ident} AUDIO 16000 {packets*128}\n'.encode())
+                    for seq in range(packets):
                         payload=bytes([seq%256])*256
                         h=2166136261
                         for b in payload:h=((h^b)*16777619)&0xffffffff
                         os.write(master,f'\nWF1 {ident} PCM {seq} {payload.hex()} {h:08x}\n'.encode())
                         if seq%20==0:os.write(master,b'OPEN DISPLAY=BARS |333333333333333333333333|\n')
-                    os.write(master,f'\nWF1 {ident} END 1000\n'.encode())
+                    os.write(master,f'\nWF1 {ident} END {packets}\n'.encode())
                 else:os.write(master,f'\nWF1 {ident} OK MODE mirrored\n'.encode())
     except Exception as e:
         if not stop.is_set():errors.append(str(e))
@@ -65,6 +66,9 @@ with tempfile.TemporaryDirectory() as directory:
         assert len(audio)==256000
         assert all(audio[i*256:(i+1)*256]==bytes([i%256])*256 for i in range(1000))
         assert json.loads(request('/api/state'))['device']['connected']
+        short=request('/api/capture/short',True)
+        assert len(short)==64000
+        assert all(short[i*256:(i+1)*256]==bytes([i%256])*256 for i in range(250))
         assert not errors,errors
         print('PASS: real serial worker + HTTP capture reassembled 1000 interleaved packets correctly')
     finally:

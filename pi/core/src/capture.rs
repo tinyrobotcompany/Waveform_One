@@ -3,6 +3,7 @@ pub const SAMPLE_BYTES: usize = 16000 * 8 * 2;
 pub struct Capture {
     id: u16,
     started: bool,
+    expected_bytes: usize,
     bytes: Vec<u8>,
 }
 impl Capture {
@@ -10,15 +11,19 @@ impl Capture {
         Self {
             id,
             started: false,
+            expected_bytes: SAMPLE_BYTES,
             bytes: Vec::new(),
         }
+    }
+    pub fn short(id:u16)->Self {
+        Self { expected_bytes: 16000*2*2, ..Self::new(id) }
     }
     pub fn line(&mut self, line: &str) -> Option<Result<Vec<u8>, String>> {
         let p: Vec<_> = line.split_whitespace().collect();
         if p.len() < 3 || p[0] != "WF1" || p[1].parse::<u16>().ok() != Some(self.id) {
             return None;
         }
-        if p.as_slice() == ["WF1", &self.id.to_string(), "AUDIO", "16000", "128000"]
+        if p.as_slice() == ["WF1", &self.id.to_string(), "AUDIO", "16000", &(self.expected_bytes/2).to_string()]
             && !self.started
         {
             self.started = true;
@@ -29,7 +34,7 @@ impl Capture {
             && p[2] == "PCM"
             && p[3].parse::<usize>().ok() == Some(self.bytes.len() / 256)
             && p[4].len() == 512
-            && self.bytes.len() < SAMPLE_BYTES
+            && self.bytes.len() < self.expected_bytes
         {
             let decoded: Option<Vec<u8>> = p[4]
                 .as_bytes()
@@ -53,8 +58,8 @@ impl Capture {
         if self.started
             && p.len() == 4
             && p[2] == "END"
-            && p[3] == "1000"
-            && self.bytes.len() == SAMPLE_BYTES
+            && p[3].parse::<usize>().ok() == Some(self.expected_bytes/256)
+            && self.bytes.len() == self.expected_bytes
         {
             return Some(Ok(std::mem::take(&mut self.bytes)));
         }

@@ -73,4 +73,11 @@ int main() {
   for(int i=0;i<188;++i) {capture_audio(audio.data(),2048);capture_send();}
   assert(output.size()==1001);
   assert(output.back()=="\nWF1 10 END 1000\n");
+  output.clear();
+  control_handle_line("WF1 11 CAPTURE 2");
+  assert(output.back()=="\nWF1 11 AUDIO 16000 32000\n");
+  for(int i=0;i<47;++i) {capture_audio(audio.data(),2048);capture_send();}
+  assert(output.size()==252);
+  assert(output.back()=="\nWF1 11 END 250\n");
+  assert(!capture_active());
 }

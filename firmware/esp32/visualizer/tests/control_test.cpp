@@ -12,6 +12,9 @@ int main() {
         assert(!control::parse(bad, command));
     assert(control::parse("WF1 12 CAPTURE", command) && command.capture && !command.changeMode);
     assert(!control::parse("WF1 12 CAPTURE extra", command));
+    assert(control::parse("WF1 12 CAPTURE 2", command) && command.capture && command.captureSeconds==2);
+    assert(control::parse("WF1 12 CAPTURE", command) && command.captureSeconds==8);
+    assert(!control::parse("WF1 12 CAPTURE 3", command));
     control::Lines lines;
     std::vector<std::string> received;
     auto feed = [&](const std::string& input) {

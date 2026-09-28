@@ -3,7 +3,7 @@
 #include "styles.h"
 
 namespace control {
-struct Command { unsigned id = 0; bool changeMode = false; bool capture = false; visual::Mode mode = visual::Mode::Classic; };
+struct Command { unsigned id = 0; unsigned captureSeconds = 8; bool changeMode = false; bool capture = false; visual::Mode mode = visual::Mode::Classic; };
 inline bool parse(std::string_view line, Command& output) {
     if (line.substr(0, 4) != "WF1 ") return false;
     line.remove_prefix(4);
@@ -15,7 +15,7 @@ inline bool parse(std::string_view line, Command& output) {
     line.remove_prefix(space+1);
     Command next{};
     next.id = id;
-    if (line == "CAPTURE") { next.capture = true; }
+    if (line == "CAPTURE" || line == "CAPTURE 2") { next.capture = true; next.captureSeconds = line == "CAPTURE 2" ? 2 : 8; }
     else if (line != "STATUS") {
         if (line.substr(0, 5) != "MODE " || !visual::parseMode(line.substr(5), next.mode)) return false;
         next.changeMode = true;

@@ -19,3 +19,16 @@ export function presentation(phase,name,track,recognition){
  }
  return base;
 }
+
+// Load replacements off-screen; ignore completions for a superseded song/session.
+export function createArtworkLoader(load,commit,clear,now=()=>Date.now()){
+ let requested=null,generation=0,failed=null,retryAt=0;
+ return url=>{
+  if(!url){if(requested!==null){generation++;requested=null;}clear();return;}
+  if(url===requested || (url===failed&&now()<retryAt))return;
+  requested=url;const ticket=++generation;
+  load(url).then(()=>{if(ticket===generation){failed=null;commit(url);}}).catch(()=>{
+   if(ticket===generation){requested=null;failed=url;retryAt=now()+5000;}
+  });
+ };
+}

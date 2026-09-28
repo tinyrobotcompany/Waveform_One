@@ -1,10 +1,13 @@
-import {editName,presentation} from '/ui.mjs';
+import {editName,presentation,createArtworkLoader} from '/ui.mjs';
 const $=id=>document.getElementById(id);
 const fragment=new URLSearchParams(location.hash.slice(1));
 const kiosk=new URLSearchParams(location.search).get('kiosk')==='1';
 let token=fragment.get('token')||localStorage.getItem('waveform-token')||'';
 if(fragment.has('token')){localStorage.setItem('waveform-token',token);history.replaceState(null,'',location.pathname+location.search);}
-let busy=false,latest=null,lastWake=0,messageUntil=0,artworkUrl=null,updating=false,build=null;
+let busy=false,latest=null,lastWake=0,messageUntil=0,updating=false,build=null;
+const showArtwork=createArtworkLoader(url=>new Promise((resolve,reject)=>{
+ const image=new Image();image.onload=()=>resolve();image.onerror=reject;image.src=url;
+}),url=>{$('artwork').src=url;$('artwork').hidden=false;},()=>{$('artwork').hidden=true;$('artwork').removeAttribute('src');});
 async function api(path,options={}){
  const response=await fetch(path,{...options,headers:{...options.headers,Authorization:`Bearer ${token}`},signal:AbortSignal.timeout(18000)});
  if(response.status===401){if(!$('pairing').open)$('pairing').showModal();throw new Error('Connect this browser with your device token.');}
@@ -33,18 +36,16 @@ function update(data){
  $('eyebrow').textContent=view.eyebrow;$('headline').textContent=view.title;$('subtitle').textContent=view.subtitle;
  $('album').textContent=view.album;$('recognitionNote').textContent=view.note;
  $('record').setAttribute('aria-label',view.artwork?'Album artwork':'Record illustration; album artwork unavailable');
- if(artworkUrl!==view.artwork){artworkUrl=view.artwork;$('artwork').hidden=true;if(artworkUrl)$('artwork').src=artworkUrl;else $('artwork').removeAttribute('src');}
+ showArtwork(view.artwork);
  $('sceneStatus').textContent=({playing:'Listening to your music',idle:'Listening for music',disconnected:'Checking USB…',waiting:'Awaiting microphone',calibrating:'Calibrating microphone'})[d.phase];
  $('clock').hidden=d.phase!=='idle';$('quietStatus').textContent=d.phase==='idle'?'Quiet mode is active.':d.phase==='playing'?`Quiet mode follows ${d.idle_in_seconds ?? 30} seconds without substantial sound.`:'Quiet-mode detection is waiting for the microphone.';
  document.querySelectorAll('[data-mode]').forEach(button=>{const selected=button.dataset.mode===d.mode;button.classList.toggle('active',selected);button.setAttribute('aria-pressed',String(selected));button.querySelector('.selected').textContent=selected?'●':'○';button.disabled=busy||!d.connected;});
  if(!$('settings').open){$('name').value=name;$('screenBrightness').value=data.preferences.screen_brightness;}
  $('brightnessValue').textContent=$('screenBrightness').value+'%';$('brightnessControl').hidden=!data.screen_brightness_supported;
 }
-$('artwork').addEventListener('load',()=>{$('artwork').hidden=false;});
-$('artwork').addEventListener('error',()=>{$('artwork').hidden=true;});
 async function poll(){
  try{update(await api('/api/state'));if(!busy&&Date.now()>messageUntil){$('message').textContent='';$('settingsMessage').textContent='';}}
- catch(e){if(updating){message('Installing update. Keep the power connected; the display will reconnect automatically.');$('connection').textContent='● Updating…';setTimeout(poll,1500);return;}message(e.message);$('connection').textContent='○ Pi unreachable';document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=true);latest=null;$('scene').dataset.phase='disconnected';$('headline').textContent='Connecting to your Pi.';$('subtitle').textContent='We’ll reconnect automatically when your Pi is available.';$('album').textContent='';$('recognitionNote').textContent='';$('artwork').hidden=true;$('sceneStatus').textContent='Pi connection unavailable';$('clock').hidden=true;}
+ catch(e){if(updating){message('Installing update. Keep the power connected; the display will reconnect automatically.');$('connection').textContent='● Updating…';setTimeout(poll,1500);return;}message(e.message);$('connection').textContent='○ Pi unreachable';document.querySelectorAll('[data-mode]').forEach(b=>b.disabled=true);latest=null;$('scene').dataset.phase='disconnected';$('headline').textContent='Connecting to your Pi.';$('subtitle').textContent='We’ll reconnect automatically when your Pi is available.';$('album').textContent='';$('recognitionNote').textContent='';showArtwork(null);$('sceneStatus').textContent='Pi connection unavailable';$('clock').hidden=true;}
  setTimeout(poll,650);
 }
 document.querySelectorAll('[data-mode]').forEach(button=>button.addEventListener('click',async()=>{

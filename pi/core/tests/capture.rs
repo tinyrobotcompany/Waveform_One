@@ -49,3 +49,14 @@ fn capture_failure_reports_progress_without_audio_payload() {
     assert!(error.contains("received packet 3"), "{error}");
     assert!(!error.contains("2a2a"));
 }
+
+#[test]
+fn short_capture_requires_exact_header_packets_and_end() {
+    let mut c=Capture::short(7);
+    assert!(c.line("WF1 7 AUDIO 16000 32000").is_none());
+    for seq in 0..250 {assert!(c.line(&packet(seq,&[42;256])).is_none());}
+    assert_eq!(c.line("WF1 7 END 250").unwrap().unwrap().len(),64000);
+    assert!(Capture::short(7).line("WF1 7 AUDIO 16000 128000").unwrap().is_err());
+    let mut c=Capture::short(7);c.line("WF1 7 AUDIO 16000 32000");
+    assert!(c.line("WF1 7 END 250").unwrap().is_err());
+}

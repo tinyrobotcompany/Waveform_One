@@ -45,6 +45,10 @@ fn seconds(start: Instant) -> u64 {
 }
 
 fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>, start: Instant) {
+    let directory = std::env::var_os("WAVEFORM_CONFIG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config/waveform-one"));
+    let mut diagnostics = waveform_control::diagnostics::Diagnostics::new(directory.join("esp-boot.log"));
     let mut id = 1u16;
     loop {
         let opened = serialport::new(&path, 115200)
@@ -78,8 +82,8 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                     id = if id == u16::MAX { 1 } else { id + 1 };
                     if port
                         .write_all(
-                            (if mode == "capture" {
-                                format!("WF1 {id} CAPTURE\n")
+                            (if mode.starts_with("capture") {
+                                if mode=="capture-short" { format!("WF1 {id} CAPTURE 2\n") } else { format!("WF1 {id} CAPTURE\n") }
                             } else {
                                 request(id, &mode).unwrap()
                             })
@@ -93,8 +97,8 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                         break;
                     }
                     pending = Some(Pending {
-                        capture: if mode == "capture" {
-                            Some(waveform_control::capture::Capture::new(id))
+                        capture: if mode.starts_with("capture") {
+                            Some(if mode=="capture-short" {waveform_control::capture::Capture::short(id)} else {waveform_control::capture::Capture::new(id)})
                         } else {
                             None
                         },
@@ -114,6 +118,7 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                         if *byte == b'\n' {
                             if !overflow {
                                 if let Ok(text) = std::str::from_utf8(&line) {
+                                    diagnostics.record(text);
                                     if let Some(capture) =
                                         pending.as_mut().and_then(|p| p.capture.as_mut())
                                     {
@@ -161,13 +166,13 @@ fn serial_worker(path: String, state: Shared, commands: mpsc::Receiver<Command>,
                                 }
                                 Ok(Answer::Audio(_)) => {}
                                 // Clip validation failure is not a USB disconnect.
-                                Err(_) if expected == "capture" => {}
+                                Err(_) if expected.starts_with("capture") => {}
                                 Err(_) => state
                                     .lock()
                                     .unwrap()
                                     .disconnected("ESP rejected a command; reconnecting…"),
                             }
-                            let failed = answer.is_err() && expected != "capture";
+                            let failed = answer.is_err() && !expected.starts_with("capture");
                             if let Some(tx) = reply {
                                 let _ = tx.send(answer);
                             }
@@ -371,14 +376,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Ok(())=>respond(req,202,"{}".into(),"application/json"),
                     Err(e)=>respond(req,409,e,"text/plain"),
                 }
-            } else if req.method() == &Method::Post && path == "/api/capture" {
+            } else if req.method() == &Method::Post && (path == "/api/capture" || path == "/api/capture/short") {
                 if !req.remote_addr().is_some_and(|a|a.ip().is_loopback()) {respond(req,403,"Audio capture is local to the Pi".into(),"text/plain");continue;}
                 let view=state.lock().unwrap().view(seconds(start));
                 if view.phase!="playing" {respond(req,409,"Waiting for music".into(),"text/plain");continue;}
                 let (reply,received)=mpsc::channel();
                 // One capture at a time, including queued requests. Never hold up HTTP status.
                 let Ok(_guard)=capture_lock.try_lock() else {respond(req,409,"Capture already running".into(),"text/plain");continue;};
-                if tx.try_send(Command{mode:"capture".into(),reply}).is_err(){respond(req,503,"Device busy".into(),"text/plain");continue;}
+                if tx.try_send(Command{mode:if path.ends_with("/short") {"capture-short".into()} else {"capture".into()},reply}).is_err(){respond(req,503,"Device busy".into(),"text/plain");continue;}
                 match received.recv_timeout(Duration::from_secs(20)) {
                     Ok(Ok(Answer::Audio(bytes))) => {
                         let current=state.lock().unwrap().view(seconds(start));

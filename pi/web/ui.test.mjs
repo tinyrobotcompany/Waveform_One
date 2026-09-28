@@ -26,3 +26,17 @@ test('recognition progress and no-match are distinct from a matched song',()=>{
  assert.match(presentation('playing','Simon',null,'no_match').note,/recognise/);
  assert.equal(presentation('playing','Simon',{title:'Song',artist:'Artist',album:'Record'},'matched').eyebrow,'NOW PLAYING');
 });
+
+test('artwork stays visible until replacement loads and stale loads cannot overwrite it',async()=>{
+ const {createArtworkLoader}=await import('./ui.mjs');
+ const pending=new Map(),shown=[];
+ const loader=createArtworkLoader(url=>new Promise((resolve,reject)=>pending.set(url,{resolve,reject})),url=>shown.push(url),()=>shown.push(null));
+ loader('a');pending.get('a').resolve();await new Promise(r=>setImmediate(r));
+ loader('b');assert.deepEqual(shown,['a']);
+ loader('c');pending.get('c').resolve();await new Promise(r=>setImmediate(r));
+ pending.get('b').resolve();await new Promise(r=>setImmediate(r));
+ assert.deepEqual(shown,['a','c']);
+ loader('d');pending.get('d').reject(new Error('offline'));await new Promise(r=>setImmediate(r));
+ assert.deepEqual(shown,['a','c']);
+ loader(null);assert.deepEqual(shown,['a','c',null]);
+});

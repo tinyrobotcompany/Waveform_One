@@ -16,7 +16,7 @@ struct Packet {
 };
 QueueHandle_t packets = nullptr;
 std::atomic<unsigned> active{0}, failed{0};
-constexpr unsigned packet_count =
+unsigned packet_count =
     1000; // eight seconds of mono 16 kHz signed PCM
 // Serialize the producer with start/abort so no old frame can refill a reset
 // queue. USB writes never hold this mutex.
@@ -29,10 +29,11 @@ void capture_init() {
   packets = xQueueCreate(32, sizeof(Packet));
   ESP_ERROR_CHECK(packets ? ESP_OK : ESP_ERR_NO_MEM);
 }
-bool capture_start(unsigned id) {
+bool capture_start(unsigned id, unsigned seconds) {
   std::lock_guard<std::mutex> lock(producer_mutex);
-  if (!id || active.load())
+  if (!id || active.load() || (seconds != 2 && seconds != 8))
     return false;
+  packet_count = seconds * 125;
   xQueueReset(packets);
   samples = capture::Samples{};
   building = {};
