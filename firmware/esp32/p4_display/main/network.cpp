@@ -31,7 +31,13 @@ constexpr EventBits_t kFailed = BIT1;
 int connection_attempts = 0;
 char station_address[32]{};
 char remote_address[96]{};
-char remote_token[33]{};
+char pairing_code[33]{};
+struct RemoteSession {
+    char id[33]{};
+    char csrf[33]{};
+};
+RemoteSession sessions[4]{};
+std::size_t next_session = 0;
 std::atomic_bool wifi_ready{false};
 std::atomic_bool scanning{false};
 std::atomic_bool attempting_home{false};
@@ -52,13 +58,13 @@ button,input{font:inherit}button{min-height:48px;border:1px solid var(--line);bo
 <section class="card"><h2>DISPLAY</h2><label>Brightness <input id="brightness" type="range" min="10" max="100" value="100"></label></section><p id="status">Connected locally to Waveform One</p>
 </main><script>
 const status=document.querySelector('#status');
-const token=location.hash.slice(1);
-if(!token)status.textContent='Pairing token missing. Open this remote from the QR code.';
-function post(path,data){if(!token){status.textContent='Pairing required. Scan the QR code again.';return Promise.resolve(false)}return fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-Token':token},body:new URLSearchParams(data)}).then(r=>{if(!r.ok)throw Error('Request failed');status.textContent='Saved';return true}).catch(()=>{status.textContent='Could not save setting';return false})}
+let csrf='';
+const sessionReady=fetch('/api/session',{credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('Pairing required');return r.text()}).then(value=>{csrf=value;status.textContent='Connected locally to Waveform One';return true}).catch(()=>{status.textContent='Pairing required. Scan the QR code on Waveform One.';return false});
+function post(path,data){if(!csrf){status.textContent='Pairing required. Scan the QR code again.';return Promise.resolve(false)}return fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams(data)}).then(r=>{if(!r.ok)throw Error('Request failed');status.textContent='Saved';return true}).catch(()=>{status.textContent='Could not save setting';return false})}
 function style(value){status.textContent='Applying on LED…';post('/api/style',{style:value})}
 function saveName(){const name=document.querySelector('#name').value.trim();if(name){document.querySelector('#welcome').textContent='Welcome, '+name;post('/api/name',{name})}}
 let timer;document.querySelector('#brightness').addEventListener('input',e=>{clearTimeout(timer);timer=setTimeout(()=>post('/api/brightness',{value:e.target.value}),80)});
-function tick(){document.querySelector('#clock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}tick();setInterval(tick,1000);post('/api/time',{epoch:Math.floor(Date.now()/1000)});
+function tick(){document.querySelector('#clock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}tick();setInterval(tick,1000);sessionReady.then(ok=>{if(ok)post('/api/time',{epoch:Math.floor(Date.now()/1000)})});
 </script></body></html>)HTML";
 
 bool read_body(httpd_req_t *request, std::string &body)
@@ -157,46 +163,97 @@ bool load_wifi(std::string &ssid, std::string &password)
     return true;
 }
 
-bool load_or_create_remote_token()
+void random_hex(char (&output)[33])
 {
-    nvs_handle_t handle{};
-    if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return false;
-    size_t size = sizeof(remote_token);
-    esp_err_t result = nvs_get_str(handle, "remote_token", remote_token, &size);
-    if (result == ESP_OK && std::strlen(remote_token) == 32) {
-        nvs_close(handle);
-        return true;
-    }
-
     uint8_t random[16]{};
     esp_fill_random(random, sizeof(random));
     for (size_t index = 0; index < sizeof(random); ++index) {
-        std::snprintf(remote_token + index * 2, 3, "%02x", random[index]);
+        static constexpr char digits[] = "0123456789abcdef";
+        output[index * 2] = digits[random[index] >> 4];
+        output[index * 2 + 1] = digits[random[index] & 0x0f];
     }
-    result = nvs_set_str(handle, "remote_token", remote_token);
-    if (result == ESP_OK) result = nvs_commit(handle);
-    nvs_close(handle);
-    if (result != ESP_OK) std::memset(remote_token, 0, sizeof(remote_token));
-    return result == ESP_OK;
+    output[32] = '\0';
 }
 
-bool authorized(httpd_req_t *request)
+void rotate_pairing_code()
 {
-    constexpr char kHeader[] = "X-Waveform-Token";
-    const size_t length = httpd_req_get_hdr_value_len(request, kHeader);
-    if (length == 0 || length > 64) return false;
-    char presented[65]{};
-    if (httpd_req_get_hdr_value_str(request, kHeader, presented, sizeof(presented)) != ESP_OK) {
-        return false;
+    random_hex(pairing_code);
+    if (station_address[0] != '\0') {
+        std::snprintf(remote_address, sizeof(remote_address), "%s/pair?code=%s",
+                      station_address, pairing_code);
+        if (controls.set_network != nullptr) {
+            controls.set_network(NetworkMode::HomeWifi, remote_address);
+        }
     }
-    return control_policy::remote_token_matches(remote_token, presented);
+}
+
+RemoteSession *request_session(httpd_req_t *request)
+{
+    constexpr char kCookie[] = "Cookie";
+    const size_t length = httpd_req_get_hdr_value_len(request, kCookie);
+    if (length == 0 || length > 512) return nullptr;
+    char cookies[513]{};
+    if (httpd_req_get_hdr_value_str(request, kCookie, cookies, sizeof(cookies)) != ESP_OK) {
+        return nullptr;
+    }
+    const std::string_view id = control_policy::cookie_value(cookies, "wf1_session");
+    for (auto &session : sessions) {
+        if (control_policy::remote_token_matches(session.id, id)) return &session;
+    }
+    return nullptr;
 }
 
 bool require_authorized(httpd_req_t *request)
 {
-    if (authorized(request)) return true;
-    httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Pairing token required");
+    RemoteSession *session = request_session(request);
+    constexpr char kHeader[] = "X-Waveform-CSRF";
+    const size_t length = httpd_req_get_hdr_value_len(request, kHeader);
+    char presented[65]{};
+    const bool valid = session != nullptr && length > 0 && length <= 64 &&
+                       httpd_req_get_hdr_value_str(request, kHeader, presented,
+                                                   sizeof(presented)) == ESP_OK &&
+                       control_policy::remote_token_matches(session->csrf, presented);
+    if (valid) return true;
+    httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Pairing session required");
     return false;
+}
+
+esp_err_t session_handler(httpd_req_t *request)
+{
+    RemoteSession *session = request_session(request);
+    if (session == nullptr) {
+        return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
+    }
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    return reply(request, session->csrf);
+}
+
+esp_err_t pair_handler(httpd_req_t *request)
+{
+    const size_t query_length = httpd_req_get_url_query_len(request);
+    if (query_length == 0 || query_length > 96) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid pairing code");
+    }
+    char query[97]{};
+    char presented[65]{};
+    if (httpd_req_get_url_query_str(request, query, sizeof(query)) != ESP_OK ||
+        httpd_query_key_value(query, "code", presented, sizeof(presented)) != ESP_OK ||
+        !control_policy::remote_token_matches(pairing_code, presented)) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid pairing code");
+    }
+
+    RemoteSession &session = sessions[next_session++ % (sizeof(sessions) / sizeof(sessions[0]))];
+    random_hex(session.id);
+    random_hex(session.csrf);
+    char cookie[96]{};
+    std::snprintf(cookie, sizeof(cookie),
+                  "wf1_session=%s; Path=/; HttpOnly; SameSite=Strict", session.id);
+    httpd_resp_set_hdr(request, "Set-Cookie", cookie);
+    httpd_resp_set_hdr(request, "Location", "/");
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_status(request, "303 See Other");
+    rotate_pairing_code();
+    return httpd_resp_send(request, nullptr, 0);
 }
 
 esp_err_t style_handler(httpd_req_t *request)
@@ -358,7 +415,6 @@ void network_task(void *)
         result = nvs_flash_init();
     }
     ESP_ERROR_CHECK(result);
-    ESP_ERROR_CHECK(load_or_create_remote_token() ? ESP_OK : ESP_FAIL);
     ESP_ERROR_CHECK(esp_netif_init());
     result = esp_event_loop_create_default();
     if (result != ESP_OK && result != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(result);
@@ -380,9 +436,7 @@ void network_task(void *)
         if (controls.set_network != nullptr) controls.set_network(NetworkMode::Unconfigured, "");
     } else if (controls.set_network != nullptr) {
         start_time_sync();
-        std::snprintf(remote_address, sizeof(remote_address), "%s/#%s",
-                      station_address, remote_token);
-        controls.set_network(NetworkMode::HomeWifi, remote_address);
+        rotate_pairing_code();
     }
     wifi_ready.store(true);
     network_request_scan();
@@ -392,6 +446,8 @@ void network_task(void *)
     httpd_handle_t server = nullptr;
     ESP_ERROR_CHECK(httpd_start(&server, &server_config));
     register_uri(server, "/", HTTP_GET, page_handler);
+    register_uri(server, "/pair", HTTP_GET, pair_handler);
+    register_uri(server, "/api/session", HTTP_GET, session_handler);
     register_uri(server, "/api/style", HTTP_POST, style_handler);
     register_uri(server, "/api/brightness", HTTP_POST, brightness_handler);
     register_uri(server, "/api/name", HTTP_POST, name_handler);

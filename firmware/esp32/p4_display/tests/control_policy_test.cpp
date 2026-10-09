@@ -13,6 +13,11 @@ int main()
     assert(!remote_token_matches(token, ""));
     assert(!remote_token_matches(token, "0123456789abcdef0123456789abcdee"));
     assert(!remote_token_matches(token, "0123456789abcdef0123456789abcdef0"));
+    assert(cookie_value("theme=dark; wf1_session=abc123; language=en", "wf1_session") ==
+           "abc123");
+    assert(cookie_value("wf1_session_extra=wrong; wf1_session=right", "wf1_session") ==
+           "right");
+    assert(cookie_value("theme=dark", "wf1_session").empty());
 
     assert(valid_brightness(10));
     assert(valid_brightness(100));
