@@ -32,32 +32,6 @@ inline bool remote_token_matches(std::string_view expected, std::string_view pre
     return difference == 0 && !expected.empty();
 }
 
-inline std::string_view cookie_value(std::string_view cookies, std::string_view name)
-{
-    for (std::size_t start = 0; start < cookies.size();) {
-        while (start < cookies.size() && (cookies[start] == ' ' || cookies[start] == ';')) {
-            ++start;
-        }
-        const std::size_t end = cookies.find(';', start);
-        const std::size_t item_end = end == std::string_view::npos ? cookies.size() : end;
-        const std::size_t equals = cookies.find('=', start);
-        if (equals < item_end) {
-            std::size_t key_end = equals;
-            while (key_end > start && cookies[key_end - 1] == ' ') --key_end;
-            if (cookies.substr(start, key_end - start) == name) {
-                std::size_t value_start = equals + 1;
-                while (value_start < item_end && cookies[value_start] == ' ') ++value_start;
-                std::size_t value_end = item_end;
-                while (value_end > value_start && cookies[value_end - 1] == ' ') --value_end;
-                return cookies.substr(value_start, value_end - value_start);
-            }
-        }
-        if (end == std::string_view::npos) break;
-        start = end + 1;
-    }
-    return {};
-}
-
 inline bool valid_brightness(int percent)
 {
     return percent >= 10 && percent <= 100;
