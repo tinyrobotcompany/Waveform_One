@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_netif_sntp.h"
+#include "esp_random.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -29,6 +30,8 @@ constexpr EventBits_t kConnected = BIT0;
 constexpr EventBits_t kFailed = BIT1;
 int connection_attempts = 0;
 char station_address[32]{};
+char remote_address[96]{};
+char remote_token[33]{};
 std::atomic_bool wifi_ready{false};
 std::atomic_bool scanning{false};
 std::atomic_bool attempting_home{false};
@@ -45,12 +48,14 @@ button,input{font:inherit}button{min-height:48px;border:1px solid var(--line);bo
 </style><body><header><b>WAVEFORM ONE</b><span id="clock"></span></header><main>
 <div class="eyebrow">NOW PLAYING</div><h1 id="welcome">Welcome, Simon</h1><div class="art">WAVEFORM<br>ONE</div><h1>Listening for music</h1><p>Track, artist and album artwork will appear here.</p>
 <section class="card"><h2>PROFILE</h2><label>Your name<input id="name" type="text" maxlength="40" value="Simon"></label><button onclick="saveName()">Save name</button></section>
-<section class="card"><h2>LED STYLE</h2><div class="styles"><button onclick="style('classic',this)">Classic</button><button class="active" onclick="style('mirrored',this)">Mirrored</button><button onclick="style('waterfall',this)">Waterfall</button></div></section>
+<section class="card"><h2>LED STYLE</h2><div class="styles"><button onclick="style('classic')">Classic</button><button onclick="style('mirrored')">Mirrored</button><button onclick="style('waterfall')">Waterfall</button></div></section>
 <section class="card"><h2>DISPLAY</h2><label>Brightness <input id="brightness" type="range" min="10" max="100" value="100"></label></section><p id="status">Connected locally to Waveform One</p>
 </main><script>
 const status=document.querySelector('#status');
-function post(path,data){return fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(data)}).then(r=>{if(!r.ok)throw Error('Request failed');status.textContent='Saved';}).catch(()=>status.textContent='Could not save setting')}
-function style(value,button){document.querySelectorAll('.styles button').forEach(b=>b.classList.remove('active'));button.classList.add('active');post('/api/style',{style:value})}
+const token=location.hash.slice(1);
+if(!token)status.textContent='Pairing token missing. Open this remote from the QR code.';
+function post(path,data){if(!token){status.textContent='Pairing required. Scan the QR code again.';return Promise.resolve(false)}return fetch(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-Token':token},body:new URLSearchParams(data)}).then(r=>{if(!r.ok)throw Error('Request failed');status.textContent='Saved';return true}).catch(()=>{status.textContent='Could not save setting';return false})}
+function style(value){status.textContent='Applying on LED…';post('/api/style',{style:value})}
 function saveName(){const name=document.querySelector('#name').value.trim();if(name){document.querySelector('#welcome').textContent='Welcome, '+name;post('/api/name',{name})}}
 let timer;document.querySelector('#brightness').addEventListener('input',e=>{clearTimeout(timer);timer=setTimeout(()=>post('/api/brightness',{value:e.target.value}),80)});
 function tick(){document.querySelector('#clock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}tick();setInterval(tick,1000);post('/api/time',{epoch:Math.floor(Date.now()/1000)});
@@ -105,6 +110,13 @@ esp_err_t reply(httpd_req_t *request, const char *body = "OK")
     return httpd_resp_sendstr(request, body);
 }
 
+esp_err_t service_unavailable(httpd_req_t *request, const char *message)
+{
+    httpd_resp_set_status(request, "503 Service Unavailable");
+    httpd_resp_set_type(request, "text/plain");
+    return httpd_resp_sendstr(request, message);
+}
+
 esp_err_t page_handler(httpd_req_t *request)
 {
     httpd_resp_set_type(request, "text/html");
@@ -145,8 +157,51 @@ bool load_wifi(std::string &ssid, std::string &password)
     return true;
 }
 
+bool load_or_create_remote_token()
+{
+    nvs_handle_t handle{};
+    if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return false;
+    size_t size = sizeof(remote_token);
+    esp_err_t result = nvs_get_str(handle, "remote_token", remote_token, &size);
+    if (result == ESP_OK && std::strlen(remote_token) == 32) {
+        nvs_close(handle);
+        return true;
+    }
+
+    uint8_t random[16]{};
+    esp_fill_random(random, sizeof(random));
+    for (size_t index = 0; index < sizeof(random); ++index) {
+        std::snprintf(remote_token + index * 2, 3, "%02x", random[index]);
+    }
+    result = nvs_set_str(handle, "remote_token", remote_token);
+    if (result == ESP_OK) result = nvs_commit(handle);
+    nvs_close(handle);
+    if (result != ESP_OK) std::memset(remote_token, 0, sizeof(remote_token));
+    return result == ESP_OK;
+}
+
+bool authorized(httpd_req_t *request)
+{
+    constexpr char kHeader[] = "X-Waveform-Token";
+    const size_t length = httpd_req_get_hdr_value_len(request, kHeader);
+    if (length == 0 || length > 64) return false;
+    char presented[65]{};
+    if (httpd_req_get_hdr_value_str(request, kHeader, presented, sizeof(presented)) != ESP_OK) {
+        return false;
+    }
+    return control_policy::remote_token_matches(remote_token, presented);
+}
+
+bool require_authorized(httpd_req_t *request)
+{
+    if (authorized(request)) return true;
+    httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Pairing token required");
+    return false;
+}
+
 esp_err_t style_handler(httpd_req_t *request)
 {
+    if (!require_authorized(request)) return ESP_OK;
     std::string body;
     if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
     const std::string value = form_value(body, "style");
@@ -155,12 +210,15 @@ esp_err_t style_handler(httpd_req_t *request)
     else if (value == "mirrored") style = LedStyle::Mirrored;
     else if (value == "waterfall") style = LedStyle::Waterfall;
     else return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid style");
-    if (controls.set_style != nullptr) controls.set_style(style);
+    if (controls.set_style == nullptr || !controls.set_style(style)) {
+        return service_unavailable(request, "LED controller unavailable");
+    }
     return reply(request);
 }
 
 esp_err_t brightness_handler(httpd_req_t *request)
 {
+    if (!require_authorized(request)) return ESP_OK;
     std::string body;
     if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
     const std::string value = form_value(body, "value");
@@ -169,12 +227,16 @@ esp_err_t brightness_handler(httpd_req_t *request)
     if (value.empty() || *end != '\0' || percent < 10 || percent > 100) {
         return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid brightness");
     }
-    if (controls.set_brightness != nullptr) controls.set_brightness(static_cast<int>(percent));
+    if (controls.set_brightness == nullptr ||
+        !controls.set_brightness(static_cast<int>(percent))) {
+        return service_unavailable(request, "Brightness update failed");
+    }
     return reply(request);
 }
 
 esp_err_t name_handler(httpd_req_t *request)
 {
+    if (!require_authorized(request)) return ESP_OK;
     std::string body;
     if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
     const std::string name = form_value(body, "name");
@@ -185,6 +247,7 @@ esp_err_t name_handler(httpd_req_t *request)
 
 esp_err_t time_handler(httpd_req_t *request)
 {
+    if (!require_authorized(request)) return ESP_OK;
     std::string body;
     if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
     const std::string value = form_value(body, "epoch");
@@ -268,7 +331,7 @@ void start_time_sync()
 void scan_task(void *)
 {
     wifi_scan_config_t config{};
-    std::string options;
+    control_policy::WifiNetworkList networks{};
     if (esp_wifi_scan_start(&config, true) == ESP_OK) {
         uint16_t count = 0;
         esp_wifi_scan_get_ap_num(&count);
@@ -276,15 +339,13 @@ void scan_task(void *)
         wifi_ap_record_t records[16]{};
         if (count > 0 && esp_wifi_scan_get_ap_records(&count, records) == ESP_OK) {
             for (uint16_t index = 0; index < count; ++index) {
-                const char *ssid = reinterpret_cast<const char *>(records[index].ssid);
-                if (ssid[0] == '\0') continue;
-                if (!options.empty()) options.push_back('\n');
-                options += ssid;
+                const size_t size = strnlen(
+                    reinterpret_cast<const char *>(records[index].ssid), 32);
+                control_policy::add_wifi_network(networks, records[index].ssid, size);
             }
         }
     }
-    if (options.empty()) options = "No networks found";
-    if (controls.set_networks != nullptr) controls.set_networks(options.c_str());
+    if (controls.set_networks != nullptr) controls.set_networks(networks);
     scanning.store(false);
     vTaskDelete(nullptr);
 }
@@ -297,6 +358,7 @@ void network_task(void *)
         result = nvs_flash_init();
     }
     ESP_ERROR_CHECK(result);
+    ESP_ERROR_CHECK(load_or_create_remote_token() ? ESP_OK : ESP_FAIL);
     ESP_ERROR_CHECK(esp_netif_init());
     result = esp_event_loop_create_default();
     if (result != ESP_OK && result != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(result);
@@ -318,7 +380,9 @@ void network_task(void *)
         if (controls.set_network != nullptr) controls.set_network(NetworkMode::Unconfigured, "");
     } else if (controls.set_network != nullptr) {
         start_time_sync();
-        controls.set_network(NetworkMode::HomeWifi, station_address);
+        std::snprintf(remote_address, sizeof(remote_address), "%s/#%s",
+                      station_address, remote_token);
+        controls.set_network(NetworkMode::HomeWifi, remote_address);
     }
     wifi_ready.store(true);
     network_request_scan();
@@ -357,10 +421,10 @@ void network_request_scan()
     }
 }
 
-bool network_configure_home(const char *ssid, const char *password)
+bool network_configure_home(const control_policy::WifiNetwork &selected, const char *password)
 {
-    if (!wifi_ready.load() || ssid == nullptr || password == nullptr || ssid[0] == '\0') return false;
-    const std::string network(ssid);
+    if (!wifi_ready.load() || password == nullptr || selected.ssid[0] == '\0') return false;
+    const std::string network(selected.ssid);
     const std::string secret(password);
     if (network.size() > 32 || secret.size() > 63 || !save_wifi(network, secret)) return false;
     return xTaskCreate(restart_task, "wifi_restart", 2048, nullptr, 5, nullptr) == pdPASS;

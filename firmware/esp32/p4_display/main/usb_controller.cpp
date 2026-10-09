@@ -1,5 +1,6 @@
 #include "usb_controller.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstring>
 
@@ -31,6 +32,7 @@ struct Event {
 QueueHandle_t events = nullptr;
 LedControllerStatusCallback report_status = nullptr;
 cdc_acm_dev_hdl_t controller = nullptr;
+std::atomic_bool controller_available{false};
 unsigned request_id = 0;
 wf1::Mode requested_mode = wf1::Mode::Mirrored;
 wf1::Replies replies(1);
@@ -109,6 +111,7 @@ void usb_library_task(void *)
 
 void close_controller()
 {
+    controller_available.store(false);
     if (controller != nullptr) {
         const esp_err_t result = cdc_acm_host_close(controller);
         if (result != ESP_OK) ESP_LOGW(kTag, "CDC close failed: %s", esp_err_to_name(result));
@@ -175,6 +178,7 @@ void open_controller(uint16_t vid, uint16_t pid)
         return;
     }
 
+    controller_available.store(true);
     send_style(LedStyle::Mirrored);
 }
 
@@ -211,13 +215,16 @@ void controller_task(void *)
     }
 }
 
-bool enqueue_style(LedStyle style)
+StyleRequestResult enqueue_style(LedStyle style)
 {
-    if (events == nullptr) return false;
+    if (events == nullptr) return StyleRequestResult::Unavailable;
+    if (!controller_available.load()) return StyleRequestResult::Disconnected;
     Event event{};
     event.type = EventType::SetStyle;
     event.style = style;
-    return xQueueSend(events, &event, 0) == pdTRUE;
+    return xQueueSend(events, &event, 0) == pdTRUE
+               ? StyleRequestResult::Queued
+               : StyleRequestResult::QueueFull;
 }
 
 } // namespace
@@ -233,7 +240,7 @@ void usb_controller_start(LedControllerStatusCallback callback)
         nullptr, 0) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }
 
-bool usb_controller_set_style(LedStyle style)
+StyleRequestResult usb_controller_set_style(LedStyle style)
 {
     return enqueue_style(style);
 }

@@ -25,6 +25,18 @@ local URL. The QR opens the app; it is not used to join a device-specific Wi-Fi
 network. If the saved network cannot be reached, the touchscreen Wi-Fi controls
 remain available so the user can choose a replacement network.
 
+The QR contains a random 128-bit device pairing token in its URL fragment. The
+token is generated once, stored in NVS and required by every remote operation;
+opening the P4's bare IP address does not authorize controls. The current local
+remote uses plain HTTP and is intended only for a trusted home LAN. Production
+commissioning must enable flash/NVS encryption before customer Wi-Fi credentials
+and the pairing token are treated as protected at rest.
+
+Scan results are retained as structured SSID records rather than reconstructed
+from dropdown text. Networks whose names contain control characters, malformed
+UTF-8 or text-direction controls are omitted because LVGL cannot present those
+names safely.
+
 After joining the home network, the P4 synchronizes its clock using SNTP. The
 clock does not depend on the phone remote being open.
 

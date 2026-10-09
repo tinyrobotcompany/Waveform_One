@@ -1,6 +1,8 @@
+#include <atomic>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <sys/time.h>
 #include <time.h>
 
@@ -35,6 +37,7 @@ lv_obj_t *artist = nullptr;
 lv_obj_t *album = nullptr;
 lv_obj_t *settings_panel = nullptr;
 lv_obj_t *brightness_label = nullptr;
+lv_obj_t *brightness_slider = nullptr;
 lv_obj_t *welcome_label = nullptr;
 lv_obj_t *clock_label = nullptr;
 lv_obj_t *wifi_indicator = nullptr;
@@ -54,8 +57,11 @@ lv_obj_t *wifi_entry_cancel = nullptr;
 lv_obj_t *wifi_entry_connect = nullptr;
 lv_obj_t *wifi_entry_spinner = nullptr;
 lv_obj_t *network_qr_placeholder = nullptr;
+lv_obj_t *style_status = nullptr;
 lv_obj_t *style_buttons[3]{};
+control_policy::WifiNetworkList wifi_networks{};
 bool wifi_connecting = false;
+std::atomic_int current_brightness{100};
 
 void log_board_identity()
 {
@@ -102,14 +108,13 @@ void on_close_settings(lv_event_t *event)
 void on_wifi_password(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
-    char ssid[33]{};
-    lv_dropdown_get_selected_str(wifi_dropdown, ssid, sizeof(ssid));
-    if (ssid[0] == '\0' || std::strcmp(ssid, "Scanning…") == 0 ||
-        std::strcmp(ssid, "No networks found") == 0) {
+    const auto *network = control_policy::selected_wifi_network(
+        wifi_networks, lv_dropdown_get_selected(wifi_dropdown));
+    if (network == nullptr) {
         lv_label_set_text(wifi_status, "Choose a home Wi-Fi network first.");
         return;
     }
-    lv_label_set_text_fmt(wifi_entry_network, "Network: %s", ssid);
+    lv_label_set_text_fmt(wifi_entry_network, "Network: %s", network->ssid);
     wifi_connecting = false;
     lv_textarea_set_text(wifi_password, "");
     lv_textarea_set_password_mode(wifi_password, true);
@@ -153,15 +158,14 @@ void on_wifi_connect(lv_event_t *event)
 {
     const lv_event_code_t code = lv_event_get_code(event);
     if ((code != LV_EVENT_CLICKED && code != LV_EVENT_READY) || wifi_connecting) return;
-    char ssid[33]{};
-    lv_dropdown_get_selected_str(wifi_dropdown, ssid, sizeof(ssid));
+    const auto *network = control_policy::selected_wifi_network(
+        wifi_networks, lv_dropdown_get_selected(wifi_dropdown));
     const char *password = lv_textarea_get_text(wifi_password);
-    if (ssid[0] == '\0' || std::strcmp(ssid, "Scanning…") == 0 ||
-        std::strcmp(ssid, "No networks found") == 0) {
+    if (network == nullptr) {
         lv_label_set_text(wifi_status, "Choose a home Wi-Fi network first.");
         return;
     }
-    if (network_configure_home(ssid, password)) {
+    if (network_configure_home(*network, password)) {
         wifi_connecting = true;
         lv_label_set_text(wifi_status, "Connecting to home Wi-Fi…");
         lv_label_set_text(wifi_entry_status, "Connecting… Waveform One will restart.");
@@ -178,9 +182,15 @@ void on_brightness(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_VALUE_CHANGED) return;
     const int value = lv_slider_get_value(static_cast<lv_obj_t *>(lv_event_get_target(event)));
-    lv_label_set_text_fmt(brightness_label, "%d%%", value);
+    if (!control_policy::valid_brightness(value)) return;
     const esp_err_t result = bsp_display_brightness_set(value);
-    if (result != ESP_OK) ESP_LOGW(kTag, "Brightness update failed: %s", esp_err_to_name(result));
+    if (result == ESP_OK) {
+        current_brightness.store(value);
+        lv_label_set_text_fmt(brightness_label, "%d%%", value);
+    } else {
+        lv_slider_set_value(brightness_slider, current_brightness.load(), LV_ANIM_OFF);
+        ESP_LOGW(kTag, "Brightness update failed: %s", esp_err_to_name(result));
+    }
 }
 
 void set_style_visual(LedStyle style)
@@ -196,26 +206,37 @@ void on_style(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
     const auto style = static_cast<LedStyle>(reinterpret_cast<intptr_t>(lv_event_get_user_data(event)));
-    if (usb_controller_set_style(style)) set_style_visual(style);
+    const StyleRequestResult result = usb_controller_set_style(style);
+    lv_label_set_text(style_status, result == StyleRequestResult::Queued
+                                        ? "Applying…"
+                                        : "LED controller is not available.");
 }
 
-void remote_set_style(LedStyle style)
+bool remote_set_style(LedStyle style)
 {
-    usb_controller_set_style(style);
+    const bool queued = usb_controller_set_style(style) == StyleRequestResult::Queued;
     if (bsp_display_lock(1000)) {
-        set_style_visual(style);
+        lv_label_set_text(style_status, queued ? "Applying…" : "LED controller is not available.");
         bsp_display_unlock();
     }
+    return queued;
 }
 
-void remote_set_brightness(int percent)
+bool remote_set_brightness(int percent)
 {
+    if (!control_policy::valid_brightness(percent)) return false;
     const esp_err_t result = bsp_display_brightness_set(percent);
-    if (result != ESP_OK) ESP_LOGW(kTag, "Remote brightness failed: %s", esp_err_to_name(result));
+    if (result != ESP_OK) {
+        ESP_LOGW(kTag, "Remote brightness failed: %s", esp_err_to_name(result));
+        return false;
+    }
+    current_brightness.store(percent);
     if (bsp_display_lock(1000)) {
         lv_label_set_text_fmt(brightness_label, "%d%%", percent);
+        lv_slider_set_value(brightness_slider, percent, LV_ANIM_OFF);
         bsp_display_unlock();
     }
+    return true;
 }
 
 void remote_set_name(const char *name)
@@ -267,6 +288,17 @@ void update_controller_status(LedControllerState state)
         text = "LED: disconnected";
         break;
     }
+    LedStyle acknowledged{};
+    if (bsp_display_lock(1000)) {
+        if (control_policy::acknowledged_style(state, acknowledged)) {
+            set_style_visual(acknowledged);
+            lv_label_set_text(style_status, "Applied");
+        } else if (state == LedControllerState::ProtocolError ||
+                   state == LedControllerState::Disconnected) {
+            lv_label_set_text(style_status, "LED controller unavailable");
+        }
+        bsp_display_unlock();
+    }
     ESP_LOGI(kTag, "LED controller: %s", text);
 }
 
@@ -300,11 +332,20 @@ void remote_set_network(NetworkMode mode, const char *address)
     bsp_display_unlock();
 }
 
-void remote_set_networks(const char *options)
+void remote_set_networks(const control_policy::WifiNetworkList &networks)
 {
     if (!bsp_display_lock(1000)) return;
-    lv_dropdown_set_options(wifi_dropdown, options);
-    lv_label_set_text(wifi_status, "Select a network and enter its password.");
+    wifi_networks = networks;
+    std::string options;
+    for (std::size_t index = 0; index < networks.count; ++index) {
+        if (!options.empty()) options.push_back('\n');
+        options += networks.items[index].ssid;
+    }
+    if (options.empty()) options = "No networks found";
+    lv_dropdown_set_options(wifi_dropdown, options.c_str());
+    lv_label_set_text(wifi_status, networks.count == 0
+                                       ? "No supported networks found. Tap Scan to retry."
+                                       : "Select a network and enter its password.");
     bsp_display_unlock();
 }
 
@@ -454,6 +495,7 @@ void create_product_screen()
         style_buttons[index] = lv_button_create(settings_panel);
         lv_obj_set_size(style_buttons[index], 130, 60);
         lv_obj_set_style_bg_color(style_buttons[index], kPanel, 0);
+        lv_obj_set_style_border_color(style_buttons[index], kLine, 0);
         lv_obj_set_style_border_width(style_buttons[index], 2, 0);
         lv_obj_set_style_radius(style_buttons[index], 9, 0);
         lv_obj_align(style_buttons[index], LV_ALIGN_TOP_LEFT, 48 + index * 145, 290);
@@ -463,7 +505,9 @@ void create_product_screen()
                                      &lv_font_montserrat_16, kForeground);
         lv_obj_center(label);
     }
-    set_style_visual(LedStyle::Mirrored);
+    style_status = make_label(settings_panel, "Waiting for LED controller…",
+                              &lv_font_montserrat_16, kMuted);
+    lv_obj_align(style_status, LV_ALIGN_TOP_LEFT, 48, 355);
 
     lv_obj_t *display_heading = make_label(settings_panel, "DISPLAY", &lv_font_montserrat_16,
                                            kAccent);
@@ -473,18 +517,18 @@ void create_product_screen()
     lv_obj_align(brightness_text, LV_ALIGN_TOP_LEFT, 535, 162);
     brightness_label = make_label(settings_panel, "100%", &lv_font_montserrat_20, kAccent);
     lv_obj_align(brightness_label, LV_ALIGN_TOP_RIGHT, -60, 162);
-    lv_obj_t *slider = lv_slider_create(settings_panel);
-    lv_obj_set_size(slider, 425, 54);
-    lv_slider_set_range(slider, 10, 100);
-    lv_slider_set_value(slider, 100, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(slider, kLine, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(slider, kAccent, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(slider, kForeground, LV_PART_KNOB);
-    lv_obj_set_style_pad_all(slider, 12, LV_PART_MAIN);
-    lv_obj_set_style_width(slider, 34, LV_PART_KNOB);
-    lv_obj_set_style_height(slider, 34, LV_PART_KNOB);
-    lv_obj_align(slider, LV_ALIGN_TOP_LEFT, 535, 205);
-    lv_obj_add_event_cb(slider, on_brightness, LV_EVENT_VALUE_CHANGED, nullptr);
+    brightness_slider = lv_slider_create(settings_panel);
+    lv_obj_set_size(brightness_slider, 425, 54);
+    lv_slider_set_range(brightness_slider, 10, 100);
+    lv_slider_set_value(brightness_slider, 100, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(brightness_slider, kLine, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(brightness_slider, kAccent, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(brightness_slider, kForeground, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(brightness_slider, 12, LV_PART_MAIN);
+    lv_obj_set_style_width(brightness_slider, 34, LV_PART_KNOB);
+    lv_obj_set_style_height(brightness_slider, 34, LV_PART_KNOB);
+    lv_obj_align(brightness_slider, LV_ALIGN_TOP_LEFT, 535, 205);
+    lv_obj_add_event_cb(brightness_slider, on_brightness, LV_EVENT_VALUE_CHANGED, nullptr);
 
     lv_obj_t *wifi_heading = make_label(settings_panel, "HOME WI-FI",
                                          &lv_font_montserrat_16, kAccent);
