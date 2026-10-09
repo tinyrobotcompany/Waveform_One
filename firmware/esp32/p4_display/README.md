@@ -35,7 +35,9 @@ and the pairing token are treated as protected at rest.
 Scan results are retained as structured SSID records rather than reconstructed
 from dropdown text. Networks whose names contain control characters, malformed
 UTF-8 or text-direction controls are omitted because LVGL cannot present those
-names safely.
+names safely. SSIDs containing embedded NUL bytes are also intentionally omitted
+because the touchscreen, NVS credential format and ESP-IDF station configuration
+use text SSIDs.
 
 After joining the home network, the P4 synchronizes its clock using SNTP. The
 clock does not depend on the phone remote being open.

@@ -24,10 +24,16 @@ int main()
     const uint8_t cafe[] = {'C', 'a', 'f', 0xc3, 0xa9};
     const uint8_t injected[] = {'H', 'o', 'm', 'e', '\n', 'E', 'v', 'i', 'l'};
     const uint8_t malformed[] = {0xc3, 0x28};
+    const uint8_t embedded_nul[32] = {'H', 'o', 'm', 'e', 0, 'E', 'v', 'i', 'l'};
+    const uint8_t padded_home[32] = {'H', 'o', 'm', 'e'};
     assert(add_wifi_network(networks, home, sizeof(home)));
     assert(add_wifi_network(networks, cafe, sizeof(cafe)));
     assert(!add_wifi_network(networks, injected, sizeof(injected)));
     assert(!add_wifi_network(networks, malformed, sizeof(malformed)));
+    std::size_t scanned_size = 0;
+    assert(!scanned_ssid_size(embedded_nul, sizeof(embedded_nul), scanned_size));
+    assert(scanned_ssid_size(padded_home, sizeof(padded_home), scanned_size));
+    assert(scanned_size == 4);
     assert(networks.count == 2);
     assert(std::string_view(networks.items[0].ssid) == "Home");
     assert(std::string_view(networks.items[1].ssid) == "Caf\xc3\xa9");

@@ -339,8 +339,10 @@ void scan_task(void *)
         wifi_ap_record_t records[16]{};
         if (count > 0 && esp_wifi_scan_get_ap_records(&count, records) == ESP_OK) {
             for (uint16_t index = 0; index < count; ++index) {
-                const size_t size = strnlen(
-                    reinterpret_cast<const char *>(records[index].ssid), 32);
+                size_t size = 0;
+                if (!control_policy::scanned_ssid_size(records[index].ssid, 32, size)) {
+                    continue;
+                }
                 control_policy::add_wifi_network(networks, records[index].ssid, size);
             }
         }

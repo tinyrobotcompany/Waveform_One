@@ -83,6 +83,19 @@ inline bool safe_utf8_ssid(const uint8_t *bytes, std::size_t size)
     return true;
 }
 
+inline bool scanned_ssid_size(const uint8_t *bytes, std::size_t capacity,
+                              std::size_t &size)
+{
+    if (bytes == nullptr || capacity == 0 || capacity > 32) return false;
+    size = 0;
+    while (size < capacity && bytes[size] != 0) ++size;
+    if (size == 0) return false;
+    for (std::size_t index = size + (size < capacity ? 1 : 0); index < capacity; ++index) {
+        if (bytes[index] != 0) return false;
+    }
+    return safe_utf8_ssid(bytes, size);
+}
+
 inline bool add_wifi_network(WifiNetworkList &networks, const uint8_t *ssid, std::size_t size)
 {
     if (networks.count >= kMaxWifiNetworks || !safe_utf8_ssid(ssid, size)) return false;
