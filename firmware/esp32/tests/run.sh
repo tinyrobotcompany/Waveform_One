@@ -50,3 +50,10 @@ printf '%s\n' 'PASS: production capture/control transport, overflow recovery and
     "$esp_dir/visualizer/tests/update_flash_test.cpp" -o "$build_dir/update_flash"
 "$build_dir/update_flash"
 printf '%s\n' 'PASS: production flash adapter failure cleanup and retry'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/wf1_protocol_test.cpp" -o "$build_dir/p4_wf1_protocol"
+"$build_dir/p4_wf1_protocol"
+printf '%s\n' 'PASS: ESP32-P4 WF1 client protocol'
