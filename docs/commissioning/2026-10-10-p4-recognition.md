@@ -137,25 +137,31 @@ The feature remains on `feature/p4-music-recognition` in its dedicated worktree;
 main and origin/main remain at the PR #5 merge SHA. Visual confirmation of the
 new label layout remains pending.
 
+## User-confirmed stop/start acceptance
+
+The user confirmed the corrected firmware identified the first song about six
+seconds after music started, returned to the silent/listening screen about two
+seconds after playback stopped, and identified the second song about six seconds
+after it started. These are user-observed wall-clock timings, separate from the
+serial measurements above and the fixed eight-second capture duration.
+
 ## Remaining hardware acceptance
 
-1. Confirm the target is the Waveshare P4 and record silicon/PSRAM identity.
-2. Observe an eight-second capture completing while panel refresh and style
-   changes remain smooth. Record capture result and byte count without saving audio.
-3. Play known music and verify actual microphone-to-screen title, artist, album
-   and artwork. Measure capture, fingerprint, service and artwork durations.
-4. Exercise silence, no match, track transitions and artwork expiry.
-5. Disconnect Wi-Fi and S3 during capture/lookup; old results must not reappear.
+1. Confirm the revised layout is readable for long title, artist and album text.
+2. Exercise prolonged playback, song changes without a silent gap and artwork
+   expiry; watch free internal/PSRAM memory and display/control responsiveness.
+3. Disconnect Wi-Fi and S3 during capture/lookup; old results must not reappear.
    Restore connections and verify retries preserve their backoff.
-6. Pair a phone during recognition and rotate its QR; neither should clear music.
-7. Run prolonged playback, watch free internal/PSRAM memory, and reboot to verify
-   saved networking and control recovery.
+4. Pair a phone during recognition and rotate its QR; neither should clear music.
+5. Reboot and verify saved networking and control recovery.
 
 ## Assumptions and residual risks
 
 The earlier no-subscription recognition choice is retained. This is an unofficial
 external service and needs a separate availability/licensing decision before
 customer distribution. Device capture throughput, fingerprint latency and HTTPS lookup have been
-physically verified in the initial smoke test. Known-song recognition, artwork
-rendering and prolonged combined Wi-Fi/USB/display stability still need verification. The phone remote remains the existing control interface; this change
+physically verified. Known-song recognition, artwork and stop/start clearing
+were verified on the device and confirmed by the user. Prolonged combined
+Wi-Fi/USB/display stability and song changes without a silent gap remain to be
+verified. The phone remote remains the existing control interface; this change
 adds Now Playing metadata/artwork to the P4 touchscreen.
