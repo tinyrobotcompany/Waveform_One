@@ -37,6 +37,35 @@ int main()
     assert(sessions.set_network(true, ""));
     assert(!sessions.snapshot().ready);
 
+    // Availability and queue failures back off; Busy is transient only within
+    // the maximum outstanding capture window, then becomes a failure too.
+    for (auto result : {AudioCaptureRequestResult::Disconnected,
+                        AudioCaptureRequestResult::Unavailable,
+                        AudioCaptureRequestResult::QueueFull}) {
+        Retries request;
+        assert(!request.capture_requested(result, 100));
+        request.activity_changed(200);
+        assert(!request.due(60000099) && request.due(60000100));
+        assert(!request.capture_requested(result, 60000100));
+        assert(!request.due(180000099) && request.due(180000100));
+    }
+    Retries busy;
+    assert(!busy.capture_requested(AudioCaptureRequestResult::Busy, 0));
+    assert(!busy.due(999999) && busy.due(1000000));
+    busy.activity_changed(1000000);
+    assert(!busy.capture_requested(AudioCaptureRequestResult::Busy, kCaptureCompletionTimeoutUs - 1));
+    assert(!busy.capture_requested(AudioCaptureRequestResult::Busy, kCaptureCompletionTimeoutUs));
+    busy.activity_changed(kCaptureCompletionTimeoutUs + 1);
+    assert(!busy.due(kCaptureCompletionTimeoutUs + 59999999));
+    assert(busy.due(kCaptureCompletionTimeoutUs + 60000000));
+    Retries transient;
+    assert(!transient.capture_requested(AudioCaptureRequestResult::Busy, 0));
+    assert(transient.capture_requested(AudioCaptureRequestResult::Queued, 1000000));
+    assert(transient.due(1000000));
+    // A later independent Busy period gets a new, bounded grace window.
+    assert(!transient.capture_requested(AudioCaptureRequestResult::Busy, 20000000));
+    assert(!transient.due(20999999) && transient.due(21000000));
+
     assert(kIntervalUs == 1000000);
     Retries retries;
     assert(retries.due(0));

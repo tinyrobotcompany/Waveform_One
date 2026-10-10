@@ -6,8 +6,11 @@
 #include <limits>
 #include <string>
 #include <string_view>
+#include "audio_capture.h"
+#include "usb_controller.h"
 
 namespace recognition_policy {
+inline constexpr int64_t kCaptureCompletionTimeoutUs = (audio_capture::kTimeoutMs + 2000) * 1000LL;
 inline constexpr int64_t kIntervalUs = 1000000;
 inline constexpr int64_t kTrackLifetimeUs = 90000000;
 struct Session { uint64_t epoch; bool ready; };
@@ -80,6 +83,16 @@ inline int64_t retry_after(std::string_view value, int64_t epoch = 0)
 
 class Retries {
 public:
+    bool capture_requested(AudioCaptureRequestResult result, int64_t now) {
+        if (result == AudioCaptureRequestResult::Queued) { busy_since_ = -1; return true; }
+        // An abandoned capture still owns the controller until it completes.
+        // Permit short Busy retries, but never an unbounded hardware retry loop.
+        if (result == AudioCaptureRequestResult::Busy) {
+            if (busy_since_ < 0) busy_since_ = now;
+            if (now - busy_since_ < kCaptureCompletionTimeoutUs) { begin(now); return false; }
+        }
+        failed(now); return false;
+    }
     bool due(int64_t now) const { return now >= next_; }
     void begin(int64_t now) { next_ = now + kIntervalUs; }
     void activity_changed(int64_t now) { if (failures_ == 0) next_ = now; }
@@ -88,6 +101,7 @@ public:
     }
     void failed(int64_t now, int64_t service_delay = 0)
     {
+        busy_since_ = -1;
         failures_ = std::min(failures_ + 1, 4u);
         const int64_t delay = std::max(service_delay, std::min<int64_t>(300000000, 30000000LL << failures_));
         next_ = now > std::numeric_limits<int64_t>::max() - delay
@@ -95,7 +109,7 @@ public:
     }
 private:
     unsigned failures_ = 0;
-    int64_t next_ = 0;
+    int64_t next_ = 0, busy_since_ = -1;
 };
 
 inline bool expired(int64_t matched_at, int64_t now) { return now - matched_at >= kTrackLifetimeUs; }

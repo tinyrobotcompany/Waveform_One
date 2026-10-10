@@ -166,6 +166,27 @@ Firmware host tests with ASan/UBSan and the ESP-IDF 6.1 P4 build passed for thes
 review fixes. These fixes have not yet been flashed; the user-confirmed playback
 timings above refer to the previously commissioned application.
 
+## Capture enqueue and HTTP follow-up
+
+Capture request results now have an explicit retry policy. Disconnected,
+unavailable and queue-full results schedule capped failure backoff and preserve
+unavailable status. Busy permits one-second retries only within a 17-second
+outstanding-capture grace window, which is not extended by session changes;
+persistent Busy then schedules failure backoff too. A successfully queued
+request ends the Busy window. This preserves prompt stop/start recovery when
+the abandoned physical capture is still finishing. Regression tests cover every
+request-result enum value, escalation and cooldown preservation.
+
+ESP-IDF 6.1's `esp_http_client_fetch_headers` returns zero for chunked or absent
+Content-Length and negative values for header-read errors/timeouts. The negative
+check remains correct. The production fetch routine is now directly host-tested
+through fake SDK I/O: zero-length declarations stream successfully within the
+limit, one excess byte fails, oversized known lengths fail before body reads,
+negative header results remain errors, truncated bodies fail, and EAGAIN,
+deadlines and Retry-After are exercised. TLS verification and disabled redirects
+are checked in the fake client setup. The host suite and P4 build passed; these
+additional changes have not been flashed.
+
 ## Remaining hardware acceptance
 
 1. Confirm the revised layout is readable for long title, artist and album text.
