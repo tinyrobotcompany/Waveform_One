@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 #include "control_policy.h"
@@ -49,6 +50,33 @@ int main()
     assert(!same_http_origin("192.168.1.200", "http://192.168.1.20", "192.168.1.20"));
     assert(!same_http_origin("192.168.1.20", "http://evil.example", "192.168.1.20"));
 
+    std::string field;
+    assert(form_field("style=waterfall", "style", field, 32) && field == "waterfall");
+    assert(form_field("x=1&style=mirrored", "style", field, 32) && field == "mirrored");
+    assert(form_field("name=Caf%C3%A9+Bar", "name", field, 32) && field == "Caf\xc3\xa9 Bar");
+    assert(form_field("%73tyle=classic", "style", field, 32) && field == "classic");
+    assert(!form_field("x=a%26style%3Dwaterfall", "style", field, 32));
+    assert(!form_field("xstyle=classic", "style", field, 32));
+    assert(!form_field("style=classic&style=waterfall", "style", field, 32));
+    assert(!form_field("style=clas%2", "style", field, 32));
+    assert(!form_field("style=clas%zz", "style", field, 32));
+    assert(!form_field("style=a%0Ab", "style", field, 32));
+    assert(!form_field("style=a%00b", "style", field, 32));
+    assert(!form_field("style=classic&", "style", field, 32));
+    assert(!form_field("", "style", field, 32));
+    assert(!form_field("value=12345", "value", field, 4));
+    assert(form_field("value=1234", "value", field, 4) && field == "1234");
+
+    assert(safe_display_name("Simon"));
+    assert(safe_display_name("Zo\xc3\xab"));
+    assert(!safe_display_name(""));
+    assert(!safe_display_name(" Simon"));
+    assert(!safe_display_name("Simon\x7f"));
+    assert(!safe_display_name("Sim\xc3"));
+    assert(!safe_display_name("Si\xe2\x80\xaemon"));
+    assert(safe_display_name(std::string(kMaxDisplayNameBytes, 'a')));
+    assert(!safe_display_name(std::string(kMaxDisplayNameBytes + 1, 'a')));
+
     WifiNetworkList networks{};
     const uint8_t home[] = {'H', 'o', 'm', 'e'};
     const uint8_t cafe[] = {'C', 'a', 'f', 0xc3, 0xa9};
@@ -60,6 +88,7 @@ int main()
     assert(add_wifi_network(networks, cafe, sizeof(cafe)));
     assert(!add_wifi_network(networks, injected, sizeof(injected)));
     assert(!add_wifi_network(networks, malformed, sizeof(malformed)));
+    assert(!add_wifi_network(networks, home, sizeof(home)));
     assert(scanned_ssid_size(embedded_nul, sizeof(embedded_nul)) == 0);
     assert(scanned_ssid_size(padded, sizeof(padded)) == 4);
     assert(networks.count == 2);
@@ -77,4 +106,11 @@ int main()
     assert(style == LedStyle::Waterfall);
     assert(!acknowledged_style(LedControllerState::Connecting, style));
     assert(!acknowledged_style(LedControllerState::ProtocolError, style));
+
+    WifiNetworkList crowded{};
+    for (int index = 0; index < 20; ++index) {
+        const uint8_t name[] = {'N', static_cast<uint8_t>('a' + index)};
+        add_wifi_network(crowded, name, sizeof(name));
+    }
+    assert(crowded.count == kMaxWifiNetworks);
 }

@@ -2,11 +2,12 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <memory>
+#include <mutex>
 #include <new>
 #include <string>
 
@@ -23,6 +24,7 @@
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "remote_auth.h"
 
 namespace {
 
@@ -31,22 +33,18 @@ RemoteCallbacks controls{};
 EventGroupHandle_t wifi_events = nullptr;
 constexpr EventBits_t kConnected = BIT0;
 constexpr EventBits_t kFailed = BIT1;
+constexpr TickType_t kMaintenanceInterval = pdMS_TO_TICKS(15000);
 int connection_attempts = 0;
-char station_address[32]{};
-char station_host[16]{};
-char remote_address[96]{};
-char pairing_code[33]{};
-int64_t pairing_code_expires_at_us = 0;
-struct RemoteSession {
-    char id[33]{};
-    char csrf[33]{};
-    int64_t expires_at_us = 0;
-};
-RemoteSession sessions[4]{};
-std::size_t next_session = 0;
+std::atomic_bool credentials_rejected{false};
+std::mutex auth_mutex;
+char acquired_host[16]{}; // guarded by auth_mutex
+remote_auth::RemoteAuth auth{esp_fill_random};
 std::atomic_bool wifi_ready{false};
 std::atomic_bool scanning{false};
 std::atomic_bool attempting_home{false};
+// True while the device should stay on its saved home network and rejoin it
+// after an access-point drop.
+std::atomic_bool maintaining_home{false};
 std::atomic_bool configuring_home{false};
 std::atomic_bool time_sync_started{false};
 
@@ -77,7 +75,7 @@ function tick(){document.querySelector('#clock').textContent=new Date().toLocale
 
 bool read_body(httpd_req_t *request, std::string &body)
 {
-    if (request->content_len <= 0 || request->content_len > 256) return false;
+    if (request->content_len <= 0 || request->content_len > 512) return false;
     body.resize(request->content_len);
     size_t received = 0;
     while (received < body.size()) {
@@ -88,34 +86,11 @@ bool read_body(httpd_req_t *request, std::string &body)
     return true;
 }
 
-int hex_value(char value)
+bool read_form_field(httpd_req_t *request, const char *key, std::string &value,
+                     std::size_t max_size = 32)
 {
-    if (value >= '0' && value <= '9') return value - '0';
-    value = static_cast<char>(std::tolower(static_cast<unsigned char>(value)));
-    return value >= 'a' && value <= 'f' ? value - 'a' + 10 : -1;
-}
-
-std::string form_value(const std::string &body, const char *key)
-{
-    const std::string prefix = std::string(key) + "=";
-    size_t start = body.find(prefix);
-    if (start == std::string::npos || (start != 0 && body[start - 1] != '&')) return {};
-    std::string result;
-    for (size_t index = start + prefix.size(); index < body.size() && result.size() < 64; ++index) {
-        char value = body[index];
-        if (value == '&') break;
-        if (value == '+') value = ' ';
-        else if (value == '%' && index + 2 < body.size()) {
-            const int high = hex_value(body[index + 1]);
-            const int low = hex_value(body[index + 2]);
-            if (high < 0 || low < 0) return {};
-            value = static_cast<char>((high << 4) | low);
-            index += 2;
-        }
-        if (static_cast<unsigned char>(value) < 32) return {};
-        result.push_back(value);
-    }
-    return result;
+    std::string body;
+    return read_body(request, body) && control_policy::form_field(body, key, value, max_size);
 }
 
 esp_err_t reply(httpd_req_t *request, const char *body = "OK")
@@ -131,13 +106,54 @@ esp_err_t service_unavailable(httpd_req_t *request, const char *message)
     return httpd_resp_sendstr(request, message);
 }
 
-bool request_host_valid(httpd_req_t *request);
+bool request_header(httpd_req_t *request, const char *name, char *value, size_t capacity)
+{
+    const size_t length = httpd_req_get_hdr_value_len(request, name);
+    return length > 0 && length < capacity &&
+           httpd_req_get_hdr_value_str(request, name, value, capacity) == ESP_OK;
+}
+
+struct RequestHeaders {
+    char host[32]{};
+    char origin[48]{};
+    char cookies[513]{};
+    char csrf[65]{};
+};
+
+void read_headers(httpd_req_t *request, RequestHeaders &headers)
+{
+    request_header(request, "Host", headers.host, sizeof(headers.host));
+    request_header(request, "Origin", headers.origin, sizeof(headers.origin));
+    request_header(request, "Cookie", headers.cookies, sizeof(headers.cookies));
+    request_header(request, "X-Waveform-CSRF", headers.csrf, sizeof(headers.csrf));
+}
+
+void set_page_security_headers(httpd_req_t *request)
+{
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(request, "Content-Security-Policy",
+                       "default-src 'none'; script-src 'unsafe-inline'; "
+                       "style-src 'unsafe-inline'; connect-src 'self'; "
+                       "frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    httpd_resp_set_hdr(request, "X-Frame-Options", "DENY");
+    httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
+    httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
+}
+
+bool request_host_valid(httpd_req_t *request)
+{
+    RequestHeaders headers;
+    read_headers(request, headers);
+    const std::lock_guard<std::mutex> lock(auth_mutex);
+    return auth.host_valid(headers.host);
+}
 
 esp_err_t page_handler(httpd_req_t *request)
 {
     if (!request_host_valid(request)) {
         return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid host");
     }
+    set_page_security_headers(request);
     httpd_resp_set_type(request, "text/html");
     return httpd_resp_send(request, kPage, HTTPD_RESP_USE_STRLEN);
 }
@@ -182,82 +198,54 @@ bool load_wifi(std::string &ssid, std::string &password)
     return true;
 }
 
-void random_hex(char (&output)[33])
-{
-    uint8_t random[16]{};
-    esp_fill_random(random, sizeof(random));
-    for (size_t index = 0; index < sizeof(random); ++index) {
-        static constexpr char digits[] = "0123456789abcdef";
-        output[index * 2] = digits[random[index] >> 4];
-        output[index * 2 + 1] = digits[random[index] & 0x0f];
-    }
-    output[32] = '\0';
-}
+// Serializes reading the remote state with showing it, so a slower caller can
+// never put an outdated QR back on screen.
+std::mutex publish_mutex;
 
-void rotate_pairing_code()
+void publish_remote()
 {
-    random_hex(pairing_code);
-    pairing_code_expires_at_us = esp_timer_get_time() + 10LL * 60LL * 1000000LL;
-    if (station_address[0] != '\0') {
-        std::snprintf(remote_address, sizeof(remote_address), "%s/pair?code=%s",
-                      station_address, pairing_code);
-        if (controls.set_network != nullptr) {
-            controls.set_network(NetworkMode::HomeWifi, remote_address);
-        }
+    const std::lock_guard<std::mutex> publishing(publish_mutex);
+    char address[96]{};
+    bool available = false;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        available = auth.pairing_url(address, sizeof(address));
+    }
+    if (controls.set_network == nullptr) return;
+    if (available) {
+        controls.set_network(NetworkMode::HomeWifi, address);
+    } else if (maintaining_home.load()) {
+        controls.set_network(NetworkMode::Reconnecting, "");
+    } else {
+        controls.set_network(NetworkMode::Unconfigured, "");
     }
 }
 
-RemoteSession *request_session(httpd_req_t *request)
+void bind_remote()
 {
-    constexpr char kCookie[] = "Cookie";
-    const size_t length = httpd_req_get_hdr_value_len(request, kCookie);
-    if (length == 0 || length > 512) return nullptr;
-    char cookies[513]{};
-    if (httpd_req_get_hdr_value_str(request, kCookie, cookies, sizeof(cookies)) != ESP_OK) {
-        return nullptr;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        auth.connect(acquired_host, esp_timer_get_time());
     }
-    const std::string_view id = control_policy::cookie_value(cookies, "wf1_session");
-    for (auto &session : sessions) {
-        if (session.expires_at_us >= esp_timer_get_time() &&
-            control_policy::remote_token_matches(session.id, id)) return &session;
-    }
-    return nullptr;
+    publish_remote();
 }
 
-bool request_header(httpd_req_t *request, const char *name, char *value, size_t capacity)
+void revoke_remote()
 {
-    const size_t length = httpd_req_get_hdr_value_len(request, name);
-    return length > 0 && length < capacity &&
-           httpd_req_get_hdr_value_str(request, name, value, capacity) == ESP_OK;
-}
-
-bool request_host_valid(httpd_req_t *request)
-{
-    char host[32]{};
-    if (!request_header(request, "Host", host, sizeof(host))) return false;
-    return control_policy::valid_http_host(host, station_host);
-}
-
-bool request_same_origin(httpd_req_t *request)
-{
-    char host[32]{};
-    char origin[48]{};
-    return request_header(request, "Host", host, sizeof(host)) &&
-           request_header(request, "Origin", origin, sizeof(origin)) &&
-           control_policy::same_http_origin(host, origin, station_host);
+    const std::lock_guard<std::mutex> lock(auth_mutex);
+    auth.disconnect();
 }
 
 bool require_authorized(httpd_req_t *request)
 {
-    RemoteSession *session = request_session(request);
-    constexpr char kHeader[] = "X-Waveform-CSRF";
-    const size_t length = httpd_req_get_hdr_value_len(request, kHeader);
-    char presented[65]{};
-    const bool valid = request_same_origin(request) && session != nullptr &&
-                       length > 0 && length <= 64 &&
-                       httpd_req_get_hdr_value_str(request, kHeader, presented,
-                                                   sizeof(presented)) == ESP_OK &&
-                       control_policy::remote_token_matches(session->csrf, presented);
+    RequestHeaders headers;
+    read_headers(request, headers);
+    bool valid = false;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        valid = auth.authorize(headers.host, headers.origin, headers.cookies, headers.csrf,
+                               esp_timer_get_time());
+    }
     if (valid) return true;
     httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Pairing session required");
     return false;
@@ -265,56 +253,59 @@ bool require_authorized(httpd_req_t *request)
 
 esp_err_t session_handler(httpd_req_t *request)
 {
-    if (!request_host_valid(request)) {
-        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid host");
-    }
-    RemoteSession *session = request_session(request);
-    if (session == nullptr) {
-        return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
+    RequestHeaders headers;
+    read_headers(request, headers);
+    char csrf[remote_auth::kTokenSize]{};
+    bool valid = false;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
-    return reply(request, session->csrf);
+    if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
+    return reply(request, csrf);
 }
 
 esp_err_t pair_handler(httpd_req_t *request)
 {
-    if (!request_host_valid(request)) {
-        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid host");
-    }
+    RequestHeaders headers;
+    read_headers(request, headers);
     const size_t query_length = httpd_req_get_url_query_len(request);
-    if (query_length == 0 || query_length > 96) {
-        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid pairing code");
-    }
     char query[97]{};
     char presented[65]{};
-    if (httpd_req_get_url_query_str(request, query, sizeof(query)) != ESP_OK ||
-        httpd_query_key_value(query, "code", presented, sizeof(presented)) != ESP_OK ||
-        pairing_code_expires_at_us < esp_timer_get_time() ||
-        !control_policy::remote_token_matches(pairing_code, presented)) {
-        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid pairing code");
+    char session_id[remote_auth::kTokenSize]{};
+    bool paired = false;
+    if (query_length > 0 && query_length < sizeof(query) &&
+        httpd_req_get_url_query_str(request, query, sizeof(query)) == ESP_OK &&
+        httpd_query_key_value(query, "code", presented, sizeof(presented)) == ESP_OK) {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        paired = auth.pair(headers.host, presented, esp_timer_get_time(), session_id);
     }
-
-    RemoteSession &session = sessions[next_session++ % (sizeof(sessions) / sizeof(sessions[0]))];
-    random_hex(session.id);
-    random_hex(session.csrf);
-    session.expires_at_us = esp_timer_get_time() + 60LL * 60LL * 1000000LL;
-    char cookie[96]{};
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
+    if (!paired) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN,
+                                   "This pairing code has expired. Scan the QR code on "
+                                   "Waveform One again.");
+    }
+    char cookie[112]{};
     std::snprintf(cookie, sizeof(cookie),
-                  "wf1_session=%s; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", session.id);
+                  "wf1_session=%s; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", session_id);
     httpd_resp_set_hdr(request, "Set-Cookie", cookie);
     httpd_resp_set_hdr(request, "Location", "/");
-    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
     httpd_resp_set_status(request, "303 See Other");
-    rotate_pairing_code();
+    // The pairing code just rotated; show the replacement QR.
+    publish_remote();
     return httpd_resp_send(request, nullptr, 0);
 }
 
 esp_err_t style_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
-    std::string body;
-    if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    const std::string value = form_value(body, "style");
+    std::string value;
+    if (!read_form_field(request, "style", value)) {
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
+    }
     LedStyle style;
     if (value == "classic") style = LedStyle::Classic;
     else if (value == "mirrored") style = LedStyle::Mirrored;
@@ -329,9 +320,10 @@ esp_err_t style_handler(httpd_req_t *request)
 esp_err_t brightness_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
-    std::string body;
-    if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    const std::string value = form_value(body, "value");
+    std::string value;
+    if (!read_form_field(request, "value", value)) {
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
+    }
     char *end = nullptr;
     const long percent = std::strtol(value.c_str(), &end, 10);
     if (value.empty() || *end != '\0' || percent < 10 || percent > 100) {
@@ -347,10 +339,11 @@ esp_err_t brightness_handler(httpd_req_t *request)
 esp_err_t name_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
-    std::string body;
-    if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    const std::string name = form_value(body, "name");
-    if (name.empty()) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid name");
+    std::string name;
+    if (!read_form_field(request, "name", name, control_policy::kMaxDisplayNameBytes) ||
+        !control_policy::safe_display_name(name)) {
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid name");
+    }
     if (controls.set_name != nullptr) controls.set_name(name.c_str());
     return reply(request);
 }
@@ -358,9 +351,10 @@ esp_err_t name_handler(httpd_req_t *request)
 esp_err_t time_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
-    std::string body;
-    if (!read_body(request, body)) return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    const std::string value = form_value(body, "epoch");
+    std::string value;
+    if (!read_form_field(request, "epoch", value)) {
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
+    }
     char *end = nullptr;
     const long long epoch = std::strtoll(value.c_str(), &end, 10);
     if (value.empty() || *end != '\0' ||
@@ -384,26 +378,50 @@ void register_uri(httpd_handle_t server, const char *uri, httpd_method_t method,
 void wifi_event(void *, esp_event_base_t base, int32_t event_id, void *event_data)
 {
     if (base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-        if (attempting_home.load()) esp_wifi_connect();
+        if (attempting_home.load() || maintaining_home.load()) esp_wifi_connect();
     } else if (base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
-        if (attempting_home.load()) {
+        if (maintaining_home.load()) {
+            // Sessions are bound to the address just lost; the maintenance loop rejoins.
+            revoke_remote();
+            publish_remote();
+        } else if (attempting_home.load()) {
             const auto *event = static_cast<wifi_event_sta_disconnected_t *>(event_data);
             ESP_LOGW(kTag, "Home Wi-Fi attempt %d disconnected, reason=%d",
                      connection_attempts + 1, event->reason);
+            // Only an explicit rejection proves the password wrong; an absent or
+            // slow-booting router must not cost the user their saved network.
+            if (event->reason == WIFI_REASON_AUTH_FAIL ||
+                event->reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT ||
+                event->reason == WIFI_REASON_HANDSHAKE_TIMEOUT) {
+                credentials_rejected.store(true);
+            }
             if (++connection_attempts < 5) esp_wifi_connect();
             else xEventGroupSetBits(wifi_events, kFailed);
         }
+    } else if (base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
+        if (maintaining_home.load()) {
+            revoke_remote();
+            publish_remote();
+        }
     } else if (base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         const auto *event = static_cast<ip_event_got_ip_t *>(event_data);
-        std::snprintf(station_address, sizeof(station_address), "http://" IPSTR,
-                      IP2STR(&event->ip_info.ip));
-        std::snprintf(station_host, sizeof(station_host), IPSTR,
-                      IP2STR(&event->ip_info.ip));
+        {
+            const std::lock_guard<std::mutex> lock(auth_mutex);
+            std::snprintf(acquired_host, sizeof(acquired_host), IPSTR,
+                          IP2STR(&event->ip_info.ip));
+        }
+        if (maintaining_home.load()) bind_remote();
         xEventGroupSetBits(wifi_events, kConnected);
     }
 }
 
-bool connect_home_wifi(const std::string &ssid, const std::string &password)
+enum class JoinResult {
+    Joined,
+    Rejected,
+    Unreachable,
+};
+
+wifi_config_t station_config(const std::string &ssid, const std::string &password)
 {
     wifi_config_t station{};
     std::memcpy(station.sta.ssid, ssid.data(), ssid.size());
@@ -411,7 +429,14 @@ bool connect_home_wifi(const std::string &ssid, const std::string &password)
     station.sta.threshold.authmode = WIFI_AUTH_OPEN;
     station.sta.pmf_cfg.capable = true;
     station.sta.pmf_cfg.required = false;
+    return station;
+}
+
+JoinResult connect_home_wifi(const std::string &ssid, const std::string &password)
+{
+    wifi_config_t station = station_config(ssid, password);
     connection_attempts = 0;
+    credentials_rejected.store(false);
     attempting_home.store(true);
     xEventGroupClearBits(wifi_events, kConnected | kFailed);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
@@ -420,17 +445,41 @@ bool connect_home_wifi(const std::string &ssid, const std::string &password)
     const EventBits_t result = xEventGroupWaitBits(
         wifi_events, kConnected | kFailed, pdFALSE, pdFALSE, pdMS_TO_TICKS(20000));
     attempting_home.store(false);
-    if ((result & kConnected) != 0) return true;
-    ESP_LOGW(kTag, "Could not join home Wi-Fi; opening touchscreen setup");
+    if ((result & kConnected) != 0) return JoinResult::Joined;
+    ESP_LOGW(kTag, "Could not join home Wi-Fi");
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
-    return false;
+    return credentials_rejected.load() ? JoinResult::Rejected : JoinResult::Unreachable;
 }
 
 void start_unconfigured_wifi()
 {
     attempting_home.store(false);
+    maintaining_home.store(false);
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_start());
+    publish_remote();
+}
+
+// Keeps retrying the saved network in the background while the touchscreen
+// stays free to choose a different one.
+void resume_saved_wifi(const std::string &ssid, const std::string &password)
+{
+    wifi_config_t station = station_config(ssid, password);
+    attempting_home.store(false);
+    maintaining_home.store(true);
+    ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &station));
+    ESP_ERROR_CHECK(esp_wifi_start());
+    publish_remote();
+}
+
+// After a failed join, falls back to the saved network if one exists.
+void fall_back_to_saved_wifi()
+{
+    std::string ssid;
+    std::string password;
+    if (load_wifi(ssid, password)) resume_saved_wifi(ssid, password);
+    else start_unconfigured_wifi();
 }
 
 void start_time_sync()
@@ -447,15 +496,20 @@ void scan_task(void *)
     wifi_scan_config_t config{};
     control_policy::WifiNetworkList networks{};
     if (esp_wifi_scan_start(&config, true) == ESP_OK) {
+        // Filter the full result set: hidden, malformed and duplicate SSIDs must not
+        // crowd valid networks out of the list.
         uint16_t count = 0;
         esp_wifi_scan_get_ap_num(&count);
-        count = std::min<uint16_t>(count, 16);
-        wifi_ap_record_t records[16]{};
-        if (count > 0 && esp_wifi_scan_get_ap_records(&count, records) == ESP_OK) {
+        count = std::min<uint16_t>(count, 64);
+        std::unique_ptr<wifi_ap_record_t[]> records(new (std::nothrow) wifi_ap_record_t[count]);
+        if (count > 0 && records != nullptr &&
+            esp_wifi_scan_get_ap_records(&count, records.get()) == ESP_OK) {
             for (uint16_t index = 0; index < count; ++index) {
                 const size_t size = control_policy::scanned_ssid_size(records[index].ssid, 32);
                 control_policy::add_wifi_network(networks, records[index].ssid, size);
             }
+        } else {
+            esp_wifi_clear_ap_list();
         }
     }
     if (controls.set_networks != nullptr) controls.set_networks(networks);
@@ -487,21 +541,27 @@ void network_task(void *)
     ESP_ERROR_CHECK(wifi_events != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, nullptr));
     ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, nullptr));
+    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_LOST_IP, wifi_event, nullptr));
 
     std::string home_ssid;
     std::string home_password;
     const bool had_saved_wifi = load_wifi(home_ssid, home_password);
-    const bool connected = had_saved_wifi && connect_home_wifi(home_ssid, home_password);
-    if (!connected) {
+    const JoinResult join = had_saved_wifi ? connect_home_wifi(home_ssid, home_password)
+                                           : JoinResult::Unreachable;
+    const bool connected = join == JoinResult::Joined;
+    if (connected) {
+        start_time_sync();
+        maintaining_home.store(true);
+        bind_remote();
+    } else if (had_saved_wifi && join == JoinResult::Unreachable) {
+        ESP_LOGW(kTag, "Saved Wi-Fi unreachable; retrying in the background");
+        resume_saved_wifi(home_ssid, home_password);
+    } else {
         if (had_saved_wifi) {
-            ESP_LOGW(kTag, "Saved Wi-Fi failed validation; removing it to avoid repeated boot delays");
+            ESP_LOGW(kTag, "Saved Wi-Fi password was rejected; removing it");
             clear_wifi();
         }
         start_unconfigured_wifi();
-        if (controls.set_network != nullptr) controls.set_network(NetworkMode::Unconfigured, "");
-    } else if (controls.set_network != nullptr) {
-        start_time_sync();
-        rotate_pairing_code();
     }
     wifi_ready.store(true);
     network_request_scan();
@@ -518,11 +578,29 @@ void network_task(void *)
     register_uri(server, "/api/name", HTTP_POST, name_handler);
     register_uri(server, "/api/time", HTTP_POST, time_handler);
     if (connected) {
-        ESP_LOGI(kTag, "Phone remote ready on home Wi-Fi: %s", station_address);
+        ESP_LOGI(kTag, "Phone remote ready on home Wi-Fi: http://%s", acquired_host);
     } else {
         ESP_LOGI(kTag, "Home Wi-Fi requires touchscreen setup");
     }
-    vTaskDelete(nullptr);
+
+    // Keep the on-screen pairing code valid and rejoin home Wi-Fi after a drop.
+    for (;;) {
+        vTaskDelay(kMaintenanceInterval);
+        bool rotated = false;
+        bool bound = false;
+        {
+            const std::lock_guard<std::mutex> lock(auth_mutex);
+            rotated = auth.refresh_pairing(esp_timer_get_time());
+            bound = auth.connected();
+        }
+        if (rotated) publish_remote();
+        if (!bound && maintaining_home.load() && !configuring_home.load()) {
+            const esp_err_t reconnect = esp_wifi_connect();
+            if (reconnect != ESP_OK) {
+                ESP_LOGW(kTag, "Home Wi-Fi rejoin deferred: %s", esp_err_to_name(reconnect));
+            }
+        }
+    }
 }
 
 struct CandidateWifi {
@@ -533,19 +611,22 @@ struct CandidateWifi {
 void configure_home_task(void *context)
 {
     auto *candidate = static_cast<CandidateWifi *>(context);
+    maintaining_home.store(false);
+    revoke_remote();
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
-    const bool connected = connect_home_wifi(candidate->ssid, candidate->password);
+    const bool connected =
+        connect_home_wifi(candidate->ssid, candidate->password) == JoinResult::Joined;
     const bool saved = connected && save_wifi(candidate->ssid, candidate->password);
     if (saved) {
         start_time_sync();
-        rotate_pairing_code();
+        maintaining_home.store(true);
+        bind_remote();
         if (controls.set_wifi_configuration != nullptr) {
             controls.set_wifi_configuration(WifiConfigurationState::Connected);
         }
     } else {
         if (connected) ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
-        start_unconfigured_wifi();
-        if (controls.set_network != nullptr) controls.set_network(NetworkMode::Unconfigured, "");
+        fall_back_to_saved_wifi();
         if (controls.set_wifi_configuration != nullptr) {
             controls.set_wifi_configuration(WifiConfigurationState::Failed);
         }

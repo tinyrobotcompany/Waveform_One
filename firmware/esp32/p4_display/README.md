@@ -18,9 +18,11 @@ Open **Settings** on the touchscreen, select the user's home network, enter its
 password with the on-screen keyboard and press **Connect**. The P4 first joins
 the network in the current session and stores the credentials only after it has
 received an IP address. A bad password remains editable on screen and is never
-committed to nonvolatile storage. If previously saved credentials later fail,
-they are removed after the bounded boot attempt so subsequent boots do not keep
-incurring the same delay.
+committed to nonvolatile storage. Saved credentials are removed only when the
+network explicitly rejects them. If the saved network is merely unreachable, for
+example while the router restarts after a power cut, the P4 keeps the
+credentials, shows "Reconnecting" and retries every 15 seconds. It also rejoins
+automatically after a drop while running.
 
 The phone remains connected to the same home network. Once the P4 has an IP
 address, the Settings screen displays a QR code containing the phone remote's
@@ -28,13 +30,30 @@ local URL. The QR opens the app; it is not used to join a device-specific Wi-Fi
 network. If the saved network cannot be reached, the touchscreen Wi-Fi controls
 remain available so the user can choose a replacement network.
 
-The QR contains a random one-time pairing code. The P4 exchanges it for a
-RAM-only session, sets an `HttpOnly`, `SameSite=Strict` cookie, and rotates the QR
-immediately so the same code cannot be replayed. Pairing codes expire after ten
-minutes and sessions expire after one hour. Mutating requests also require a
-session-specific CSRF token. Opening the P4's bare IP address does not authorize
-controls. Mutating requests must also carry the exact device `Host` and `Origin`;
-cross-origin browser requests are rejected. Rebooting revokes all phone sessions.
+The remote's web origin is the P4's current home-network address,
+`http://<P4 address>`, which is also the address in the QR. Every endpoint,
+including the page itself, answers only requests whose `Host` is that address
+(optionally with `:80`). This rejects DNS-rebinding pages that reach the P4
+under another name.
+
+Loading the page does not grant control. The QR contains a random 128-bit
+one-time pairing code. The P4 exchanges it for a RAM-only session, sets an
+`HttpOnly`, `SameSite=Strict` cookie, and rotates the QR immediately so the same
+code cannot be replayed. An unused code is replaced every ten minutes and the QR
+on screen is updated to match. Sessions expire after one hour, at most four
+phones stay paired, and the oldest is evicted first. Mutating requests require
+the session cookie, a session-specific CSRF token, and the device `Host` and
+`Origin` together. The page is served with a Content Security Policy that
+forbids framing and third-party resources.
+
+Sessions are bound to the address they were paired on. Losing Wi-Fi, losing or
+changing the IP address, choosing another network, or rebooting revokes every
+session and pairing code. Phones must scan the new QR afterwards.
+
+Request bodies are parsed as strict `application/x-www-form-urlencoded`.
+Malformed escapes, control characters, duplicate fields and oversized values
+reject the request. Profile names must be valid UTF-8 of at most 120 bytes, with
+no control or text-direction characters.
 The current local remote uses plain HTTP and is intended only for a trusted home
 LAN; its session is protection against accidental or opportunistic controls, not
 against an attacker who can observe traffic on that LAN. Production commissioning
@@ -42,8 +61,11 @@ must enable flash/NVS encryption before customer Wi-Fi credentials are treated a
 protected at rest, and customer deployment still requires a TLS or equivalent
 transport-security design.
 
-Scan results are retained as structured SSID records rather than reconstructed
-from dropdown text. Networks whose names contain control characters, malformed
+The full scan result set (up to 64 access points) is filtered before the list is
+capped at 16 networks. Hidden, malformed and duplicate SSIDs, such as one
+mesh network advertised by several access points, therefore cannot crowd out
+the user's network. Scan results are retained as structured SSID records rather
+than reconstructed from dropdown text. Networks whose names contain control characters, malformed
 UTF-8 or text-direction controls are omitted because LVGL cannot present those
 names safely. SSIDs containing embedded NUL bytes are intentionally unsupported
 and omitted rather than truncated to a different network name. WPA passphrases up

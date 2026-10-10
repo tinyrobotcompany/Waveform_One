@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -88,6 +89,63 @@ inline bool valid_browser_time(int64_t proposed, int64_t current)
     return difference <= kMaximumCorrection;
 }
 
+inline int form_hex_digit(char value)
+{
+    if (value >= '0' && value <= '9') return value - '0';
+    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
+    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
+    return -1;
+}
+
+inline bool form_decode(std::string_view encoded, std::string &decoded, std::size_t max_size)
+{
+    decoded.clear();
+    for (std::size_t index = 0; index < encoded.size(); ++index) {
+        char value = encoded[index];
+        if (value == '+') {
+            value = ' ';
+        } else if (value == '%') {
+            if (index + 2 >= encoded.size()) return false;
+            const int high = form_hex_digit(encoded[index + 1]);
+            const int low = form_hex_digit(encoded[index + 2]);
+            if (high < 0 || low < 0) return false;
+            value = static_cast<char>((high << 4) | low);
+            index += 2;
+        }
+        const auto byte = static_cast<unsigned char>(value);
+        if (byte < 0x20 || byte == 0x7f || decoded.size() >= max_size) return false;
+        decoded.push_back(value);
+    }
+    return true;
+}
+
+// Looks up one field of an application/x-www-form-urlencoded body. Keys are
+// decoded before comparison, and malformed encoding, duplicate keys or an
+// oversized value reject the whole body rather than choosing one reading of it.
+inline bool form_field(std::string_view body, std::string_view key, std::string &value,
+                       std::size_t max_size)
+{
+    bool found = false;
+    std::string decoded_key;
+    std::string decoded_value;
+    for (std::size_t start = 0; start <= body.size();) {
+        const std::size_t end = std::min(body.find('&', start), body.size());
+        const std::string_view pair = body.substr(start, end - start);
+        const std::size_t equals = pair.find('=');
+        const std::string_view raw_key = pair.substr(0, equals);
+        const std::string_view raw_value =
+            equals == std::string_view::npos ? std::string_view{} : pair.substr(equals + 1);
+        if (pair.empty() || !form_decode(raw_key, decoded_key, 32)) return false;
+        if (decoded_key == key) {
+            if (found || !form_decode(raw_value, decoded_value, max_size)) return false;
+            value = decoded_value;
+            found = true;
+        }
+        start = end + 1;
+    }
+    return found;
+}
+
 inline bool valid_http_host(std::string_view host, std::string_view expected_host)
 {
     if (expected_host.empty()) return false;
@@ -119,9 +177,9 @@ inline bool safe_codepoint(uint32_t value)
     return value <= 0x10ffff && !(value >= 0xd800 && value <= 0xdfff);
 }
 
-inline bool safe_utf8_ssid(const uint8_t *bytes, std::size_t size)
+inline bool safe_utf8_text(const uint8_t *bytes, std::size_t size, std::size_t max_size)
 {
-    if (bytes == nullptr || size == 0 || size > 32) return false;
+    if (bytes == nullptr || size == 0 || size > max_size) return false;
     for (std::size_t index = 0; index < size;) {
         const uint8_t first = bytes[index++];
         uint32_t codepoint = 0;
@@ -155,6 +213,20 @@ inline bool safe_utf8_ssid(const uint8_t *bytes, std::size_t size)
     return true;
 }
 
+inline bool safe_utf8_ssid(const uint8_t *bytes, std::size_t size)
+{
+    return safe_utf8_text(bytes, size, 32);
+}
+
+constexpr std::size_t kMaxDisplayNameBytes = 120;
+
+inline bool safe_display_name(std::string_view name)
+{
+    if (name.empty() || name.front() == ' ' || name.back() == ' ') return false;
+    return safe_utf8_text(reinterpret_cast<const uint8_t *>(name.data()), name.size(),
+                          kMaxDisplayNameBytes);
+}
+
 inline std::size_t scanned_ssid_size(const uint8_t *bytes, std::size_t capacity)
 {
     if (bytes == nullptr || capacity == 0) return 0;
@@ -171,6 +243,10 @@ inline std::size_t scanned_ssid_size(const uint8_t *bytes, std::size_t capacity)
 inline bool add_wifi_network(WifiNetworkList &networks, const uint8_t *ssid, std::size_t size)
 {
     if (networks.count >= kMaxWifiNetworks || !safe_utf8_ssid(ssid, size)) return false;
+    const std::string_view name(reinterpret_cast<const char *>(ssid), size);
+    for (std::size_t index = 0; index < networks.count; ++index) {
+        if (name == networks.items[index].ssid) return false;
+    }
     WifiNetwork &network = networks.items[networks.count++];
     std::memcpy(network.ssid, ssid, size);
     network.ssid[size] = '\0';

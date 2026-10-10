@@ -7,6 +7,7 @@
 
 enum class NetworkMode {
     Unconfigured,
+    Reconnecting,
     HomeWifi,
 };
 

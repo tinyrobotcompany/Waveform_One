@@ -316,6 +316,17 @@ void remote_set_network(NetworkMode mode, const char *address)
         lv_label_set_text(network_instructions,
                           "Connect Waveform One to your\nhome Wi-Fi in Settings. The\napp QR will appear here.");
         lv_label_set_text(wifi_status, "Choose your home Wi-Fi network.");
+    } else if (mode == NetworkMode::Reconnecting) {
+        lv_obj_set_style_text_color(wifi_indicator, kMuted, 0);
+        lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);
+        lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(network_qr_placeholder, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(wifi_header_button, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(clock_label, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(network_heading, "PHONE REMOTE");
+        lv_label_set_text(network_instructions,
+                          "Reconnecting to home Wi-Fi.\nPhone remotes must scan the\nnew QR once it appears.");
+        lv_label_set_text(wifi_status, "Reconnecting to home Wi-Fi…");
     } else {
         lv_obj_set_style_text_color(wifi_indicator, kAccent, 0);
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);
