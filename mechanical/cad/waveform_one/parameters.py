@@ -55,6 +55,7 @@ class Param:
 
 
 D, P, M, POL = Status.DATASHEET, Status.PROVISIONAL, Status.MEASURED, Status.POLICY
+CAL = Status.CALIBRATED
 
 PRINT_MATERIAL = "PETG"
 PRINT_REVISION = "B"
@@ -131,9 +132,9 @@ KEEPOUT_EDGE_INSET = Param(6.0, "mm", P, "Rear keep-outs stop short of edges whe
 
 # --- Fasteners -----------------------------------------------------------------
 
-M3_INSERT_HOLE = Param(4.0, "mm", P, "Typical for M3 x 5.7 heat-set inserts; confirm with the coupon.", required_from=5)
+M3_INSERT_HOLE = Param(4.1, "mm", CAL, "Coupon 2026-10-10: 4.1 mm held the insert best in PETG.", required_from=5)
 M3_INSERT_DEPTH = Param(6.0, "mm", P, "Insert length plus a little.")
-M3_CLEARANCE_HOLE = Param(3.2, "mm", P, "Confirm with the coupon.")
+M3_CLEARANCE_HOLE = Param(3.2, "mm", CAL, "Coupon 2026-10-10: M3 slid through 3.0 mm; 3.2 adds slack to line up holes in two parts.")
 M25_SELF_TAP_HOLE = Param(2.4, "mm", P, "M2.5 screws tapped straight into the Pi standoffs.")
 JOINT_CLEARANCE = Param(0.25, "mm", P, "Tongue/groove per side; confirm with the coupon.")
 
