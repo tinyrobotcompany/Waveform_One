@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "audio_activity.h"
 
 enum class LedControllerState {
     Waiting,
@@ -24,7 +25,7 @@ enum class StyleRequestResult {
 
 using LedControllerStatusCallback = void (*)(LedControllerState state);
 
-using AudioActivityCallback = void (*)(bool active);
+using AudioActivityCallback = void (*)(audio_activity::State state);
 void usb_controller_start(LedControllerStatusCallback callback, AudioActivityCallback activity = nullptr);
 StyleRequestResult usb_controller_set_style(LedStyle style);
 

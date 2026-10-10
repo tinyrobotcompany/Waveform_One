@@ -1,6 +1,9 @@
 idf_component_register(
     SRCS "main.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
          "recognition.cpp" "../third_party/cJSON.c"
+         "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
+         "fonts/waveform_font_24.c" "fonts/waveform_font_32.c"
+         "fonts/waveform_font_40.c" "fonts/waveform_font_48.c"
     INCLUDE_DIRS "." "../third_party"
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif

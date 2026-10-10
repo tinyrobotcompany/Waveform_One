@@ -18,10 +18,14 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "lvgl.h"
+#include "display_fonts.h"
+#include "display_text.h"
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "network.h"
 #include "recognition.h"
 #include "recognition_policy.h"
+#include "recognition_feedback.h"
+#include "search_waveform.h"
 #include "usb_controller.h"
 
 namespace {
@@ -31,16 +35,24 @@ constexpr lv_color_t kBackground = LV_COLOR_MAKE(0x08, 0x0d, 0x0a);
 constexpr lv_color_t kPanel = LV_COLOR_MAKE(0x12, 0x1a, 0x13);
 constexpr lv_color_t kForeground = LV_COLOR_MAKE(0xed, 0xf3, 0xe8);
 constexpr lv_color_t kAccent = LV_COLOR_MAKE(0xa8, 0xd5, 0x7a);
+constexpr lv_color_t kSearchAccent = LV_COLOR_MAKE(0xa7, 0x9a, 0xe8);
 constexpr lv_color_t kMuted = LV_COLOR_MAKE(0x84, 0x91, 0x84);
 constexpr lv_color_t kLine = LV_COLOR_MAKE(0x37, 0x48, 0x38);
 
 lv_obj_t *artwork = nullptr;
 lv_obj_t *artwork_mark = nullptr;
+lv_obj_t *search_wave = nullptr;
+lv_timer_t *search_wave_timer = nullptr;
+lv_image_dsc_t search_wave_descriptor{};
+uint16_t *search_wave_pixels = nullptr;
+unsigned search_wave_phase = 0;
+bool search_wave_active = false;
 lv_obj_t *eyebrow = nullptr;
 lv_obj_t *headline = nullptr;
 lv_obj_t *artist = nullptr;
 lv_obj_t *album = nullptr;
 lv_obj_t *recognition_status = nullptr;
+lv_obj_t *recognition_dot = nullptr;
 lv_obj_t *artwork_image = nullptr;
 lv_image_dsc_t artwork_descriptor{};
 uint8_t *artwork_pixels = nullptr;
@@ -74,6 +86,60 @@ control_policy::WifiNetworkList wifi_networks{};
 bool wifi_connecting = false;
 std::atomic_int current_brightness{100};
 
+bool searching = false;
+void pulse_artwork(void *object, int32_t opacity)
+{
+    lv_obj_set_style_border_opa(static_cast<lv_obj_t *>(object), opacity, 0);
+}
+void paint_search_wave()
+{
+    search_waveform::render(search_wave_pixels, search_waveform::kPixels, search_wave_phase);
+    lv_image_cache_drop(&search_wave_descriptor);
+    // One fixed redraw rectangle, including the border. Never invalidate
+    // individual moving bars in the adapter's partial-buffer repair path.
+    lv_obj_invalidate(artwork);
+}
+void tick_search_wave(lv_timer_t *)
+{
+    search_wave_phase = (search_wave_phase + 16) % 1024;
+    paint_search_wave();
+}
+void set_search_wave(bool active)
+{
+    if (search_wave == nullptr || active == search_wave_active) return;
+    search_wave_active = active;
+    if (!active) {
+        lv_timer_pause(search_wave_timer);
+        lv_obj_add_flag(search_wave, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+    search_wave_phase = 0;
+    paint_search_wave();
+    lv_obj_remove_flag(search_wave, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_resume(search_wave_timer);
+}
+void set_searching(bool active, bool has_track = false)
+{
+    set_search_wave(active && lv_obj_has_flag(artwork_image, LV_OBJ_FLAG_HIDDEN));
+    lv_obj_set_style_border_color(artwork, has_track ? kAccent : active ? kSearchAccent : kLine, 0);
+    if (searching == active) return;
+    searching = active;
+    lv_anim_delete(artwork, pulse_artwork);
+    lv_obj_set_style_border_width(artwork, active ? 3 : 2, 0);
+    lv_obj_set_style_border_opa(artwork, LV_OPA_COVER, 0);
+    if (!active) return;
+    lv_anim_t animation;
+    lv_anim_init(&animation);
+    lv_anim_set_var(&animation, artwork);
+    lv_anim_set_exec_cb(&animation, pulse_artwork);
+    lv_anim_set_values(&animation, LV_OPA_30, LV_OPA_COVER);
+    lv_anim_set_duration(&animation, 1200);
+    lv_anim_set_playback_duration(&animation, 1200);
+    lv_anim_set_repeat_count(&animation, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&animation, lv_anim_path_ease_in_out);
+    lv_anim_start(&animation);
+}
+
 void clear_recognition_track()
 {
     lv_label_set_text(headline, "Listening for music");
@@ -104,12 +170,30 @@ void log_board_identity()
              heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 }
 
+void set_label_text(lv_obj_t *label, const char *text)
+{
+    const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+    const auto supported = [font](uint32_t cp) {
+        lv_font_glyph_dsc_t glyph{};
+        return lv_font_get_glyph_dsc(font, &glyph, cp, 0) && !glyph.is_placeholder;
+    };
+    const std::string rendered = display_text::renderable(text, supported);
+    lv_label_set_text(label, rendered.c_str());
+}
+
+void set_recognition_feedback(RecognitionStatus status, bool has_track)
+{
+    lv_obj_set_style_bg_color(recognition_dot,
+        recognition_feedback::searching(status) ? kSearchAccent : kAccent, 0);
+    set_label_text(recognition_status, recognition_feedback::text(status, has_track));
+}
+
 lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font,
                      lv_color_t color)
 {
     lv_obj_t *label = lv_label_create(parent);
-    lv_label_set_text(label, text);
-    lv_obj_set_style_text_font(label, font, 0);
+    lv_obj_set_style_text_font(label, display_font(font), 0);
+    set_label_text(label, text);
     lv_obj_set_style_text_color(label, color, 0);
     return label;
 }
@@ -218,6 +302,7 @@ void on_brightness(lv_event_t *event)
     const esp_err_t result = bsp_display_brightness_set(value);
     if (result == ESP_OK) {
         current_brightness.store(value);
+        network_set_brightness(value);
         lv_label_set_text_fmt(brightness_label, "%d%%", value);
     } else {
         lv_slider_set_value(brightness_slider, current_brightness.load(), LV_ANIM_OFF);
@@ -263,6 +348,7 @@ bool remote_set_brightness(int percent)
         return false;
     }
     current_brightness.store(percent);
+    network_set_brightness(percent);
     if (bsp_display_lock(1000)) {
         lv_label_set_text_fmt(brightness_label, "%d%%", percent);
         lv_slider_set_value(brightness_slider, percent, LV_ANIM_OFF);
@@ -273,8 +359,10 @@ bool remote_set_brightness(int percent)
 
 void remote_set_name(const char *name)
 {
+    network_set_name(name);
     if (bsp_display_lock(1000)) {
-        lv_label_set_text_fmt(welcome_label, "Welcome, %s", name);
+        const std::string greeting = std::string("Welcome, ") + name;
+        set_label_text(welcome_label, greeting.c_str());
         bsp_display_unlock();
     }
 }
@@ -289,9 +377,10 @@ void remote_set_time(std::time_t epoch)
 void update_clock(lv_timer_t *)
 {
     if (displayed_track.title[0] != '\0'
-        && recognition_policy::expired(displayed_track.matched_at_us, esp_timer_get_time())) {
+        && recognition_policy::expired(displayed_track.matched_at_us, esp_timer_get_time(), recognition_last_activity_us())) {
         clear_recognition_track();
-        lv_label_set_text(recognition_status, "Listening");
+        set_searching(false);
+        set_recognition_feedback(RecognitionStatus::Waiting, false);
     }
     const std::time_t now = std::time(nullptr);
     if (now < 1700000000) return;
@@ -328,6 +417,7 @@ void update_controller_status(LedControllerState state)
         break;
     }
     LedStyle acknowledged{};
+    if (control_policy::acknowledged_style(state, acknowledged)) network_set_style(acknowledged);
     if (bsp_display_lock(1000)) {
         if (control_policy::acknowledged_style(state, acknowledged)) {
             set_style_visual(acknowledged);
@@ -486,8 +576,30 @@ void create_product_screen()
     lv_obj_set_style_text_align(artwork_mark, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(artwork_mark);
 
+    search_wave_pixels = static_cast<uint16_t *>(heap_caps_aligned_alloc(64,
+        search_waveform::kPixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (search_wave_pixels != nullptr) {
+        search_waveform::render(search_wave_pixels, search_waveform::kPixels, 0);
+        search_wave_descriptor.header.magic = LV_IMAGE_HEADER_MAGIC;
+        search_wave_descriptor.header.cf = LV_COLOR_FORMAT_RGB565;
+        search_wave_descriptor.header.w = search_waveform::kWidth;
+        search_wave_descriptor.header.h = search_waveform::kHeight;
+        search_wave_descriptor.header.stride = search_waveform::kWidth * sizeof(uint16_t);
+        search_wave_descriptor.data_size = search_waveform::kPixels * sizeof(uint16_t);
+        search_wave_descriptor.data = reinterpret_cast<uint8_t *>(search_wave_pixels);
+        search_wave = lv_image_create(artwork);
+        lv_image_set_src(search_wave, &search_wave_descriptor);
+        lv_obj_align(search_wave, LV_ALIGN_BOTTOM_MID, 0, -26);
+        lv_obj_add_flag(search_wave, LV_OBJ_FLAG_HIDDEN);
+        search_wave_timer = lv_timer_create(tick_search_wave, 40, nullptr);
+        lv_timer_pause(search_wave_timer);
+    } else {
+        ESP_LOGW(kTag, "Search animation allocation failed; keeping border feedback");
+    }
+
+
     lv_obj_t *information = lv_obj_create(screen);
-    lv_obj_set_size(information, 510, 390);
+    lv_obj_set_size(information, 510, 432);
     lv_obj_set_style_border_width(information, 0, 0);
     lv_obj_set_style_bg_opa(information, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(information, LV_OBJ_FLAG_SCROLLABLE);
@@ -495,39 +607,48 @@ void create_product_screen()
 
     lv_obj_set_style_pad_all(information, 0, 0);
     lv_obj_set_style_pad_top(information, 14, 0);
-    lv_obj_set_style_pad_row(information, 12, 0);
+    lv_obj_set_style_pad_row(information, 8, 0);
     lv_obj_set_flex_flow(information, LV_FLEX_FLOW_COLUMN);
 
-    eyebrow = make_label(information, "NOW PLAYING", &lv_font_montserrat_16, kAccent);
+    eyebrow = make_label(information, "NOW PLAYING", &lv_font_montserrat_48, kAccent);
 
 
-    headline = make_label(information, "Listening for music", &lv_font_montserrat_32, kForeground);
+    headline = make_label(information, "Listening for music", &waveform_font_40, kForeground);
     lv_obj_set_width(headline, 490);
     lv_label_set_long_mode(headline, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_max_height(headline, 128, 0);
+    lv_obj_set_style_max_height(headline, 108, 0);
 
 
     artist = make_label(information, "Play a song to bring this screen to life.",
-                        &lv_font_montserrat_24, kForeground);
+                        &lv_font_montserrat_32, kForeground);
     lv_obj_set_width(artist, 490);
     lv_label_set_long_mode(artist, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_max_height(artist, 60, 0);
+    lv_obj_set_style_max_height(artist, 86, 0);
 
 
     album = make_label(information, "",
-                       &lv_font_montserrat_20, kMuted);
+                       &lv_font_montserrat_24, kMuted);
     lv_obj_set_width(album, 490);
     lv_label_set_long_mode(album, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_max_height(album, 48, 0);
+    lv_obj_set_style_max_height(album, 68, 0);
 
 
     recognition_status = make_label(information,
-        "Listening",
-        &lv_font_montserrat_16, kMuted);
+        "Play a song to get started",
+        &lv_font_montserrat_20, kMuted);
     lv_obj_add_flag(recognition_status, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_align(recognition_status, LV_ALIGN_BOTTOM_LEFT, 2, -28);
-    lv_obj_set_width(recognition_status, 490);
+    lv_obj_align(recognition_status, LV_ALIGN_BOTTOM_LEFT, 18, -14);
+    lv_obj_set_width(recognition_status, 472);
     lv_label_set_long_mode(recognition_status, LV_LABEL_LONG_WRAP);
+    recognition_dot = lv_obj_create(information);
+    lv_obj_remove_style_all(recognition_dot);
+    lv_obj_set_size(recognition_dot, 8, 8);
+    lv_obj_add_flag(recognition_dot, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_remove_flag(recognition_dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(recognition_dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_opa(recognition_dot, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(recognition_dot, kAccent, 0);
+    lv_obj_align(recognition_dot, LV_ALIGN_BOTTOM_LEFT, 0, -24);
     artwork_image = lv_image_create(artwork);
     lv_obj_center(artwork_image);
     lv_obj_add_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
@@ -756,9 +877,10 @@ void create_product_screen()
 void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                         const RecognitionArtwork *image)
 {
+    network_set_recognition(status, track);
     // The recognition/session mutex is acquired before this GUI lock everywhere.
     if (!bsp_display_lock(1000)) return;
-    if (track != nullptr && recognition_policy::expired(track->matched_at_us, esp_timer_get_time())) {
+    if (track != nullptr && recognition_policy::expired(track->matched_at_us, esp_timer_get_time(), recognition_last_activity_us())) {
         track = nullptr; image = nullptr;
         if (status == RecognitionStatus::Matched) status = RecognitionStatus::Waiting;
     }
@@ -767,9 +889,9 @@ void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
         && std::strcmp(displayed_track.artist, track->artist) == 0
         && std::strcmp(displayed_track.artwork_url, track->artwork_url) == 0;
     if (track != nullptr) {
-        lv_label_set_text(headline, track->title);
-        lv_label_set_text(artist, track->artist);
-        lv_label_set_text(album, track->album);
+        set_label_text(headline, track->title);
+        set_label_text(artist, track->artist);
+        set_label_text(album, track->album);
         displayed_track = *track;
     } else {
         clear_recognition_track();
@@ -804,16 +926,9 @@ void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
             }
         }
     }
-    const char *text = "Listening";
-    switch (status) {
-    case RecognitionStatus::Waiting: break;
-    case RecognitionStatus::Capturing: text = "Listening"; break;
-    case RecognitionStatus::Identifying: text = "Finding your song..."; break;
-    case RecognitionStatus::Matched: text = ""; break;
-    case RecognitionStatus::NoMatch: text = "Listening for your next song"; break;
-    case RecognitionStatus::Unavailable: text = "Trying again shortly"; break;
-    }
-    lv_label_set_text(recognition_status, text);
+    set_searching(status == RecognitionStatus::Capturing || status == RecognitionStatus::Identifying,
+                  track != nullptr);
+    set_recognition_feedback(status, track != nullptr);
     bsp_display_unlock();
 }
 

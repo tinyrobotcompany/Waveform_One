@@ -25,6 +25,8 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "remote_auth.h"
+#include "remote_page.h"
+#include "remote_state.h"
 
 namespace {
 
@@ -39,6 +41,7 @@ std::atomic_bool credentials_rejected{false};
 std::mutex auth_mutex;
 char acquired_host[16]{}; // guarded by auth_mutex
 remote_auth::RemoteAuth auth{esp_fill_random};
+RemoteState remote_state;
 std::atomic_bool wifi_ready{false};
 std::atomic_bool scanning{false};
 std::atomic_bool attempting_home{false};
@@ -48,30 +51,7 @@ std::atomic_bool maintaining_home{false};
 std::atomic_bool configuring_home{false};
 std::atomic_bool time_sync_started{false};
 
-constexpr char kPage[] = R"HTML(<!doctype html>
-<html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Waveform One</title><style>
-:root{color-scheme:dark;font-family:Arial,sans-serif;--bg:#090e0a;--panel:#141c15;--line:#354638;--ink:#edf3e8;--muted:#899489;--accent:#a8d57a}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);min-height:100vh;padding:env(safe-area-inset-top) 22px env(safe-area-inset-bottom)}
-header{height:68px;display:flex;align-items:center;border-bottom:1px solid var(--line);letter-spacing:2px;font-size:12px}header b{color:var(--accent)}#clock{margin-left:auto;font-size:18px;letter-spacing:0}
-main{max-width:620px;margin:auto;padding:34px 0}.eyebrow{color:var(--accent);font-size:11px;letter-spacing:2px}.art{aspect-ratio:1;border:1px solid var(--line);border-radius:16px;background:linear-gradient(145deg,#263528,#111812);display:grid;place-items:center;margin:18px 0 26px;font-size:48px;color:var(--muted);text-align:center}
-h1{font-size:42px;font-weight:400;line-height:1.05;margin:12px 0}p{color:var(--muted);line-height:1.5}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:18px}h2{font-size:14px;letter-spacing:1.5px;color:var(--accent);font-weight:400;margin:0 0 16px}
-button,input{font:inherit}button{min-height:48px;border:1px solid var(--line);border-radius:10px;background:#1c281d;color:var(--ink);padding:10px 16px}button.active{border-color:var(--accent);color:var(--accent)}.styles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}label{display:block;color:var(--muted);font-size:13px}input[type=text]{width:100%;margin:9px 0 12px;padding:13px;border:1px solid var(--line);border-radius:9px;background:#0c120d;color:var(--ink);font-size:18px}input[type=range]{width:100%;height:42px;accent-color:var(--accent)}#status{font-size:13px;color:var(--accent);min-height:20px}
-</style><body><header><b>WAVEFORM ONE</b><span id="clock"></span></header><main>
-<div class="eyebrow">NOW PLAYING</div><h1 id="welcome">Welcome, Simon</h1><div class="art">WAVEFORM<br>ONE</div><h1>Listening for music</h1><p>Track, artist and album artwork will appear here.</p>
-<section class="card"><h2>PROFILE</h2><label>Your name<input id="name" type="text" maxlength="40" value="Simon"></label><button onclick="saveName()">Save name</button></section>
-<section class="card"><h2>LED STYLE</h2><div class="styles"><button onclick="style('classic')">Classic</button><button onclick="style('mirrored')">Mirrored</button><button onclick="style('waterfall')">Waterfall</button></div></section>
-<section class="card"><h2>DISPLAY</h2><label>Brightness <input id="brightness" type="range" min="10" max="100" value="100"></label></section><p id="status">Connected locally to Waveform One</p>
-</main><script>
-const status=document.querySelector('#status');
-let csrf='';
-const sessionReady=fetch('/api/session',{credentials:'same-origin'}).then(r=>{if(!r.ok)throw Error('Pairing required');return r.text()}).then(value=>{csrf=value;status.textContent='Connected locally to Waveform One';return true}).catch(()=>{status.textContent='Pairing required. Scan the QR code on Waveform One.';return false});
-function post(path,data){if(!csrf){status.textContent='Pairing required. Scan the QR code again.';return Promise.resolve(false)}return fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams(data)}).then(r=>{if(!r.ok)throw Error('Request failed');status.textContent='Saved';return true}).catch(()=>{status.textContent='Could not save setting';return false})}
-function style(value){status.textContent='Applying on LED…';post('/api/style',{style:value})}
-function saveName(){const name=document.querySelector('#name').value.trim();if(name){document.querySelector('#welcome').textContent='Welcome, '+name;post('/api/name',{name})}}
-let timer;document.querySelector('#brightness').addEventListener('input',e=>{clearTimeout(timer);timer=setTimeout(()=>post('/api/brightness',{value:e.target.value}),80)});
-function tick(){document.querySelector('#clock').textContent=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}tick();setInterval(tick,1000);sessionReady.then(ok=>{if(ok)post('/api/time',{epoch:Math.floor(Date.now()/1000)})});
-</script></body></html>)HTML";
+
 
 bool read_body(httpd_req_t *request, std::string &body)
 {
@@ -148,7 +128,7 @@ void set_page_security_headers(httpd_req_t *request)
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
     httpd_resp_set_hdr(request, "Content-Security-Policy",
                        "default-src 'none'; script-src 'unsafe-inline'; "
-                       "style-src 'unsafe-inline'; connect-src 'self'; "
+                       "style-src 'unsafe-inline'; connect-src 'self'; img-src https://*.mzstatic.com; "
                        "frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     httpd_resp_set_hdr(request, "X-Frame-Options", "DENY");
     httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
@@ -170,7 +150,7 @@ esp_err_t page_handler(httpd_req_t *request)
     }
     set_page_security_headers(request);
     httpd_resp_set_type(request, "text/html");
-    return httpd_resp_send(request, kPage, HTTPD_RESP_USE_STRLEN);
+    return httpd_resp_send(request, kRemotePage, HTTPD_RESP_USE_STRLEN);
 }
 
 constexpr char kWifiKey[] = "wifi";
@@ -317,6 +297,25 @@ esp_err_t session_handler(httpd_req_t *request)
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
     if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
     return reply(request, csrf);
+}
+
+esp_err_t state_handler(httpd_req_t *request)
+{
+    RequestHeaders headers;
+    read_headers(request, headers);
+    char csrf[remote_auth::kTokenSize]{};
+    bool valid = false;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
+    }
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
+    if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
+    const std::string state = remote_state.json(esp_timer_get_time(), recognition_last_activity_us());
+    if (state.empty()) return service_unavailable(request, "State temporarily unavailable");
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_send(request, state.data(), state.size());
 }
 
 esp_err_t pair_handler(httpd_req_t *request)
@@ -636,6 +635,7 @@ void network_task(void *)
     register_uri(server, "/", HTTP_GET, page_handler);
     register_uri(server, "/pair", HTTP_GET, pair_handler);
     register_uri(server, "/api/session", HTTP_GET, session_handler);
+    register_uri(server, "/api/state", HTTP_GET, state_handler);
     register_uri(server, "/api/style", HTTP_POST, style_handler);
     register_uri(server, "/api/brightness", HTTP_POST, brightness_handler);
     register_uri(server, "/api/name", HTTP_POST, name_handler);
@@ -709,6 +709,19 @@ void configure_home_task(void *context)
 }
 
 } // namespace
+
+void network_set_recognition(RecognitionStatus status, const RecognitionTrack *track)
+{
+    remote_state.recognition(status, track);
+}
+
+void network_set_brightness(int percent) { remote_state.brightness(percent); }
+void network_set_name(const char *name) { remote_state.name(name); }
+void network_set_style(LedStyle style)
+{
+    remote_state.style(style == LedStyle::Classic ? "classic"
+        : style == LedStyle::Mirrored ? "mirrored" : "waterfall");
+}
 
 void network_start(const RemoteCallbacks &callbacks)
 {

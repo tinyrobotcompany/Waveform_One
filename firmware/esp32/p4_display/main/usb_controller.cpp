@@ -49,7 +49,7 @@ std::mutex receive_mutex;
 audio_capture::Decoder capture;
 audio_activity::Decoder activity;
 AudioActivityCallback report_activity = nullptr;
-bool activity_reported = false;
+audio_activity::State activity_reported = audio_activity::State::Unknown;
 uint8_t *capture_buffer = nullptr;
 AudioCaptureCallback capture_callback = nullptr;
 uint64_t capture_id = 0;
@@ -328,13 +328,16 @@ void process_event(const Event &event)
 
 void poll_activity()
 {
-    bool active;
+    audio_activity::State state;
     { std::lock_guard<std::mutex> lock(receive_mutex);
-      active = controller_available.load() && activity.active(esp_timer_get_time()); }
-    if (active == activity_reported) return;
-    activity_reported = active;
-    ESP_LOGI(kTag, "Audio activity=%s", active ? "playing" : "quiet");
-    if (report_activity != nullptr) report_activity(active);
+      state = controller_available.load() ? activity.state(esp_timer_get_time()) : audio_activity::State::Unknown; }
+    if (state != activity_reported) {
+        ESP_LOGI(kTag, "Audio activity=%s", state == audio_activity::State::Playing ? "playing"
+            : state == audio_activity::State::Quiet ? "quiet" : "unknown");
+        activity_reported = state;
+    } else if (state != audio_activity::State::Playing) return;
+    // Positive heartbeats keep an existing match alive without another lookup.
+    if (report_activity != nullptr) report_activity(state);
 }
 
 void controller_task(void *)

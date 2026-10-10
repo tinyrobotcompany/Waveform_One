@@ -108,6 +108,14 @@ printf '%s\n' 'PASS: production recognition HTTP chunked reads, size bounds, err
 "$build_dir/p4_metadata"
 printf '%s\n' 'PASS: recognition metadata, UTF-8 and artwork origin validation'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/remote_state_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_remote_state"
+"$build_dir/p4_remote_state"
+printf '%s\n' 'PASS: phone recognition snapshot ownership, expiry, JSON and concurrent updates'
+
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
@@ -128,3 +136,17 @@ printf '%s\n' 'PASS: ESP32-P4 remote, Wi-Fi and UI control policies'
     "$esp_dir/p4_display/tests/remote_auth_test.cpp" -o "$build_dir/p4_remote_auth"
 "$build_dir/p4_remote_auth"
 printf '%s\n' 'PASS: ESP32-P4 phone remote pairing and session lifecycle'
+
+"${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/search_waveform_test.cpp" -o "$build_dir/p4_search_waveform"
+"$build_dir/p4_search_waveform"
+printf '%s\n' 'PASS: fixed search waveform buffer bounds, gutters and animation cycle'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/display_feedback_test.cpp" -o "$build_dir/p4_feedback"
+"$build_dir/p4_feedback"
+printf '%s\n' 'PASS: native recognition feedback and UTF-8 display fallback'

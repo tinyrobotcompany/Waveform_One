@@ -66,6 +66,24 @@ int main()
     assert(!transient.capture_requested(AudioCaptureRequestResult::Busy, 20000000));
     assert(!transient.due(20999999) && transient.due(21000000));
 
+    Sessions interrupted;
+    interrupted.set_controller(true);
+    interrupted.set_network(true, "http://192.168.1.12/");
+    interrupted.set_activity(true);
+    const auto playing_session = interrupted.snapshot();
+    assert(!interrupted.set_activity(audio_activity::State::Unknown));
+    assert(!interrupted.snapshot().ready);
+    assert(interrupted.snapshot().epoch == playing_session.epoch);
+    assert(!interrupted.set_activity(audio_activity::State::Playing));
+    assert(interrupted.snapshot().ready);
+    assert(interrupted.snapshot().epoch == playing_session.epoch);
+    assert(interrupted.set_activity(audio_activity::State::Quiet));
+    assert(interrupted.snapshot().epoch != playing_session.epoch);
+    // A match remains valid throughout sustained playback, even when lookups fail.
+    assert(!expired(100, 300000000, 299000000));
+    assert(!expired(100, 299000000 + kTrackLifetimeUs - 1, 299000000));
+    assert(expired(100, 299000000 + kTrackLifetimeUs, 299000000));
+
     assert(kIntervalUs == 1000000);
     Retries retries;
     assert(retries.due(0));

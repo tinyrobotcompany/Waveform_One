@@ -17,7 +17,7 @@ struct Session { uint64_t epoch; bool ready; };
 
 class Sessions {
 public:
-    Session snapshot() const { return {epoch_, online_ && connected_ && active_}; }
+    Session snapshot() const { return {epoch_, online_ && connected_ && active_ && signal_known_}; }
     bool set_network(bool available, std::string_view pairing_url)
     {
         // Pairing rotates independently of the network. Keep only the origin,
@@ -38,14 +38,22 @@ public:
         if (connected_ == available) return false;
         connected_ = available; ++epoch_; return true;
     }
-    bool set_activity(bool active)
+    bool set_activity(bool active) {
+        return set_activity(active ? audio_activity::State::Playing : audio_activity::State::Quiet);
+    }
+    // Missing telemetry pauses capture; it is not evidence that music stopped.
+    // Return true only when playback actually changes and invalidates a match.
+    bool set_activity(audio_activity::State state)
     {
+        signal_known_ = state != audio_activity::State::Unknown;
+        if (!signal_known_) return false;
+        const bool active = state == audio_activity::State::Playing;
         if (active_ == active) return false;
         active_ = active; ++epoch_; return true;
     }
 private:
     uint64_t epoch_ = 1;
-    bool online_ = false, connected_ = false, active_ = false;
+    bool online_ = false, connected_ = false, active_ = false, signal_known_ = false;
     std::string origin_;
 };
 
@@ -112,5 +120,8 @@ private:
     int64_t next_ = 0, busy_since_ = -1;
 };
 
-inline bool expired(int64_t matched_at, int64_t now) { return now - matched_at >= kTrackLifetimeUs; }
+// Expiry protects against abandoned reports, rather than timing out a playing song.
+inline bool expired(int64_t matched_at, int64_t now, int64_t last_activity = 0) {
+    return now - std::max(matched_at, last_activity) >= kTrackLifetimeUs;
+}
 } // namespace recognition_policy

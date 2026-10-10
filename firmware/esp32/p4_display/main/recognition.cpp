@@ -8,6 +8,7 @@
 #include "usb_controller.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
@@ -39,6 +40,7 @@ using recognition_policy::Session;
 std::mutex session_mutex;
 recognition_policy::Sessions sessions;
 RecognitionCallback show = nullptr;
+std::atomic<int64_t> last_activity_us{0};
 
 capture_completion::Mailbox clips(heap_caps_free);
 
@@ -155,14 +157,15 @@ void recognition_task(void *)
     while (true) {
         const Session start = session();
         const int64_t now = esp_timer_get_time();
-        if (track_epoch != start.epoch || recognition_policy::expired(matched_at, now)) {
+        if (track_epoch != start.epoch || recognition_policy::expired(matched_at, now, recognition_last_activity_us())) {
             if (track_epoch != start.epoch) retries.activity_changed(now);
             track = {}; image = {}; track_epoch = start.epoch;
         }
         const bool has_track = track.title[0] != '\0';
         auto picture = image.view();
         if (!start.ready || std::time(nullptr) < 1704067200) {
-            publish(start.epoch, RecognitionStatus::Waiting);
+            publish(start.epoch, RecognitionStatus::Waiting, has_track ? &track : nullptr,
+                image.pixels ? &picture : nullptr);
             vTaskDelay(pdMS_TO_TICKS(1000)); continue;
         }
         if (!retries.due(now)) {
@@ -251,7 +254,7 @@ void recognition_task(void *)
             retries.succeeded(esp_timer_get_time(), true);
             ESP_LOGI(kTag, "Recognition matched");
         } else {
-            if (recognition_policy::expired(matched_at, esp_timer_get_time())) { track = {}; image = {}; }
+            if (recognition_policy::expired(matched_at, esp_timer_get_time(), recognition_last_activity_us())) { track = {}; image = {}; }
             picture = image.view();
             if (outcome == Lookup::Failed) {
                 retries.failed(esp_timer_get_time(), service_delay);
@@ -289,10 +292,13 @@ void recognition_set_controller(bool available)
     if (show != nullptr) show(RecognitionStatus::Waiting, nullptr, nullptr);
 }
 
-void recognition_set_activity(bool active)
+int64_t recognition_last_activity_us() { return last_activity_us.load(); }
+
+void recognition_set_activity(audio_activity::State state)
 {
     std::lock_guard<std::mutex> lock(session_mutex);
-    if (!sessions.set_activity(active)) return;
+    if (state == audio_activity::State::Playing) last_activity_us.store(esp_timer_get_time());
+    if (!sessions.set_activity(state)) return;
     // Epoch change invalidates a capture/lookup spanning stopped playback.
     if (show != nullptr) show(RecognitionStatus::Waiting, nullptr, nullptr);
 }

@@ -4,6 +4,7 @@
 #include <string_view>
 
 namespace audio_activity {
+enum class State { Unknown, Quiet, Playing };
 // Consume the existing calibrated S3 visualizer diagnostics. Never infer
 // silence from amplified PCM or a failed recognition lookup.
 class Decoder {
@@ -18,8 +19,9 @@ public:
         if (!overflow_) parse({line_.data(), size_}, now);
         size_ = 0; overflow_ = false;
     }
-    bool active(int64_t now) const {
-        return active_ && known_ && now - received_ < 3000000;
+    State state(int64_t now) const {
+        if (!known_ || now - received_ >= 3000000) return State::Unknown;
+        return active_ ? State::Playing : State::Quiet;
     }
 private:
     void parse(std::string_view line, int64_t now) {

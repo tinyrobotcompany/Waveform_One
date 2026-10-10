@@ -4,6 +4,7 @@
 
 #include "control_policy.h"
 #include "usb_controller.h"
+#include "recognition.h"
 
 enum class NetworkMode {
     Unconfigured,
@@ -29,4 +30,8 @@ struct RemoteCallbacks {
 
 void network_start(const RemoteCallbacks &callbacks);
 void network_request_scan();
+void network_set_recognition(RecognitionStatus status, const RecognitionTrack *track);
+void network_set_brightness(int percent);
+void network_set_name(const char *name);
+void network_set_style(LedStyle style);
 bool network_configure_home(const control_policy::WifiNetwork &network, const char *password);
