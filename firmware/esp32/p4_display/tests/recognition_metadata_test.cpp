@@ -21,6 +21,14 @@ int main()
     assert(!check(R"({"track":{"title":"bad\ntext"}})", track));
     assert(check(R"({"track":{"title":"Björk","images":{"coverart":"https://127.0.0.1/private"}}})", track));
     assert(track.artwork_url[0] == '\0');
+    // The leading dot in the suffix requires a real DNS label boundary.
+    assert(artwork_url("https://is1-ssl.mzstatic.com/image"));
+    assert(artwork_url("https://a.b.mzstatic.com/image"));
+    assert(!artwork_url("https://evil-mzstatic.com/image"));
+    assert(!artwork_url("https://evilmzstatic.com/image"));
+    assert(!artwork_url("https://mzstatic.com.evil.test/image"));
+    // Policy permits subdomains only, not the bare root domain.
+    assert(!artwork_url("https://mzstatic.com/image"));
     assert(!artwork_url("http://is1-ssl.mzstatic.com/image"));
     assert(!artwork_url("https://is1-ssl.mzstatic.com.evil.test/image"));
     assert(!artwork_url("https://user@is1-ssl.mzstatic.com/image"));

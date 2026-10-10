@@ -44,7 +44,7 @@ int main()
     assert(!retries.due(kIntervalUs - 1) && retries.due(kIntervalUs));
     retries.failed(0);
     assert(!retries.due(60000000 - 1) && retries.due(60000000));
-    // Session changes never reset the worker's independent retry schedule.
+    // Failure cooldowns survive session changes; normal pauses may be removed.
     sessions.set_network(false, ""); sessions.set_network(true, "http://192.168.1.11/");
     assert(!retries.due(1000000));
     retries.failed(0); assert(!retries.due(120000000 - 1));
@@ -57,6 +57,33 @@ int main()
     retries.activity_changed(100); assert(retries.due(100));
     retries.failed(0, 180000000); retries.activity_changed(100);
     assert(!retries.due(179999999) && retries.due(180000000));
+    // Reproduce the worker's epoch-change branch on actual session transitions.
+    Sessions playback;
+    playback.set_network(true, "http://192.168.1.12/");
+    playback.set_controller(true); playback.set_activity(true);
+    auto observed_epoch = playback.snapshot().epoch;
+    auto observe_session_change = [&](int64_t now) {
+        const auto current = playback.snapshot();
+        if (observed_epoch != current.epoch) retries.activity_changed(now);
+        observed_epoch = current.epoch;
+    };
+    for (int transition = 0; transition < 3; ++transition) {
+        Retries fresh;
+        retries = fresh;
+        retries.failed(100, 180000000);
+        if (transition == 0) { playback.set_activity(false); playback.set_activity(true); }
+        if (transition == 1) { playback.set_network(false, ""); playback.set_network(true, "http://192.168.1.12/"); }
+        if (transition == 2) { playback.set_controller(false); playback.set_controller(true); }
+        observe_session_change(200);
+        assert(!retries.due(180000099) && retries.due(180000100));
+        // Only after the failure deadline may the worker start and succeed.
+        retries.begin(180000100);
+        retries.succeeded(180000200, true);
+        assert(!retries.due(180000201));
+        playback.set_activity(false); playback.set_activity(true);
+        observe_session_change(180000300);
+        assert(retries.due(180000300));
+    }
     assert(retry_after("Sat, 10 Oct 2026 12:03:00 GMT", 1791633600) == 180000000);
     assert(retry_after("Sat, 31 Feb 2026 12:00:00 GMT", 1) == 0);
     assert(retry_after("Sun, 29 Feb 2026 12:00:00 GMT", 1) == 0);
