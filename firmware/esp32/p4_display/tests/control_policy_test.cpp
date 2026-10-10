@@ -35,6 +35,11 @@ int main()
     assert(!valid_browser_time(1800000301LL, 1800000000LL));
     assert(!valid_browser_time(4102444800LL, 1800000000LL));
 
+    assert(valid_http_host("192.168.1.20", "192.168.1.20"));
+    assert(valid_http_host("192.168.1.20:80", "192.168.1.20"));
+    assert(!valid_http_host("", "192.168.1.20"));
+    assert(!valid_http_host("evil.example", "192.168.1.20"));
+    assert(!valid_http_host("192.168.1.20:8080", "192.168.1.20"));
     assert(same_http_origin("192.168.1.20", "http://192.168.1.20", "192.168.1.20"));
     assert(same_http_origin("192.168.1.20:80", "http://192.168.1.20", "192.168.1.20"));
     assert(same_http_origin("192.168.1.20:80", "http://192.168.1.20:80", "192.168.1.20"));

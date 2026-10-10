@@ -88,14 +88,19 @@ inline bool valid_browser_time(int64_t proposed, int64_t current)
     return difference <= kMaximumCorrection;
 }
 
+inline bool valid_http_host(std::string_view host, std::string_view expected_host)
+{
+    if (expected_host.empty()) return false;
+    return host == expected_host ||
+           (host.size() == expected_host.size() + 3 &&
+            host.substr(0, expected_host.size()) == expected_host &&
+            host.substr(expected_host.size()) == ":80");
+}
+
 inline bool same_http_origin(std::string_view host, std::string_view origin,
                              std::string_view expected_host)
 {
-    if (expected_host.empty()) return false;
-    const bool valid_host = host == expected_host ||
-                            (host.size() == expected_host.size() + 3 &&
-                             host.substr(0, expected_host.size()) == expected_host &&
-                             host.substr(expected_host.size()) == ":80");
+    const bool valid_host = valid_http_host(host, expected_host);
     const std::string expected_origin = std::string("http://") + std::string(expected_host);
     const bool valid_origin = origin == expected_origin ||
                               (origin.size() == expected_origin.size() + 3 &&

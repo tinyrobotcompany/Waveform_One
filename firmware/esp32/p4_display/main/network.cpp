@@ -131,8 +131,13 @@ esp_err_t service_unavailable(httpd_req_t *request, const char *message)
     return httpd_resp_sendstr(request, message);
 }
 
+bool request_host_valid(httpd_req_t *request);
+
 esp_err_t page_handler(httpd_req_t *request)
 {
+    if (!request_host_valid(request)) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid host");
+    }
     httpd_resp_set_type(request, "text/html");
     return httpd_resp_send(request, kPage, HTTPD_RESP_USE_STRLEN);
 }
@@ -230,10 +235,7 @@ bool request_host_valid(httpd_req_t *request)
 {
     char host[32]{};
     if (!request_header(request, "Host", host, sizeof(host))) return false;
-    return std::string_view(host) == station_host ||
-           (std::string_view(host).size() == std::strlen(station_host) + 3 &&
-            std::string_view(host).substr(0, std::strlen(station_host)) == station_host &&
-            std::string_view(host).substr(std::strlen(station_host)) == ":80");
+    return control_policy::valid_http_host(host, station_host);
 }
 
 bool request_same_origin(httpd_req_t *request)
