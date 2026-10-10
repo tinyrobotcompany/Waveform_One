@@ -2,6 +2,7 @@
 #include "recognition_metadata.h"
 #include "recognition_policy.h"
 #include "audio_capture.h"
+#include "capture_completion.h"
 #include "fingerprint.h"
 #include "usb_controller.h"
 
@@ -23,7 +24,6 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
 #include "freertos/task.h"
 
 namespace {
@@ -40,8 +40,7 @@ std::mutex session_mutex;
 recognition_policy::Sessions sessions;
 RecognitionCallback show = nullptr;
 
-struct Clip { AudioCaptureStatus status; uint8_t *pcm; };
-QueueHandle_t clips = nullptr;
+capture_completion::Mailbox clips(heap_caps_free);
 
 Session session()
 {
@@ -56,10 +55,9 @@ void publish(uint64_t expected_epoch, RecognitionStatus status,
     if (expected_epoch == sessions.snapshot().epoch && show != nullptr) show(status, track, artwork);
 }
 
-void captured(AudioCaptureStatus status, uint8_t *pcm, size_t)
+void captured(AudioCaptureStatus status, uint8_t *pcm, size_t, uint64_t capture_id)
 {
-    Clip clip{status, pcm};
-    if (xQueueSend(clips, &clip, 0) != pdTRUE) heap_caps_free(pcm);
+    clips.complete(capture_id, status, pcm);
 }
 
 struct Response {
@@ -251,18 +249,31 @@ void recognition_task(void *)
             vTaskDelay(pdMS_TO_TICKS(1000)); continue;
         }
         retries.begin(now);
-        const auto queued = usb_controller_capture(captured);
+        const uint64_t capture_id = clips.begin();
+        const int64_t capture_deadline = esp_timer_get_time()
+            + (audio_capture::kTimeoutMs + 2000) * 1000LL;
+        const auto queued = usb_controller_capture(captured, capture_id);
         if (queued != AudioCaptureRequestResult::Queued) {
+            clips.cancel(capture_id);
             publish(start.epoch, RecognitionStatus::Unavailable, has_track ? &track : nullptr,
                 image.pixels ? &picture : nullptr);
             vTaskDelay(pdMS_TO_TICKS(1000)); continue;
         }
         publish(start.epoch, RecognitionStatus::Capturing, has_track ? &track : nullptr,
             image.pixels ? &picture : nullptr);
-        Clip clip{};
-        // One request in flight. Always consume its completion and release PCM,
-        // even after an epoch change. The controller enforces the capture deadline.
-        while (xQueueReceive(clips, &clip, pdMS_TO_TICKS(1000)) != pdTRUE) {}
+        capture_completion::Clip clip{};
+        const auto completion = capture_completion::wait(clips, capture_id, start.epoch,
+            capture_deadline, clip, esp_timer_get_time, [] { return session().epoch; },
+            [] { vTaskDelay(pdMS_TO_TICKS(100)); });
+        if (completion == capture_completion::WaitResult::Cancelled) continue;
+        if (completion == capture_completion::WaitResult::TimedOut) {
+            ESP_LOGW(kTag, "Audio capture completion timed out");
+            retries.failed(esp_timer_get_time());
+            last_status = RecognitionStatus::Unavailable;
+            publish(start.epoch, last_status, has_track ? &track : nullptr,
+                image.pixels ? &picture : nullptr);
+            continue;
+        }
         Heap<uint8_t> pcm(clip.pcm);
         if (session().epoch != start.epoch) continue;
         Lookup outcome = Lookup::Failed;
@@ -337,8 +348,6 @@ void recognition_start(RecognitionCallback callback)
         std::lock_guard<std::mutex> lock(session_mutex);
         show = callback;
     }
-    clips = xQueueCreate(1, sizeof(Clip));
-    ESP_ERROR_CHECK(clips != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreatePinnedToCore(recognition_task, "recognition", 24576,
         nullptr, 4, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }

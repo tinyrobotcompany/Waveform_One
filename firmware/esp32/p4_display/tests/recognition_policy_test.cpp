@@ -58,6 +58,15 @@ int main()
     retries.failed(0, 180000000); retries.activity_changed(100);
     assert(!retries.due(179999999) && retries.due(180000000));
     assert(retry_after("Sat, 10 Oct 2026 12:03:00 GMT", 1791633600) == 180000000);
+    assert(retry_after("Sat, 31 Feb 2026 12:00:00 GMT", 1) == 0);
+    assert(retry_after("Sun, 29 Feb 2026 12:00:00 GMT", 1) == 0);
+    assert(retry_after("Fri, 31 Apr 2026 12:00:00 GMT", 1) == 0);
+    assert(retry_after("Sat, 00 Oct 2026 12:00:00 GMT", 1) == 0);
+    assert(retry_after("Sat, 10 Oct 2026 24:00:00 GMT", 1) == 0);
+    assert(retry_after("Sat, 10 Oct 2026 12:60:00 GMT", 1) == 0);
+    assert(retry_after("Sat, 10 Oct 2026 12:00:60 GMT", 1) == 0);
+    assert(retry_after("Thu, 29 Feb 2024 12:00:00 GMT", 1709207940) == 60000000);
+    assert(retry_after("Mon, 29 Feb 2100 12:00:00 GMT", 1) == 0);
     assert(retry_after("180") == 180000000);
     assert(retry_after("0") == 0 && retry_after("invalid") == 0);
     assert(retry_after("9999999999999999999999999999999") == 0);

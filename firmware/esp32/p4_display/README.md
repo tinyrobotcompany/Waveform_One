@@ -15,7 +15,9 @@ protocol.
 
 After Wi-Fi, clock synchronization, the S3 USB connection and calibrated audio activity are ready, a
 background task captures an eight-second microphone clip over the existing WF1
-protocol. It validates packet order and checksums, generates a Shazam fingerprint
+protocol. The worker bounds the completion wait to 17 seconds and cancels it
+on session changes; capture IDs prevent late callbacks completing a newer clip.
+It validates packet order and checksums, generates a Shazam fingerprint
 locally and sends only the fingerprint over verified HTTPS. Track, artist, album
 and downloaded artwork replace the listening screen when a match is returned.
 No Python or Raspberry Pi is involved, and microphone recordings are not saved.

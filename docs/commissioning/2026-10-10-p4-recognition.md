@@ -145,6 +145,27 @@ seconds after playback stopped, and identified the second song about six seconds
 after it started. These are user-observed wall-clock timings, separate from the
 serial measurements above and the fixed eight-second capture duration.
 
+## PR review hardening
+
+The recognition worker now waits at most 17 seconds (the controller's 15-second
+capture limit plus a two-second margin), checking session changes every 100 ms.
+A timeout publishes unavailable status and schedules failure backoff. A session
+change abandons that wait immediately. A capture-ID mailbox replaces the
+one-item completion queue: pending PCM has explicit ownership, stale/duplicate
+callbacks are freed, and a late callback cannot complete a newer request.
+The USB adapter returns the caller's capture ID on every completion path.
+
+Regression tests execute the production wait/mailbox code for lost callbacks,
+timeout recovery, session cancellation, pending and late completions, duplicate
+callbacks, stale-slot cleanup, and concurrent callback/cancellation. The adapter
+tests also verify capture IDs on success and failure. Retry-After tests now
+reject impossible calendar dates, invalid clock fields and non-leap February
+29 while accepting a valid leap day.
+
+Firmware host tests with ASan/UBSan and the ESP-IDF 6.1 P4 build passed for these
+review fixes. These fixes have not yet been flashed; the user-confirmed playback
+timings above refer to the previously commissioned application.
+
 ## Remaining hardware acceptance
 
 1. Confirm the revised layout is readable for long title, artist and album text.

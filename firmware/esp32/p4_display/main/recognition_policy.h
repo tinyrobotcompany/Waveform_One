@@ -63,11 +63,15 @@ inline int64_t retry_after(std::string_view value, int64_t epoch = 0)
     const char *end = strptime(text.c_str(), "%a, %d %b %Y %H:%M:%S GMT", &date);
     if (end == nullptr || *end != '\0') return 0;
     const int year = date.tm_year + 1900;
-    if (year < 1970 || year > 2100) return 0;
+    if (year < 1970 || year > 2100 || date.tm_mon < 0 || date.tm_mon >= 12
+        || date.tm_hour < 0 || date.tm_hour > 23 || date.tm_min < 0 || date.tm_min > 59
+        || date.tm_sec < 0 || date.tm_sec > 59) return 0;
     const auto leap = [](int y) { return y % 4 == 0 && (y % 100 != 0 || y % 400 == 0); };
     int64_t days = 0;
     for (int y = 1970; y < year; ++y) days += 365 + leap(y);
     constexpr int months[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+    const int month_days = months[date.tm_mon] + (date.tm_mon == 1 && leap(year));
+    if (date.tm_mday < 1 || date.tm_mday > month_days) return 0;
     for (int m = 0; m < date.tm_mon; ++m) days += months[m] + (m == 1 && leap(year));
     const int64_t requested = (days + date.tm_mday - 1) * 86400
         + date.tm_hour * 3600 + date.tm_min * 60 + date.tm_sec;

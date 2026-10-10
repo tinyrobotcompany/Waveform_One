@@ -33,6 +33,7 @@ struct Event {
     wf1::Reply reply{};
     LedStyle style = LedStyle::Mirrored;
     AudioCaptureCallback capture_callback = nullptr;
+    uint64_t capture_id = 0;
     unsigned generation = 0;
 };
 
@@ -51,6 +52,7 @@ AudioActivityCallback report_activity = nullptr;
 bool activity_reported = false;
 uint8_t *capture_buffer = nullptr;
 AudioCaptureCallback capture_callback = nullptr;
+uint64_t capture_id = 0;
 int64_t capture_deadline = 0;
 std::atomic_bool capture_reserved{false};
 std::atomic_bool disconnect_pending{false};
@@ -212,12 +214,13 @@ void finish_capture(AudioCaptureStatus status)
         heap_caps_free(pcm);
         pcm = nullptr;
     }
-    if (callback != nullptr) callback(status, pcm, pcm != nullptr ? audio_capture::kBytes : 0);
+    if (callback != nullptr) callback(status, pcm, pcm != nullptr ? audio_capture::kBytes : 0, capture_id);
 }
 
-void start_capture(AudioCaptureCallback callback, unsigned generation)
+void start_capture(AudioCaptureCallback callback, unsigned generation, uint64_t id)
 {
     capture_callback = callback;
+    capture_id = id;
     if (controller == nullptr || generation != controller_generation.load()) {
         finish_capture(AudioCaptureStatus::Disconnected); return;
     }
@@ -318,7 +321,7 @@ void process_event(const Event &event)
         send_style(event.style);
         break;
     case EventType::Capture:
-        start_capture(event.capture_callback, event.generation);
+        start_capture(event.capture_callback, event.generation, event.capture_id);
         break;
     }
 }
@@ -377,7 +380,7 @@ StyleRequestResult usb_controller_set_style(LedStyle style)
     return enqueue_style(style);
 }
 
-AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback)
+AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback, uint64_t id)
 {
     if (events == nullptr || callback == nullptr) return AudioCaptureRequestResult::Unavailable;
     const unsigned generation = controller_generation.load();
@@ -387,6 +390,7 @@ AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback)
     Event event{};
     event.type = EventType::Capture;
     event.capture_callback = callback;
+    event.capture_id = id;
     event.generation = generation;
     if (xQueueSend(events, &event, 0) != pdTRUE) {
         capture_reserved.store(false);

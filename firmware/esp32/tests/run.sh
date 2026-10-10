@@ -81,6 +81,13 @@ printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disc
 "$build_dir/p4_fingerprint"
 printf '%s\n' 'PASS: native fingerprints against upstream reference and binary encoding'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/capture_completion_test.cpp" -o "$build_dir/p4_completion"
+"$build_dir/p4_completion"
+printf '%s\n' 'PASS: recognition completion deadlines, cancellation, stale callbacks and PCM ownership'
+
 "${CC:-cc}" -std=c99 -Wall -Wextra -Werror -Wno-deprecated-declarations -DCJSON_NESTING_LIMIT=32 \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/third_party" \

@@ -14,7 +14,8 @@ unsigned activity_updates = 0;
 bool music_active = false;
 void activity_status(bool active) { ++activity_updates; music_active = active; }
 void controller_status(LedControllerState) { ++state_updates; }
-void completed(AudioCaptureStatus status, uint8_t *pcm, size_t bytes) {
+void completed(AudioCaptureStatus status, uint8_t *pcm, size_t bytes, uint64_t capture_id) {
+    assert(capture_id == 1234);
     ++completions; last_status = status; completed_pcm = pcm; completed_bytes = bytes;
 }
 void receive(std::string_view text) {
@@ -22,8 +23,8 @@ void receive(std::string_view text) {
 }
 void drain() { Event event{}; while (xQueueReceive(events, &event, 0) == pdTRUE) process_event(event); }
 unsigned begin() {
-    assert(usb_controller_capture(completed) == AudioCaptureRequestResult::Queued);
-    assert(usb_controller_capture(completed) == AudioCaptureRequestResult::Busy);
+    assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Queued);
+    assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Busy);
     drain(); return request_id;
 }
 void failed(AudioCaptureStatus expected) {
@@ -34,10 +35,10 @@ void failed(AudioCaptureStatus expected) {
 
 int main()
 {
-    assert(usb_controller_capture(completed) == AudioCaptureRequestResult::Unavailable);
+    assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Unavailable);
     usb_controller_start(controller_status, activity_status);
     assert(usb_controller_capture(nullptr) == AudioCaptureRequestResult::Unavailable);
-    assert(usb_controller_capture(completed) == AudioCaptureRequestResult::Disconnected);
+    assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Disconnected);
     open_controller(0x303a, 0x1001);
     // Existing S3 diagnostics drive recognition without changing its firmware.
     receive("BEAT OPEN RMS=0.01 GATE_RMS=0.01 DISPLAY=BARS BANDS=8 |123|\n");
@@ -102,7 +103,7 @@ int main()
 
     // A capture accepted on a previous USB session must not start on a new S3.
     open_controller(0x303a, 0x1001); poll_activity(); assert(!music_active);
-    assert(usb_controller_capture(completed) == AudioCaptureRequestResult::Queued);
+    assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Queued);
     test_cdc_config.event_cb(&disconnected, nullptr); poll_disconnect();
     open_controller(0x303a, 0x1001); drain(); failed(AudioCaptureStatus::Disconnected);
     const unsigned current_updates = state_updates;
@@ -112,13 +113,13 @@ int main()
 
     event.type = EventType::SetStyle;
     for (unsigned i = 0; i < 8; ++i) assert(xQueueSend(events, &event, 0) == pdTRUE);
-    assert(usb_controller_capture(completed) == AudioCaptureRequestResult::QueueFull);
+    assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::QueueFull);
     assert(!capture_reserved.load()); drain();
 
     std::atomic_uint accepted{0};
     std::vector<std::thread> callers;
     for (unsigned i = 0; i < 16; ++i) callers.emplace_back([&] {
-        if (usb_controller_capture(completed) == AudioCaptureRequestResult::Queued) ++accepted;
+        if (usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Queued) ++accepted;
     });
     for (auto &caller : callers) caller.join();
     assert(accepted == 1); drain();
