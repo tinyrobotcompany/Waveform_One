@@ -36,6 +36,37 @@ int main()
     assert(valid_wifi_password("", true));
     assert(!valid_wifi_password("password", true));
 
+    uint8_t credentials[kWifiCredentialsCapacity]{};
+    std::size_t credentials_size = 0;
+    std::string saved_ssid;
+    std::string saved_password;
+    assert(encode_wifi_credentials("Home", "correct horse", credentials, credentials_size));
+    assert(decode_wifi_credentials(credentials, credentials_size, saved_ssid, saved_password));
+    assert(saved_ssid == "Home" && saved_password == "correct horse");
+    assert(encode_wifi_credentials("Cafe", "", credentials, credentials_size));
+    assert(decode_wifi_credentials(credentials, credentials_size, saved_ssid, saved_password));
+    assert(saved_ssid == "Cafe" && saved_password.empty());
+    assert(encode_wifi_credentials(std::string(32, 's'), std::string(64, 'a'), credentials,
+                                   credentials_size));
+    assert(credentials_size == kWifiCredentialsCapacity);
+    assert(decode_wifi_credentials(credentials, credentials_size, saved_ssid, saved_password));
+    assert(!encode_wifi_credentials("", "password", credentials, credentials_size));
+    assert(!encode_wifi_credentials(std::string(33, 's'), "", credentials, credentials_size));
+    assert(!encode_wifi_credentials("Home", std::string(65, 'a'), credentials,
+                                    credentials_size));
+    assert(!encode_wifi_credentials(std::string_view("Ho\0me", 5), "password", credentials,
+                                    credentials_size));
+    assert(encode_wifi_credentials("Home", "password", credentials, credentials_size));
+    assert(!decode_wifi_credentials(credentials, credentials_size - 1, saved_ssid,
+                                    saved_password));
+    assert(!decode_wifi_credentials(credentials, 0, saved_ssid, saved_password));
+    const uint8_t empty_ssid[] = {0, 0};
+    const uint8_t overlong_ssid[] = {40, 'a'};
+    assert(!decode_wifi_credentials(empty_ssid, sizeof(empty_ssid), saved_ssid,
+                                    saved_password));
+    assert(!decode_wifi_credentials(overlong_ssid, sizeof(overlong_ssid), saved_ssid,
+                                    saved_password));
+
     assert(valid_browser_time(1800000000LL, 0));
     assert(valid_browser_time(1800000300LL, 1800000000LL));
     assert(!valid_browser_time(1800000301LL, 1800000000LL));

@@ -173,13 +173,30 @@ esp_err_t page_handler(httpd_req_t *request)
     return httpd_resp_send(request, kPage, HTTPD_RESP_USE_STRLEN);
 }
 
+constexpr char kWifiKey[] = "wifi";
+// Earlier builds stored the SSID and password under two keys.
+constexpr char kLegacySsidKey[] = "wifi_ssid";
+constexpr char kLegacyPasswordKey[] = "wifi_pass";
+
+void erase_legacy_wifi(nvs_handle_t handle)
+{
+    nvs_erase_key(handle, kLegacySsidKey);
+    nvs_erase_key(handle, kLegacyPasswordKey);
+    nvs_commit(handle);
+}
+
+// Replaces the saved network in one atomic NVS write. On failure the previous
+// network remains saved intact.
 bool save_wifi(const std::string &ssid, const std::string &password)
 {
+    uint8_t blob[control_policy::kWifiCredentialsCapacity]{};
+    std::size_t size = 0;
+    if (!control_policy::encode_wifi_credentials(ssid, password, blob, size)) return false;
     nvs_handle_t handle{};
     if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return false;
-    esp_err_t result = nvs_set_str(handle, "wifi_ssid", ssid.c_str());
-    if (result == ESP_OK) result = nvs_set_str(handle, "wifi_pass", password.c_str());
+    esp_err_t result = nvs_set_blob(handle, kWifiKey, blob, size);
     if (result == ESP_OK) result = nvs_commit(handle);
+    if (result == ESP_OK) erase_legacy_wifi(handle);
     nvs_close(handle);
     return result == ESP_OK;
 }
@@ -188,30 +205,50 @@ bool clear_wifi()
 {
     nvs_handle_t handle{};
     if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return false;
-    esp_err_t result = nvs_erase_key(handle, "wifi_ssid");
-    if (result == ESP_OK || result == ESP_ERR_NVS_NOT_FOUND) {
-        result = nvs_erase_key(handle, "wifi_pass");
-    }
-    if (result == ESP_OK || result == ESP_ERR_NVS_NOT_FOUND) result = nvs_commit(handle);
+    esp_err_t result = nvs_erase_key(handle, kWifiKey);
+    if (result == ESP_ERR_NVS_NOT_FOUND) result = ESP_OK;
+    if (result == ESP_OK) result = nvs_commit(handle);
+    erase_legacy_wifi(handle);
     nvs_close(handle);
     return result == ESP_OK;
+}
+
+bool load_legacy_wifi(nvs_handle_t handle, std::string &ssid, std::string &password)
+{
+    char ssid_buffer[33]{};
+    char password_buffer[65]{};
+    size_t ssid_size = sizeof(ssid_buffer);
+    size_t password_size = sizeof(password_buffer);
+    if (nvs_get_str(handle, kLegacySsidKey, ssid_buffer, &ssid_size) != ESP_OK ||
+        nvs_get_str(handle, kLegacyPasswordKey, password_buffer, &password_size) != ESP_OK ||
+        ssid_buffer[0] == '\0') {
+        return false;
+    }
+    ssid = ssid_buffer;
+    password = password_buffer;
+    return true;
 }
 
 bool load_wifi(std::string &ssid, std::string &password)
 {
     nvs_handle_t handle{};
     if (nvs_open("waveform", NVS_READONLY, &handle) != ESP_OK) return false;
-    char ssid_buffer[33]{};
-    char password_buffer[65]{};
-    size_t ssid_size = sizeof(ssid_buffer);
-    size_t password_size = sizeof(password_buffer);
-    const esp_err_t ssid_result = nvs_get_str(handle, "wifi_ssid", ssid_buffer, &ssid_size);
-    const esp_err_t password_result = nvs_get_str(handle, "wifi_pass", password_buffer, &password_size);
+    uint8_t blob[control_policy::kWifiCredentialsCapacity]{};
+    size_t size = sizeof(blob);
+    const esp_err_t result = nvs_get_blob(handle, kWifiKey, blob, &size);
+    bool loaded = false;
+    bool legacy = false;
+    if (result == ESP_OK) {
+        loaded = control_policy::decode_wifi_credentials(blob, size, ssid, password);
+    } else if (result == ESP_ERR_NVS_NOT_FOUND) {
+        loaded = legacy = load_legacy_wifi(handle, ssid, password);
+    }
     nvs_close(handle);
-    if (ssid_result != ESP_OK || password_result != ESP_OK || ssid_buffer[0] == '\0') return false;
-    ssid = ssid_buffer;
-    password = password_buffer;
-    return true;
+    // Move credentials from the two-key layout into the atomic one.
+    if (legacy && !save_wifi(ssid, password)) {
+        ESP_LOGW(kTag, "Could not migrate saved Wi-Fi to the current format");
+    }
+    return loaded;
 }
 
 // Serializes reading the remote state with showing it, so a slower caller can
@@ -637,8 +674,8 @@ struct CandidateWifi {
 void configure_home_task(void *context)
 {
     auto *candidate = static_cast<CandidateWifi *>(context);
-    // NVS writes are not atomic across keys, so keep the previous network in RAM
-    // to restore it if persisting the new one fails part-way.
+    // A failed save leaves the previous network saved intact; this copy lets the
+    // P4 rejoin it without re-reading storage that just failed.
     std::string previous_ssid;
     std::string previous_password;
     const bool had_previous = load_wifi(previous_ssid, previous_password);
@@ -657,11 +694,8 @@ void configure_home_task(void *context)
         }
     } else {
         if (connected) {
-            ESP_LOGE(kTag, "Could not save the new Wi-Fi network; restoring the previous one");
+            ESP_LOGE(kTag, "Could not save the new Wi-Fi network; keeping the previous one");
             ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
-            if (had_previous ? !save_wifi(previous_ssid, previous_password) : !clear_wifi()) {
-                ESP_LOGE(kTag, "Could not restore saved Wi-Fi; it is kept in RAM until reboot");
-            }
         }
         if (had_previous) resume_saved_wifi(previous_ssid, previous_password);
         else start_unconfigured_wifi();

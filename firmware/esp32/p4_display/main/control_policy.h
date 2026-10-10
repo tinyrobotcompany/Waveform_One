@@ -88,6 +88,48 @@ inline bool valid_wifi_password(std::string_view password, bool open)
     return true;
 }
 
+// Saved Wi-Fi credentials are one NVS blob, [ssid length][ssid][password
+// length][password], because NVS replaces a single key atomically but not a
+// pair of keys.
+constexpr std::size_t kWifiCredentialsCapacity = 1 + 32 + 1 + 64;
+
+inline bool encode_wifi_credentials(std::string_view ssid, std::string_view password,
+                                    uint8_t (&output)[kWifiCredentialsCapacity],
+                                    std::size_t &size)
+{
+    if (ssid.empty() || ssid.size() > 32 || password.size() > 64 ||
+        ssid.find('\0') != std::string_view::npos ||
+        password.find('\0') != std::string_view::npos) {
+        return false;
+    }
+    output[0] = static_cast<uint8_t>(ssid.size());
+    std::memcpy(output + 1, ssid.data(), ssid.size());
+    output[1 + ssid.size()] = static_cast<uint8_t>(password.size());
+    std::memcpy(output + 2 + ssid.size(), password.data(), password.size());
+    size = 2 + ssid.size() + password.size();
+    return true;
+}
+
+inline bool decode_wifi_credentials(const uint8_t *input, std::size_t size, std::string &ssid,
+                                    std::string &password)
+{
+    if (input == nullptr || size < 2) return false;
+    const std::size_t ssid_size = input[0];
+    if (ssid_size == 0 || ssid_size > 32 || size < 2 + ssid_size) return false;
+    const std::size_t password_size = input[1 + ssid_size];
+    if (password_size > 64 || size != 2 + ssid_size + password_size) return false;
+    const std::string_view decoded_ssid(reinterpret_cast<const char *>(input + 1), ssid_size);
+    const std::string_view decoded_password(
+        reinterpret_cast<const char *>(input + 2 + ssid_size), password_size);
+    if (decoded_ssid.find('\0') != std::string_view::npos ||
+        decoded_password.find('\0') != std::string_view::npos) {
+        return false;
+    }
+    ssid = decoded_ssid;
+    password = decoded_password;
+    return true;
+}
+
 inline bool valid_browser_time(int64_t proposed, int64_t current)
 {
     constexpr int64_t kMinimum = 1700000000LL;

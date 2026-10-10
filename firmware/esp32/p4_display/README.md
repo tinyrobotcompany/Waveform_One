@@ -18,8 +18,9 @@ Open **Settings** on the touchscreen, select the user's home network, enter its
 password with the on-screen keyboard and press **Connect**. The P4 first joins
 the network in the current session and stores the credentials only after it has
 received an IP address. A bad password remains editable on screen and is never
-committed to nonvolatile storage. If saving a newly joined network fails, the
-previous network is restored and rejoined. Saved credentials are removed only when the
+committed to nonvolatile storage. The network name and password are saved
+together as one storage entry, which is replaced atomically, so a failed or
+interrupted save leaves the previous network intact and the P4 rejoins it. Saved credentials are removed only when the
 network explicitly rejects them. If the saved network is merely unreachable, for
 example while the router restarts after a power cut, the P4 keeps the
 credentials, shows "Reconnecting" and retries every 15 seconds. It also rejoins
