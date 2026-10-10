@@ -11,6 +11,33 @@ flash and PSRAM identity, and acts as a USB CDC host for the existing S3. After
 the S3 connects, it requests and verifies Mirrored mode through the WF1
 protocol.
 
+## Native music recognition
+
+After Wi-Fi, clock synchronization, the S3 USB connection and calibrated audio activity are ready, a
+background task captures an eight-second microphone clip over the existing WF1
+protocol. The worker bounds the completion wait to 17 seconds and cancels it
+on session changes; capture IDs prevent late callbacks completing a newer clip.
+It validates packet order and checksums, generates a Shazam fingerprint
+locally and sends only the fingerprint over verified HTTPS. Track, artist, album
+and downloaded artwork replace the listening screen when a match is returned.
+No Python or Raspberry Pi is involved, and microphone recordings are not saved.
+
+Matched attempts wait 30 seconds; misses wait 15 seconds. A playback stop/start
+removes that normal wait, so a new song can be captured promptly. Failures use
+capped backoff and honor service Retry-After; playback changes cannot bypass it.
+Capture enqueue failures also back off. Busy retries have a 17-second grace
+window for an outstanding capture, then back off if the controller stays busy. Three consecutive quiet S3 reports (about 1.5 seconds) clear the
+track and invalidate in-flight lookups. Missing reports for three seconds also
+clear it. Artwork survives temporary misses during active playback for up to
+90 seconds. Wi-Fi
+and S3 connection changes discard in-flight results and clear previous metadata;
+phone QR rotation does not. LED controls continue on the shared USB connection.
+
+The upstream reference-song check succeeded on a Mac using the native
+fingerprint implementation. Initial P4 microphone-to-screen matches and artwork were verified; stop/start
+and prolonged playback acceptance are being completed; see [development evidence and hardware checklist](../../../docs/commissioning/2026-10-10-p4-recognition.md).
+Shazam remains an unofficial no-subscription dependency, as in the Pi prototype.
+
 ## Phone remote and Wi-Fi setup
 
 The ESP32-C6 radio on the Waveshare board is controlled by the P4 over SDIO.

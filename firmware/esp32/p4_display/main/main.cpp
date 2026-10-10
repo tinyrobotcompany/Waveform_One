@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <cinttypes>
 #include <cstdio>
@@ -15,8 +16,12 @@
 #include "esp_log.h"
 #include "esp_psram.h"
 #include "esp_system.h"
+#include "esp_timer.h"
 #include "lvgl.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
 #include "network.h"
+#include "recognition.h"
+#include "recognition_policy.h"
 #include "usb_controller.h"
 
 namespace {
@@ -35,6 +40,12 @@ lv_obj_t *eyebrow = nullptr;
 lv_obj_t *headline = nullptr;
 lv_obj_t *artist = nullptr;
 lv_obj_t *album = nullptr;
+lv_obj_t *recognition_status = nullptr;
+lv_obj_t *artwork_image = nullptr;
+lv_image_dsc_t artwork_descriptor{};
+uint8_t *artwork_pixels = nullptr;
+const uint8_t *artwork_source = nullptr;
+RecognitionTrack displayed_track{};
 lv_obj_t *settings_panel = nullptr;
 lv_obj_t *brightness_label = nullptr;
 lv_obj_t *brightness_slider = nullptr;
@@ -62,6 +73,19 @@ lv_obj_t *style_buttons[3]{};
 control_policy::WifiNetworkList wifi_networks{};
 bool wifi_connecting = false;
 std::atomic_int current_brightness{100};
+
+void clear_recognition_track()
+{
+    lv_label_set_text(headline, "Listening for music");
+    lv_label_set_text(artist, "Play a song to bring this screen to life.");
+    lv_label_set_text(album, "");
+    lv_obj_add_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
+    lv_image_cache_drop(&artwork_descriptor);
+    heap_caps_free(artwork_pixels);
+    artwork_descriptor = {};
+    artwork_pixels = nullptr; artwork_source = nullptr; displayed_track = {};
+}
 
 void log_board_identity()
 {
@@ -264,6 +288,11 @@ void remote_set_time(std::time_t epoch)
 
 void update_clock(lv_timer_t *)
 {
+    if (displayed_track.title[0] != '\0'
+        && recognition_policy::expired(displayed_track.matched_at_us, esp_timer_get_time())) {
+        clear_recognition_track();
+        lv_label_set_text(recognition_status, "Listening");
+    }
     const std::time_t now = std::time(nullptr);
     if (now < 1700000000) return;
     tm local{};
@@ -273,6 +302,8 @@ void update_clock(lv_timer_t *)
 
 void update_controller_status(LedControllerState state)
 {
+    recognition_set_controller(state == LedControllerState::ConnectedClassic
+        || state == LedControllerState::ConnectedMirrored || state == LedControllerState::ConnectedWaterfall);
     const char *text = "waiting for USB";
     switch (state) {
     case LedControllerState::Waiting:
@@ -312,6 +343,7 @@ void update_controller_status(LedControllerState state)
 
 void remote_set_network(NetworkMode mode, const char *address)
 {
+    recognition_set_network(mode == NetworkMode::HomeWifi, address);
     if (!bsp_display_lock(1000)) return;
     if (mode == NetworkMode::Unconfigured) {
         lv_obj_set_style_text_color(wifi_indicator, kMuted, 0);
@@ -461,41 +493,44 @@ void create_product_screen()
     lv_obj_clear_flag(information, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(information, LV_ALIGN_TOP_RIGHT, -42, 98);
 
-    eyebrow = make_label(information, "NOW PLAYING", &lv_font_montserrat_16, kAccent);
-    lv_obj_align(eyebrow, LV_ALIGN_TOP_LEFT, 0, 14);
+    lv_obj_set_style_pad_all(information, 0, 0);
+    lv_obj_set_style_pad_top(information, 14, 0);
+    lv_obj_set_style_pad_row(information, 12, 0);
+    lv_obj_set_flex_flow(information, LV_FLEX_FLOW_COLUMN);
 
-    headline = make_label(information, "Listening for music", &lv_font_montserrat_48, kForeground);
+    eyebrow = make_label(information, "NOW PLAYING", &lv_font_montserrat_16, kAccent);
+
+
+    headline = make_label(information, "Listening for music", &lv_font_montserrat_32, kForeground);
     lv_obj_set_width(headline, 490);
-    lv_label_set_long_mode(headline, LV_LABEL_LONG_WRAP);
-    lv_obj_align(headline, LV_ALIGN_TOP_LEFT, 0, 65);
+    lv_label_set_long_mode(headline, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(headline, 128, 0);
+
 
     artist = make_label(information, "Play a song to bring this screen to life.",
                         &lv_font_montserrat_24, kForeground);
     lv_obj_set_width(artist, 490);
-    lv_label_set_long_mode(artist, LV_LABEL_LONG_WRAP);
-    lv_obj_align(artist, LV_ALIGN_TOP_LEFT, 2, 155);
+    lv_label_set_long_mode(artist, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(artist, 60, 0);
 
-    album = make_label(information, "Track, artist and album will appear here.",
+
+    album = make_label(information, "",
                        &lv_font_montserrat_20, kMuted);
     lv_obj_set_width(album, 490);
-    lv_label_set_long_mode(album, LV_LABEL_LONG_WRAP);
-    lv_obj_align(album, LV_ALIGN_TOP_LEFT, 2, 205);
+    lv_label_set_long_mode(album, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(album, 48, 0);
 
-    lv_obj_t *recognition = make_label(information,
-        "Recognition: waiting for the network milestone",
+
+    recognition_status = make_label(information,
+        "Listening",
         &lv_font_montserrat_16, kMuted);
-    lv_obj_align(recognition, LV_ALIGN_BOTTOM_LEFT, 2, -28);
-
-    lv_obj_t *footer_rule = lv_obj_create(screen);
-    lv_obj_set_size(footer_rule, 940, 2);
-    lv_obj_set_style_border_width(footer_rule, 0, 0);
-    lv_obj_set_style_bg_color(footer_rule, kLine, 0);
-    lv_obj_align(footer_rule, LV_ALIGN_BOTTOM_MID, 0, -76);
-
-    lv_obj_t *footer = make_label(
-        screen, "Native ESP32-P4 interface  /  Recognition service: next milestone",
-        &lv_font_montserrat_16, kMuted);
-    lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, 42, -32);
+    lv_obj_add_flag(recognition_status, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_align(recognition_status, LV_ALIGN_BOTTOM_LEFT, 2, -28);
+    lv_obj_set_width(recognition_status, 490);
+    lv_label_set_long_mode(recognition_status, LV_LABEL_LONG_WRAP);
+    artwork_image = lv_image_create(artwork);
+    lv_obj_center(artwork_image);
+    lv_obj_add_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
 
     settings_panel = lv_obj_create(screen);
     lv_obj_set_size(settings_panel, 1024, 600);
@@ -718,6 +753,70 @@ void create_product_screen()
     lv_timer_create(update_clock, 1000, nullptr);
 }
 
+void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
+                        const RecognitionArtwork *image)
+{
+    // The recognition/session mutex is acquired before this GUI lock everywhere.
+    if (!bsp_display_lock(1000)) return;
+    if (track != nullptr && recognition_policy::expired(track->matched_at_us, esp_timer_get_time())) {
+        track = nullptr; image = nullptr;
+        if (status == RecognitionStatus::Matched) status = RecognitionStatus::Waiting;
+    }
+    const bool same_track = track != nullptr
+        && std::strcmp(displayed_track.title, track->title) == 0
+        && std::strcmp(displayed_track.artist, track->artist) == 0
+        && std::strcmp(displayed_track.artwork_url, track->artwork_url) == 0;
+    if (track != nullptr) {
+        lv_label_set_text(headline, track->title);
+        lv_label_set_text(artist, track->artist);
+        lv_label_set_text(album, track->album);
+        displayed_track = *track;
+    } else {
+        clear_recognition_track();
+    }
+    if (!same_track || image == nullptr || image->pixels != artwork_source) {
+        lv_obj_add_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
+        lv_image_cache_drop(&artwork_descriptor);
+        heap_caps_free(artwork_pixels);
+        artwork_pixels = nullptr; artwork_source = nullptr;
+        if (image != nullptr && image->pixels != nullptr && image->width > 0 && image->width <= 1024
+            && image->height > 0 && image->height <= 1024) {
+            const size_t bytes = image->width * image->height * 2;
+            artwork_pixels = static_cast<uint8_t *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+            if (artwork_pixels != nullptr) {
+                std::memcpy(artwork_pixels, image->pixels, bytes);
+                artwork_descriptor = {};
+                artwork_descriptor.header.magic = LV_IMAGE_HEADER_MAGIC;
+                artwork_descriptor.header.cf = LV_COLOR_FORMAT_RGB565;
+                artwork_descriptor.header.w = image->width;
+                artwork_descriptor.header.h = image->height;
+                artwork_descriptor.header.stride = image->width * 2;
+                artwork_descriptor.data_size = bytes;
+                artwork_descriptor.data = artwork_pixels;
+                lv_image_set_src(artwork_image, &artwork_descriptor);
+                const unsigned scale = std::min(358U * 256 / image->width, 358U * 256 / image->height);
+                lv_image_set_scale(artwork_image, scale);
+                lv_obj_center(artwork_image);
+                artwork_source = image->pixels;
+                lv_obj_remove_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+    }
+    const char *text = "Listening";
+    switch (status) {
+    case RecognitionStatus::Waiting: break;
+    case RecognitionStatus::Capturing: text = "Listening"; break;
+    case RecognitionStatus::Identifying: text = "Finding your song..."; break;
+    case RecognitionStatus::Matched: text = ""; break;
+    case RecognitionStatus::NoMatch: text = "Listening for your next song"; break;
+    case RecognitionStatus::Unavailable: text = "Trying again shortly"; break;
+    }
+    lv_label_set_text(recognition_status, text);
+    bsp_display_unlock();
+}
+
 } // namespace
 
 extern "C" void app_main()
@@ -743,7 +842,8 @@ extern "C" void app_main()
     bsp_display_unlock();
 
     ESP_LOGI(kTag, "Display and touch initialized");
-    usb_controller_start(update_controller_status);
+    recognition_start(update_recognition);
+    usb_controller_start(update_controller_status, recognition_set_activity);
     RemoteCallbacks remote{};
     remote.set_style = remote_set_style;
     remote.set_brightness = remote_set_brightness;
