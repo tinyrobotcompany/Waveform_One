@@ -86,11 +86,26 @@ bool read_body(httpd_req_t *request, std::string &body)
     return true;
 }
 
+bool request_header(httpd_req_t *request, const char *name, char *value, size_t capacity);
+
+// Reads one form field, or sends the error response and returns false.
 bool read_form_field(httpd_req_t *request, const char *key, std::string &value,
                      std::size_t max_size = 32)
 {
+    char content_type[64]{};
+    if (!request_header(request, "Content-Type", content_type, sizeof(content_type)) ||
+        !control_policy::form_content_type(content_type)) {
+        httpd_resp_set_status(request, "415 Unsupported Media Type");
+        httpd_resp_set_type(request, "text/plain");
+        httpd_resp_sendstr(request, "Expected application/x-www-form-urlencoded");
+        return false;
+    }
     std::string body;
-    return read_body(request, body) && control_policy::form_field(body, key, value, max_size);
+    if (read_body(request, body) && control_policy::form_field(body, key, value, max_size)) {
+        return true;
+    }
+    httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
+    return false;
 }
 
 esp_err_t reply(httpd_req_t *request, const char *body = "OK")
@@ -303,9 +318,7 @@ esp_err_t style_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
     std::string value;
-    if (!read_form_field(request, "style", value)) {
-        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    }
+    if (!read_form_field(request, "style", value)) return ESP_OK;
     LedStyle style;
     if (value == "classic") style = LedStyle::Classic;
     else if (value == "mirrored") style = LedStyle::Mirrored;
@@ -321,9 +334,7 @@ esp_err_t brightness_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
     std::string value;
-    if (!read_form_field(request, "value", value)) {
-        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    }
+    if (!read_form_field(request, "value", value)) return ESP_OK;
     char *end = nullptr;
     const long percent = std::strtol(value.c_str(), &end, 10);
     if (value.empty() || *end != '\0' || percent < 10 || percent > 100) {
@@ -340,8 +351,10 @@ esp_err_t name_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
     std::string name;
-    if (!read_form_field(request, "name", name, control_policy::kMaxDisplayNameBytes) ||
-        !control_policy::safe_display_name(name)) {
+    if (!read_form_field(request, "name", name, control_policy::kMaxDisplayNameBytes)) {
+        return ESP_OK;
+    }
+    if (!control_policy::safe_display_name(name)) {
         return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid name");
     }
     if (controls.set_name != nullptr) controls.set_name(name.c_str());
@@ -352,9 +365,7 @@ esp_err_t time_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
     std::string value;
-    if (!read_form_field(request, "epoch", value)) {
-        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid request");
-    }
+    if (!read_form_field(request, "epoch", value)) return ESP_OK;
     char *end = nullptr;
     const long long epoch = std::strtoll(value.c_str(), &end, 10);
     if (value.empty() || *end != '\0' ||

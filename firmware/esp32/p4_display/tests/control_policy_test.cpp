@@ -67,6 +67,15 @@ int main()
     assert(!form_field("value=12345", "value", field, 4));
     assert(form_field("value=1234", "value", field, 4) && field == "1234");
 
+    assert(form_content_type("application/x-www-form-urlencoded"));
+    assert(form_content_type("application/x-www-form-urlencoded;charset=UTF-8"));
+    assert(form_content_type("Application/X-WWW-Form-URLEncoded ; charset=UTF-8"));
+    assert(!form_content_type(""));
+    assert(!form_content_type("text/plain"));
+    assert(!form_content_type("multipart/form-data; boundary=x"));
+    assert(!form_content_type("application/x-www-form-urlencodedx"));
+    assert(!form_content_type("application/json"));
+
     assert(safe_display_name("Simon"));
     assert(safe_display_name("Zo\xc3\xab"));
     assert(!safe_display_name(""));

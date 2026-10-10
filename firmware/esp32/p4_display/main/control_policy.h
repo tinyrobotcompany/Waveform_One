@@ -119,6 +119,22 @@ inline bool form_decode(std::string_view encoded, std::string &decoded, std::siz
     return true;
 }
 
+// Accepts application/x-www-form-urlencoded, case-insensitively, optionally
+// followed by parameters such as "; charset=UTF-8".
+inline bool form_content_type(std::string_view content_type)
+{
+    constexpr std::string_view kType = "application/x-www-form-urlencoded";
+    if (content_type.size() < kType.size()) return false;
+    for (std::size_t index = 0; index < kType.size(); ++index) {
+        char value = content_type[index];
+        if (value >= 'A' && value <= 'Z') value = static_cast<char>(value - 'A' + 'a');
+        if (value != kType[index]) return false;
+    }
+    std::string_view rest = content_type.substr(kType.size());
+    while (!rest.empty() && rest.front() == ' ') rest.remove_prefix(1);
+    return rest.empty() || rest.front() == ';';
+}
+
 // Looks up one field of an application/x-www-form-urlencoded body. Keys are
 // decoded before comparison, and malformed encoding, duplicate keys or an
 // oversized value reject the whole body rather than choosing one reading of it.

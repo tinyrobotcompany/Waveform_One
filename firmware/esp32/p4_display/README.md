@@ -50,8 +50,8 @@ Sessions are bound to the address they were paired on. Losing Wi-Fi, losing or
 changing the IP address, choosing another network, or rebooting revokes every
 session and pairing code. Phones must scan the new QR afterwards.
 
-Request bodies are parsed as strict `application/x-www-form-urlencoded`.
-Malformed escapes, control characters, duplicate fields and oversized values
+Mutating requests must declare `Content-Type: application/x-www-form-urlencoded`
+(other types receive 415) and are parsed strictly. Malformed escapes, control characters, duplicate fields and oversized values
 reject the request. Profile names must be valid UTF-8 of at most 120 bytes, with
 no control or text-direction characters.
 The current local remote uses plain HTTP and is intended only for a trusted home
