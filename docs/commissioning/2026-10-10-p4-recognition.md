@@ -114,6 +114,29 @@ technical footer is removed, and progress text uses plain language. The user
 provided a photo proving the original fixed-position labels overlapped on a
 long live-recording title. Visual confirmation of the revised layout is pending.
 
+## Final corrected hardware sequence
+
+The final application was flashed at `0x10000` and verified by esptool.
+Application SHA-256: `f0b709d877962100234667be4826a3c31025320747d2f7f2fd07315671fac530`.
+The final runtime log records:
+
+- Match and artwork ready at 23,295 ms after boot.
+- Next capture completed without error; lookup returned no match at 63,667 ms.
+- Calibrated quiet transition at 67,131 ms, clearing the track through the
+  activity callback independently of the lookup schedule.
+- Playback resumed at 71,731 ms. A fresh capture completed at 80,770 ms;
+  lookup matched at 83,046 ms and artwork was ready at 83,508 ms: 11,777 ms
+  from the resumed-activity report. The 15-second miss pause was removed by
+  the playback transition.
+- No HTTP 429 occurred in this sequence. This is a short smoke test, not proof
+  of unrestricted service availability or long-running stability.
+
+Final runtime evidence is in `rate-monitor.log` in the private recovery/log
+folder. Host firmware tests, the P4 build and the full pre-commit checks passed.
+The feature remains on `feature/p4-music-recognition` in its dedicated worktree;
+main and origin/main remain at the PR #5 merge SHA. Visual confirmation of the
+new label layout remains pending.
+
 ## Remaining hardware acceptance
 
 1. Confirm the target is the Waveshare P4 and record silicon/PSRAM identity.
