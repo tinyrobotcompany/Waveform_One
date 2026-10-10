@@ -37,6 +37,10 @@ int main()
 
     assert(same_http_origin("192.168.1.20", "http://192.168.1.20", "192.168.1.20"));
     assert(same_http_origin("192.168.1.20:80", "http://192.168.1.20", "192.168.1.20"));
+    assert(same_http_origin("192.168.1.20:80", "http://192.168.1.20:80", "192.168.1.20"));
+    assert(same_http_origin("192.168.1.20", "http://192.168.1.20:80", "192.168.1.20"));
+    assert(!same_http_origin("192.168.1.20:8080", "http://192.168.1.20:8080",
+                             "192.168.1.20"));
     assert(!same_http_origin("192.168.1.200", "http://192.168.1.20", "192.168.1.20"));
     assert(!same_http_origin("192.168.1.20", "http://evil.example", "192.168.1.20"));
 

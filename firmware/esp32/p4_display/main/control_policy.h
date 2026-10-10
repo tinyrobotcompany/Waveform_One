@@ -96,7 +96,12 @@ inline bool same_http_origin(std::string_view host, std::string_view origin,
                             (host.size() == expected_host.size() + 3 &&
                              host.substr(0, expected_host.size()) == expected_host &&
                              host.substr(expected_host.size()) == ":80");
-    return valid_host && origin == std::string("http://") + std::string(expected_host);
+    const std::string expected_origin = std::string("http://") + std::string(expected_host);
+    const bool valid_origin = origin == expected_origin ||
+                              (origin.size() == expected_origin.size() + 3 &&
+                               origin.substr(0, expected_origin.size()) == expected_origin &&
+                               origin.substr(expected_origin.size()) == ":80");
+    return valid_host && valid_origin;
 }
 
 inline bool safe_codepoint(uint32_t value)
