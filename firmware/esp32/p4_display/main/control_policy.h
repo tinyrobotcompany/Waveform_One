@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <string_view>
 
 #include "usb_controller.h"
@@ -32,9 +33,70 @@ inline bool remote_token_matches(std::string_view expected, std::string_view pre
     return difference == 0 && !expected.empty();
 }
 
+inline std::string_view cookie_value(std::string_view cookies, std::string_view name)
+{
+    for (std::size_t start = 0; start < cookies.size();) {
+        while (start < cookies.size() && (cookies[start] == ' ' || cookies[start] == ';')) {
+            ++start;
+        }
+        const std::size_t end = cookies.find(';', start);
+        const std::size_t item_end = end == std::string_view::npos ? cookies.size() : end;
+        const std::size_t equals = cookies.find('=', start);
+        if (equals < item_end) {
+            std::size_t key_end = equals;
+            while (key_end > start && cookies[key_end - 1] == ' ') --key_end;
+            if (cookies.substr(start, key_end - start) == name) {
+                std::size_t value_start = equals + 1;
+                while (value_start < item_end && cookies[value_start] == ' ') ++value_start;
+                std::size_t value_end = item_end;
+                while (value_end > value_start && cookies[value_end - 1] == ' ') --value_end;
+                return cookies.substr(value_start, value_end - value_start);
+            }
+        }
+        if (end == std::string_view::npos) break;
+        start = end + 1;
+    }
+    return {};
+}
+
 inline bool valid_brightness(int percent)
 {
     return percent >= 10 && percent <= 100;
+}
+
+inline bool valid_wifi_password(std::string_view password)
+{
+    if (password.size() <= 63) return true;
+    if (password.size() != 64) return false;
+    for (const char value : password) {
+        const bool hex = (value >= '0' && value <= '9') ||
+                         (value >= 'a' && value <= 'f') ||
+                         (value >= 'A' && value <= 'F');
+        if (!hex) return false;
+    }
+    return true;
+}
+
+inline bool valid_browser_time(int64_t proposed, int64_t current)
+{
+    constexpr int64_t kMinimum = 1700000000LL;
+    constexpr int64_t kMaximum = 2145916800LL; // 2038-01-01 UTC
+    constexpr int64_t kMaximumCorrection = 300LL;
+    if (proposed < kMinimum || proposed > kMaximum) return false;
+    if (current < kMinimum || current > kMaximum) return true;
+    const int64_t difference = proposed > current ? proposed - current : current - proposed;
+    return difference <= kMaximumCorrection;
+}
+
+inline bool same_http_origin(std::string_view host, std::string_view origin,
+                             std::string_view expected_host)
+{
+    if (expected_host.empty()) return false;
+    const bool valid_host = host == expected_host ||
+                            (host.size() == expected_host.size() + 3 &&
+                             host.substr(0, expected_host.size()) == expected_host &&
+                             host.substr(expected_host.size()) == ":80");
+    return valid_host && origin == std::string("http://") + std::string(expected_host);
 }
 
 inline bool safe_codepoint(uint32_t value)
@@ -83,17 +145,17 @@ inline bool safe_utf8_ssid(const uint8_t *bytes, std::size_t size)
     return true;
 }
 
-inline bool scanned_ssid_size(const uint8_t *bytes, std::size_t capacity,
-                              std::size_t &size)
+inline std::size_t scanned_ssid_size(const uint8_t *bytes, std::size_t capacity)
 {
-    if (bytes == nullptr || capacity == 0 || capacity > 32) return false;
-    size = 0;
-    while (size < capacity && bytes[size] != 0) ++size;
-    if (size == 0) return false;
-    for (std::size_t index = size + (size < capacity ? 1 : 0); index < capacity; ++index) {
-        if (bytes[index] != 0) return false;
+    if (bytes == nullptr || capacity == 0) return 0;
+    for (std::size_t index = 0; index < capacity; ++index) {
+        if (bytes[index] != 0) continue;
+        for (std::size_t remainder = index + 1; remainder < capacity; ++remainder) {
+            if (bytes[remainder] != 0) return 0;
+        }
+        return index;
     }
-    return safe_utf8_ssid(bytes, size);
+    return capacity;
 }
 
 inline bool add_wifi_network(WifiNetworkList &networks, const uint8_t *ssid, std::size_t size)

@@ -167,14 +167,14 @@ void on_wifi_connect(lv_event_t *event)
     }
     if (network_configure_home(*network, password)) {
         wifi_connecting = true;
-        lv_label_set_text(wifi_status, "Connecting to home Wi-Fi…");
-        lv_label_set_text(wifi_entry_status, "Connecting… Waveform One will restart.");
+        lv_label_set_text(wifi_status, "Checking Wi-Fi credentials…");
+        lv_label_set_text(wifi_entry_status, "Connecting… Checking the password.");
         lv_obj_add_state(wifi_entry_cancel, LV_STATE_DISABLED);
         lv_obj_add_state(wifi_entry_connect, LV_STATE_DISABLED);
         lv_obj_remove_flag(wifi_entry_spinner, LV_OBJ_FLAG_HIDDEN);
     } else {
-        lv_label_set_text(wifi_status, "Could not save Wi-Fi settings.");
-        lv_label_set_text(wifi_entry_status, "Could not save Wi-Fi settings.");
+        lv_label_set_text(wifi_status, "Invalid password or connection already in progress.");
+        lv_label_set_text(wifi_entry_status, "Check the password and try again.");
     }
 }
 
@@ -346,6 +346,28 @@ void remote_set_networks(const control_policy::WifiNetworkList &networks)
     lv_label_set_text(wifi_status, networks.count == 0
                                        ? "No supported networks found. Tap Scan to retry."
                                        : "Select a network and enter its password.");
+    bsp_display_unlock();
+}
+
+void remote_set_wifi_configuration(WifiConfigurationState state)
+{
+    if (!bsp_display_lock(1000)) return;
+    wifi_connecting = false;
+    lv_obj_add_flag(wifi_entry_spinner, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_state(wifi_entry_cancel, LV_STATE_DISABLED);
+    lv_obj_remove_state(wifi_entry_connect, LV_STATE_DISABLED);
+    if (state == WifiConfigurationState::Connected) {
+        lv_label_set_text(wifi_entry_status, "Connected to home Wi-Fi.");
+        lv_label_set_text(wifi_status, "Connected to home Wi-Fi.");
+        lv_obj_add_flag(wifi_entry_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_state(wifi_password, LV_STATE_FOCUSED);
+    } else if (state == WifiConfigurationState::Failed) {
+        lv_label_set_text(wifi_entry_status, "Could not connect. Check the password and try again.");
+        lv_label_set_text(wifi_status, "Wi-Fi connection failed. No credentials were saved.");
+    } else {
+        lv_label_set_text(wifi_entry_status, "Storage recovery required. Credentials were preserved.");
+        lv_label_set_text(wifi_status, "Storage recovery required. See the device log.");
+    }
     bsp_display_unlock();
 }
 
@@ -710,5 +732,6 @@ extern "C" void app_main()
     remote.set_time = remote_set_time;
     remote.set_network = remote_set_network;
     remote.set_networks = remote_set_networks;
+    remote.set_wifi_configuration = remote_set_wifi_configuration;
     network_start(remote);
 }

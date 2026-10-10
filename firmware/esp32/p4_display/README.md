@@ -15,9 +15,12 @@ protocol.
 
 The ESP32-C6 radio on the Waveshare board is controlled by the P4 over SDIO.
 Open **Settings** on the touchscreen, select the user's home network, enter its
-password with the on-screen keyboard and press **Connect**. The credentials are
-stored in the P4's nonvolatile storage and the device restarts onto that home
-network.
+password with the on-screen keyboard and press **Connect**. The P4 first joins
+the network in the current session and stores the credentials only after it has
+received an IP address. A bad password remains editable on screen and is never
+committed to nonvolatile storage. If previously saved credentials later fail,
+they are removed after the bounded boot attempt so subsequent boots do not keep
+incurring the same delay.
 
 The phone remains connected to the same home network. Once the P4 has an IP
 address, the Settings screen displays a QR code containing the phone remote's
@@ -25,22 +28,35 @@ local URL. The QR opens the app; it is not used to join a device-specific Wi-Fi
 network. If the saved network cannot be reached, the touchscreen Wi-Fi controls
 remain available so the user can choose a replacement network.
 
-The QR contains a random 128-bit device pairing token in its URL fragment. The
-token is generated once, stored in NVS and required by every remote operation;
-opening the P4's bare IP address does not authorize controls. The current local
-remote uses plain HTTP and is intended only for a trusted home LAN. Production
-commissioning must enable flash/NVS encryption before customer Wi-Fi credentials
-and the pairing token are treated as protected at rest.
+The QR contains a random one-time pairing code. The P4 exchanges it for a
+RAM-only session, sets an `HttpOnly`, `SameSite=Strict` cookie, and rotates the QR
+immediately so the same code cannot be replayed. Pairing codes expire after ten
+minutes and sessions expire after one hour. Mutating requests also require a
+session-specific CSRF token. Opening the P4's bare IP address does not authorize
+controls. Mutating requests must also carry the exact device `Host` and `Origin`;
+cross-origin browser requests are rejected. Rebooting revokes all phone sessions.
+The current local remote uses plain HTTP and is intended only for a trusted home
+LAN; its session is protection against accidental or opportunistic controls, not
+against an attacker who can observe traffic on that LAN. Production commissioning
+must enable flash/NVS encryption before customer Wi-Fi credentials are treated as
+protected at rest, and customer deployment still requires a TLS or equivalent
+transport-security design.
 
 Scan results are retained as structured SSID records rather than reconstructed
 from dropdown text. Networks whose names contain control characters, malformed
 UTF-8 or text-direction controls are omitted because LVGL cannot present those
-names safely. SSIDs containing embedded NUL bytes are also intentionally omitted
-because the touchscreen, NVS credential format and ESP-IDF station configuration
-use text SSIDs.
+names safely. SSIDs containing embedded NUL bytes are intentionally unsupported
+and omitted rather than truncated to a different network name. WPA passphrases up
+to 63 characters and valid 64-character hexadecimal PSKs are accepted.
 
 After joining the home network, the P4 synchronizes its clock using SNTP. The
-clock does not depend on the phone remote being open.
+clock does not depend on the phone remote being open. Browser time is accepted
+only during initial clock setup or as a correction of at most five minutes; SNTP
+remains authoritative after connectivity is established.
+
+NVS initialization errors never trigger an automatic partition erase. The
+firmware logs a prominent recovery error and preserves all existing NVS data for
+service recovery instead of silently recommissioning the device.
 
 ## First-stage wiring
 

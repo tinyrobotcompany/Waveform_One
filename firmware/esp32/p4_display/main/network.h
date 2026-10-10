@@ -10,6 +10,12 @@ enum class NetworkMode {
     HomeWifi,
 };
 
+enum class WifiConfigurationState {
+    Connected,
+    Failed,
+    StorageRecoveryRequired,
+};
+
 struct RemoteCallbacks {
     bool (*set_style)(LedStyle style) = nullptr;
     bool (*set_brightness)(int percent) = nullptr;
@@ -17,6 +23,7 @@ struct RemoteCallbacks {
     void (*set_time)(std::time_t epoch) = nullptr;
     void (*set_network)(NetworkMode mode, const char *address) = nullptr;
     void (*set_networks)(const control_policy::WifiNetworkList &networks) = nullptr;
+    void (*set_wifi_configuration)(WifiConfigurationState state) = nullptr;
 };
 
 void network_start(const RemoteCallbacks &callbacks);

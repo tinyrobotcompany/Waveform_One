@@ -3,7 +3,7 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif
-                  esp_http_server nvs_flash esp_driver_sdmmc)
+                  esp_http_server esp_timer nvs_flash esp_driver_sdmmc)
 
 if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
     idf_component_get_property(esp_hosted_lib espressif__esp_hosted COMPONENT_LIB)
