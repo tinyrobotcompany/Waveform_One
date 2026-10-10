@@ -23,3 +23,5 @@ using RecognitionCallback = void (*)(RecognitionStatus status, const Recognition
 void recognition_start(RecognitionCallback callback);
 void recognition_set_network(bool online, const char *address);
 void recognition_set_controller(bool connected);
+
+void recognition_set_activity(bool active);

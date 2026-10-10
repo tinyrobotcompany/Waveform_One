@@ -6,13 +6,13 @@
 #include <string_view>
 
 namespace recognition_policy {
-inline constexpr int64_t kIntervalUs = 30000000;
+inline constexpr int64_t kIntervalUs = 1000000;
 inline constexpr int64_t kTrackLifetimeUs = 90000000;
 struct Session { uint64_t epoch; bool ready; };
 
 class Sessions {
 public:
-    Session snapshot() const { return {epoch_, online_ && connected_}; }
+    Session snapshot() const { return {epoch_, online_ && connected_ && active_}; }
     bool set_network(bool available, std::string_view pairing_url)
     {
         // Pairing rotates independently of the network. Keep only the origin,
@@ -33,9 +33,14 @@ public:
         if (connected_ == available) return false;
         connected_ = available; ++epoch_; return true;
     }
+    bool set_activity(bool active)
+    {
+        if (active_ == active) return false;
+        active_ = active; ++epoch_; return true;
+    }
 private:
     uint64_t epoch_ = 1;
-    bool online_ = false, connected_ = false;
+    bool online_ = false, connected_ = false, active_ = false;
     std::string origin_;
 };
 
@@ -47,7 +52,7 @@ public:
     void failed(int64_t now)
     {
         failures_ = std::min(failures_ + 1, 4u);
-        next_ = now + std::min<int64_t>(300000000, kIntervalUs << failures_);
+        next_ = now + std::min<int64_t>(300000000, 30000000LL << failures_);
     }
 private:
     unsigned failures_ = 0;

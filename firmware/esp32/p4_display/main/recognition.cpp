@@ -326,3 +326,11 @@ void recognition_set_controller(bool available)
     if (!sessions.set_controller(available)) return;
     if (show != nullptr) show(RecognitionStatus::Waiting, nullptr, nullptr);
 }
+
+void recognition_set_activity(bool active)
+{
+    std::lock_guard<std::mutex> lock(session_mutex);
+    if (!sessions.set_activity(active)) return;
+    // Epoch change invalidates a capture/lookup spanning stopped playback.
+    if (show != nullptr) show(RecognitionStatus::Waiting, nullptr, nullptr);
+}

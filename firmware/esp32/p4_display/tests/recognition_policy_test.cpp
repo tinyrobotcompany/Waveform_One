@@ -9,6 +9,8 @@ int main()
     assert(sessions.set_controller(true));
     assert(!sessions.snapshot().ready);
     assert(sessions.set_network(true, "http://192.168.1.10/pair?code=first"));
+    assert(!sessions.snapshot().ready);
+    assert(sessions.set_activity(true));
     const auto original = sessions.snapshot();
     assert(original.ready);
     assert(!sessions.set_network(true, "http://192.168.1.10/pair?code=rotated"));
@@ -26,9 +28,16 @@ int main()
     assert(!sessions.snapshot().ready && sessions.snapshot().epoch != before.epoch);
     assert(sessions.set_controller(true));
     assert(sessions.snapshot().ready);
+    auto music = sessions.snapshot();
+    assert(sessions.set_activity(false));
+    assert(!sessions.snapshot().ready && sessions.snapshot().epoch != music.epoch);
+    assert(!sessions.set_activity(false));
+    assert(sessions.set_activity(true));
+    assert(sessions.snapshot().ready && sessions.snapshot().epoch != music.epoch);
     assert(sessions.set_network(true, ""));
     assert(!sessions.snapshot().ready);
 
+    assert(kIntervalUs == 1000000);
     Retries retries;
     assert(retries.due(0));
     retries.begin(0);

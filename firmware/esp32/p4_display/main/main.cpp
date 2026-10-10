@@ -291,7 +291,7 @@ void update_clock(lv_timer_t *)
     if (displayed_track.title[0] != '\0'
         && recognition_policy::expired(displayed_track.matched_at_us, esp_timer_get_time())) {
         clear_recognition_track();
-        lv_label_set_text(recognition_status, "Recognition: listening");
+        lv_label_set_text(recognition_status, "Listening");
     }
     const std::time_t now = std::time(nullptr);
     if (now < 1700000000) return;
@@ -493,46 +493,44 @@ void create_product_screen()
     lv_obj_clear_flag(information, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(information, LV_ALIGN_TOP_RIGHT, -42, 98);
 
-    eyebrow = make_label(information, "NOW PLAYING", &lv_font_montserrat_16, kAccent);
-    lv_obj_align(eyebrow, LV_ALIGN_TOP_LEFT, 0, 14);
+    lv_obj_set_style_pad_all(information, 0, 0);
+    lv_obj_set_style_pad_top(information, 14, 0);
+    lv_obj_set_style_pad_row(information, 12, 0);
+    lv_obj_set_flex_flow(information, LV_FLEX_FLOW_COLUMN);
 
-    headline = make_label(information, "Listening for music", &lv_font_montserrat_48, kForeground);
+    eyebrow = make_label(information, "NOW PLAYING", &lv_font_montserrat_16, kAccent);
+
+
+    headline = make_label(information, "Listening for music", &lv_font_montserrat_32, kForeground);
     lv_obj_set_width(headline, 490);
-    lv_label_set_long_mode(headline, LV_LABEL_LONG_WRAP);
-    lv_obj_align(headline, LV_ALIGN_TOP_LEFT, 0, 65);
+    lv_label_set_long_mode(headline, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(headline, 128, 0);
+
 
     artist = make_label(information, "Play a song to bring this screen to life.",
                         &lv_font_montserrat_24, kForeground);
     lv_obj_set_width(artist, 490);
-    lv_label_set_long_mode(artist, LV_LABEL_LONG_WRAP);
-    lv_obj_align(artist, LV_ALIGN_TOP_LEFT, 2, 155);
+    lv_label_set_long_mode(artist, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(artist, 60, 0);
 
-    album = make_label(information, "Track, artist and album will appear here.",
+
+    album = make_label(information, "",
                        &lv_font_montserrat_20, kMuted);
     lv_obj_set_width(album, 490);
-    lv_label_set_long_mode(album, LV_LABEL_LONG_WRAP);
-    lv_obj_align(album, LV_ALIGN_TOP_LEFT, 2, 205);
+    lv_label_set_long_mode(album, LV_LABEL_LONG_DOT);
+    lv_obj_set_style_max_height(album, 48, 0);
+
 
     recognition_status = make_label(information,
-        "Recognition: waiting for Wi-Fi and USB",
+        "Listening",
         &lv_font_montserrat_16, kMuted);
+    lv_obj_add_flag(recognition_status, LV_OBJ_FLAG_IGNORE_LAYOUT);
     lv_obj_align(recognition_status, LV_ALIGN_BOTTOM_LEFT, 2, -28);
     lv_obj_set_width(recognition_status, 490);
     lv_label_set_long_mode(recognition_status, LV_LABEL_LONG_WRAP);
     artwork_image = lv_image_create(artwork);
     lv_obj_center(artwork_image);
     lv_obj_add_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
-
-    lv_obj_t *footer_rule = lv_obj_create(screen);
-    lv_obj_set_size(footer_rule, 940, 2);
-    lv_obj_set_style_border_width(footer_rule, 0, 0);
-    lv_obj_set_style_bg_color(footer_rule, kLine, 0);
-    lv_obj_align(footer_rule, LV_ALIGN_BOTTOM_MID, 0, -76);
-
-    lv_obj_t *footer = make_label(
-        screen, "Native ESP32-P4 interface  /  Recognition service: next milestone",
-        &lv_font_montserrat_16, kMuted);
-    lv_obj_align(footer, LV_ALIGN_BOTTOM_LEFT, 42, -32);
 
     settings_panel = lv_obj_create(screen);
     lv_obj_set_size(settings_panel, 1024, 600);
@@ -806,14 +804,14 @@ void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
             }
         }
     }
-    const char *text = "Recognition: listening";
+    const char *text = "Listening";
     switch (status) {
     case RecognitionStatus::Waiting: break;
-    case RecognitionStatus::Capturing: text = "Recognition: listening for a match"; break;
-    case RecognitionStatus::Identifying: text = "Recognition: identifying music"; break;
-    case RecognitionStatus::Matched: text = "Recognition: matched"; break;
-    case RecognitionStatus::NoMatch: text = "Recognition: no new match"; break;
-    case RecognitionStatus::Unavailable: text = "Recognition unavailable - will retry"; break;
+    case RecognitionStatus::Capturing: text = "Listening"; break;
+    case RecognitionStatus::Identifying: text = "Finding your song..."; break;
+    case RecognitionStatus::Matched: text = ""; break;
+    case RecognitionStatus::NoMatch: text = "Listening for your next song"; break;
+    case RecognitionStatus::Unavailable: text = "Trying again shortly"; break;
     }
     lv_label_set_text(recognition_status, text);
     bsp_display_unlock();
@@ -845,7 +843,7 @@ extern "C" void app_main()
 
     ESP_LOGI(kTag, "Display and touch initialized");
     recognition_start(update_recognition);
-    usb_controller_start(update_controller_status);
+    usb_controller_start(update_controller_status, recognition_set_activity);
     RemoteCallbacks remote{};
     remote.set_style = remote_set_style;
     remote.set_brightness = remote_set_brightness;

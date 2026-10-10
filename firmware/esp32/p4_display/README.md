@@ -13,21 +13,24 @@ protocol.
 
 ## Native music recognition
 
-After Wi-Fi, clock synchronization and the S3 USB connection are ready, a
+After Wi-Fi, clock synchronization, the S3 USB connection and calibrated audio activity are ready, a
 background task captures an eight-second microphone clip over the existing WF1
 protocol. It validates packet order and checksums, generates a Shazam fingerprint
 locally and sends only the fingerprint over verified HTTPS. Track, artist, album
 and downloaded artwork replace the listening screen when a match is returned.
 No Python or Raspberry Pi is involved, and microphone recordings are not saved.
 
-Successful/no-match attempts are followed by a 30-second wait; failures use
-capped backoff. Artwork survives temporary misses for up to 90 seconds. Wi-Fi
+Successful/no-match attempts are followed by a one-second wait; failures use
+capped backoff. Three consecutive quiet S3 reports (about 1.5 seconds) clear the
+track and invalidate in-flight lookups. Missing reports for three seconds also
+clear it. Artwork survives temporary misses during active playback for up to
+90 seconds. Wi-Fi
 and S3 connection changes discard in-flight results and clear previous metadata;
 phone QR rotation does not. LED controls continue on the shared USB connection.
 
 The upstream reference-song check succeeded on a Mac using the native
-fingerprint implementation. Actual P4 microphone-to-screen acceptance remains
-pending; see [development evidence and hardware checklist](../../../docs/commissioning/2026-10-10-p4-recognition.md).
+fingerprint implementation. Initial P4 microphone-to-screen matches and artwork were verified; stop/start
+and prolonged playback acceptance are being completed; see [development evidence and hardware checklist](../../../docs/commissioning/2026-10-10-p4-recognition.md).
 Shazam remains an unofficial no-subscription dependency, as in the Pi prototype.
 
 ## Phone remote and Wi-Fi setup

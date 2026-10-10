@@ -24,7 +24,8 @@ enum class StyleRequestResult {
 
 using LedControllerStatusCallback = void (*)(LedControllerState state);
 
-void usb_controller_start(LedControllerStatusCallback callback);
+using AudioActivityCallback = void (*)(bool active);
+void usb_controller_start(LedControllerStatusCallback callback, AudioActivityCallback activity = nullptr);
 StyleRequestResult usb_controller_set_style(LedStyle style);
 
 enum class AudioCaptureStatus {

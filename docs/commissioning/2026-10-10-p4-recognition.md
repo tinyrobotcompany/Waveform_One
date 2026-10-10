@@ -21,10 +21,15 @@ and decoded artwork to 1024×1024. HTTP operations use five-second I/O timeouts
 and check a 25-second deadline between operations. A blocking I/O can extend
 that deadline by its own timeout.
 
-Normal retries wait 30 seconds after completion. Service/capture failures back
+Normal retries wait one second after completion during active playback. Service/capture failures back
 off for 60, 120, 240 and then 300 seconds. Backoff survives reconnection.
-Existing artwork survives temporary misses, expires after 90 seconds, and is
-cleared immediately when the Wi-Fi origin or S3 connection changes. The GUI's
+Existing artwork survives temporary misses during active playback, expires after
+90 seconds, and is cleared immediately when the Wi-Fi origin or S3 connection
+changes. Existing calibrated S3 OPEN/SHUT diagnostics are consumed without
+changing S3 firmware: three consecutive quiet reports clear the track and
+invalidate any in-flight capture or lookup; reports expire after three seconds.
+A fresh active report enables capture again. Service backoff survives activity
+changes. The GUI's
 one-second timer also enforces expiry during a slow recognition operation.
 Rotating or using a phone pairing code does not invalidate recognition.
 PCM stays in memory and is not saved to disk or included in logs.
@@ -77,6 +82,29 @@ prove a known-song match or artwork rendering.
 Recovery binary and raw logs remain under
 `/tmp/waveform-p4-recognition-hardware-20261010/`; the recovery binary contains
 saved device settings and must not be committed. No microphone PCM was saved.
+
+## User-observed regression and correction
+
+The original hardware run continued successfully after its first match:
+all captures completed with 256,000 bytes, two lookups returned matches, and
+both covers decoded successfully. The user confirmed the second was Led Zeppelin,
+but only after more than 30 seconds. Intervening lookups returned no match;
+there was no capture error or recognition-worker stall in the captured log.
+The 30-second post-lookup pause caused approximately 40-second cycles. Keeping
+artwork through misses for 90 seconds also retained the previous album after
+playback stopped. These are application-policy defects, rather than evidence of
+a stalled worker. A failed match on another song remains a service/fingerprint
+coverage issue unless further evidence establishes a specific defect.
+
+The corrected firmware reduces the normal pause to one second and uses the
+existing calibrated S3 diagnostics to clear silence independently of HTTP and
+invalidate old results. Tests exercise fragmented/invalid diagnostics, quiet
+debouncing, report expiry, disconnects and activity epochs alongside production
+USB capture. The hardware log confirms actual playing/quiet transitions.
+Title/artist/album are now vertically laid out with bounded label heights; the
+technical footer is removed, and progress text uses plain language. The user
+provided a photo proving the original fixed-position labels overlapped on a
+long live-recording title. Visual confirmation of the revised layout is pending.
 
 ## Remaining hardware acceptance
 

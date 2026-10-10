@@ -6,6 +6,7 @@
 #include <mutex>
 
 #include "audio_capture.h"
+#include "audio_activity.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_intr_alloc.h"
@@ -45,6 +46,9 @@ wf1::Replies replies(1);
 // CDC RX runs on the driver's task, while requests run on the controller task.
 std::mutex receive_mutex;
 audio_capture::Decoder capture;
+audio_activity::Decoder activity;
+AudioActivityCallback report_activity = nullptr;
+bool activity_reported = false;
 uint8_t *capture_buffer = nullptr;
 AudioCaptureCallback capture_callback = nullptr;
 int64_t capture_deadline = 0;
@@ -69,6 +73,7 @@ bool handle_rx(const uint8_t *data, size_t size, void *)
     std::lock_guard<std::mutex> lock(receive_mutex);
     for (size_t index = 0; index < size; ++index) {
         capture.push(static_cast<char>(data[index]));
+        activity.push(static_cast<char>(data[index]), esp_timer_get_time());
         replies.push(static_cast<char>(data[index]), [](const wf1::Reply &reply) {
             Event event{};
             event.type = EventType::Reply;
@@ -133,6 +138,7 @@ void usb_library_task(void *)
 
 void close_controller()
 {
+    { std::lock_guard<std::mutex> lock(receive_mutex); activity = {}; }
     controller_available.store(false);
     if (controller != nullptr) {
         const esp_err_t result = cdc_acm_host_close(controller);
@@ -317,11 +323,23 @@ void process_event(const Event &event)
     }
 }
 
+void poll_activity()
+{
+    bool active;
+    { std::lock_guard<std::mutex> lock(receive_mutex);
+      active = controller_available.load() && activity.active(esp_timer_get_time()); }
+    if (active == activity_reported) return;
+    activity_reported = active;
+    ESP_LOGI(kTag, "Audio activity=%s", active ? "playing" : "quiet");
+    if (report_activity != nullptr) report_activity(active);
+}
+
 void controller_task(void *)
 {
     report(LedControllerState::Waiting);
     while (true) {
         poll_disconnect();
+        poll_activity();
         poll_capture();
         Event event{};
         if (xQueueReceive(events, &event, pdMS_TO_TICKS(100)) == pdTRUE) process_event(event);
@@ -342,9 +360,10 @@ StyleRequestResult enqueue_style(LedStyle style)
 
 } // namespace
 
-void usb_controller_start(LedControllerStatusCallback callback)
+void usb_controller_start(LedControllerStatusCallback callback, AudioActivityCallback activity_callback)
 {
     report_status = callback;
+    report_activity = activity_callback;
     events = xQueueCreate(8, sizeof(Event));
     ESP_ERROR_CHECK(events != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreatePinnedToCore(controller_task, "s3_control", 6144, nullptr, 10,
