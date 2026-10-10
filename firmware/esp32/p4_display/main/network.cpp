@@ -184,16 +184,17 @@ bool save_wifi(const std::string &ssid, const std::string &password)
     return result == ESP_OK;
 }
 
-void clear_wifi()
+bool clear_wifi()
 {
     nvs_handle_t handle{};
-    if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return;
+    if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return false;
     esp_err_t result = nvs_erase_key(handle, "wifi_ssid");
     if (result == ESP_OK || result == ESP_ERR_NVS_NOT_FOUND) {
         result = nvs_erase_key(handle, "wifi_pass");
     }
-    if (result == ESP_OK || result == ESP_ERR_NVS_NOT_FOUND) nvs_commit(handle);
+    if (result == ESP_OK || result == ESP_ERR_NVS_NOT_FOUND) result = nvs_commit(handle);
     nvs_close(handle);
+    return result == ESP_OK;
 }
 
 bool load_wifi(std::string &ssid, std::string &password)
@@ -283,6 +284,9 @@ esp_err_t session_handler(httpd_req_t *request)
 
 esp_err_t pair_handler(httpd_req_t *request)
 {
+    if (!request_host_valid(request)) {
+        return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN, "Invalid host");
+    }
     RequestHeaders headers;
     read_headers(request, headers);
     const size_t query_length = httpd_req_get_url_query_len(request);
@@ -484,14 +488,6 @@ void resume_saved_wifi(const std::string &ssid, const std::string &password)
     publish_remote();
 }
 
-// After a failed join, falls back to the saved network if one exists.
-void fall_back_to_saved_wifi()
-{
-    std::string ssid;
-    std::string password;
-    if (load_wifi(ssid, password)) resume_saved_wifi(ssid, password);
-    else start_unconfigured_wifi();
-}
 
 void start_time_sync()
 {
@@ -622,6 +618,11 @@ struct CandidateWifi {
 void configure_home_task(void *context)
 {
     auto *candidate = static_cast<CandidateWifi *>(context);
+    // NVS writes are not atomic across keys, so keep the previous network in RAM
+    // to restore it if persisting the new one fails part-way.
+    std::string previous_ssid;
+    std::string previous_password;
+    const bool had_previous = load_wifi(previous_ssid, previous_password);
     maintaining_home.store(false);
     revoke_remote();
     ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
@@ -636,8 +637,15 @@ void configure_home_task(void *context)
             controls.set_wifi_configuration(WifiConfigurationState::Connected);
         }
     } else {
-        if (connected) ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
-        fall_back_to_saved_wifi();
+        if (connected) {
+            ESP_LOGE(kTag, "Could not save the new Wi-Fi network; restoring the previous one");
+            ESP_ERROR_CHECK_WITHOUT_ABORT(esp_wifi_stop());
+            if (had_previous ? !save_wifi(previous_ssid, previous_password) : !clear_wifi()) {
+                ESP_LOGE(kTag, "Could not restore saved Wi-Fi; it is kept in RAM until reboot");
+            }
+        }
+        if (had_previous) resume_saved_wifi(previous_ssid, previous_password);
+        else start_unconfigured_wifi();
         if (controls.set_wifi_configuration != nullptr) {
             controls.set_wifi_configuration(WifiConfigurationState::Failed);
         }
