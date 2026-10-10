@@ -61,6 +61,48 @@ printf '%s\n' 'PASS: ESP32-P4 WF1 client protocol'
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/audio_capture_test.cpp" -o "$build_dir/p4_audio_capture"
+"$build_dir/p4_audio_capture"
+printf '%s\n' 'PASS: ESP32-P4 bounded PCM capture, sequence and checksum validation'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/visualizer/tests/stubs" \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/usb_capture_transport_test.cpp" -o "$build_dir/p4_usb_capture"
+"$build_dir/p4_usb_capture"
+printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disconnects and cleanup'
+
+"${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/fingerprint_test.cpp" \
+    "$esp_dir/p4_display/main/fingerprint.cpp" -o "$build_dir/p4_fingerprint"
+"$build_dir/p4_fingerprint"
+printf '%s\n' 'PASS: native fingerprints against upstream reference and binary encoding'
+
+"${CC:-cc}" -std=c99 -Wall -Wextra -Werror -Wno-deprecated-declarations -DCJSON_NESTING_LIMIT=32 \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/third_party" \
+    -c "$esp_dir/p4_display/third_party/cJSON.c" -o "$build_dir/cJSON.o"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/recognition_metadata_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_metadata"
+"$build_dir/p4_metadata"
+printf '%s\n' 'PASS: recognition metadata, UTF-8 and artwork origin validation'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/recognition_policy_test.cpp" -o "$build_dir/p4_recognition_policy"
+"$build_dir/p4_recognition_policy"
+printf '%s\n' 'PASS: recognition session invalidation, pairing rotation, backoff and expiry'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/control_policy_test.cpp" -o "$build_dir/p4_control_policy"
 "$build_dir/p4_control_policy"
 printf '%s\n' 'PASS: ESP32-P4 remote, Wi-Fi and UI control policies'

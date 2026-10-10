@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
 enum class LedControllerState {
     Waiting,
     Connecting,
@@ -23,3 +26,13 @@ using LedControllerStatusCallback = void (*)(LedControllerState state);
 
 void usb_controller_start(LedControllerStatusCallback callback);
 StyleRequestResult usb_controller_set_style(LedStyle style);
+
+enum class AudioCaptureStatus {
+    Complete, Busy, AudioLost, Invalid, TimedOut, Disconnected, NoMemory, TransportError,
+};
+enum class AudioCaptureRequestResult { Queued, Busy, Disconnected, Unavailable, QueueFull };
+// Called on the controller task. Do not block or perform HTTP here. On success
+// ownership of the 256,000-byte PCM buffer passes to the callback; release it
+// with heap_caps_free. Failure always supplies nullptr and zero bytes.
+using AudioCaptureCallback = void (*)(AudioCaptureStatus status, uint8_t *pcm, size_t bytes);
+AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback);

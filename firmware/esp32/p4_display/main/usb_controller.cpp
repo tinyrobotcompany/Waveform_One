@@ -3,10 +3,14 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 
+#include "audio_capture.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_intr_alloc.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
@@ -19,7 +23,7 @@ namespace {
 constexpr char kTag[] = "waveform_usb";
 constexpr uint32_t kTxTimeoutMs = 1000;
 
-enum class EventType { DeviceFound, Disconnected, Reply, SetStyle };
+enum class EventType { DeviceFound, Disconnected, Reply, SetStyle, Capture };
 
 struct Event {
     EventType type;
@@ -27,6 +31,8 @@ struct Event {
     uint16_t pid = 0;
     wf1::Reply reply{};
     LedStyle style = LedStyle::Mirrored;
+    AudioCaptureCallback capture_callback = nullptr;
+    unsigned generation = 0;
 };
 
 QueueHandle_t events = nullptr;
@@ -36,6 +42,15 @@ std::atomic_bool controller_available{false};
 unsigned request_id = 0;
 wf1::Mode requested_mode = wf1::Mode::Mirrored;
 wf1::Replies replies(1);
+// CDC RX runs on the driver's task, while requests run on the controller task.
+std::mutex receive_mutex;
+audio_capture::Decoder capture;
+uint8_t *capture_buffer = nullptr;
+AudioCaptureCallback capture_callback = nullptr;
+int64_t capture_deadline = 0;
+std::atomic_bool capture_reserved{false};
+std::atomic_bool disconnect_pending{false};
+std::atomic_uint controller_generation{1};
 
 void report(LedControllerState state)
 {
@@ -51,11 +66,14 @@ void enqueue(const Event &event)
 
 bool handle_rx(const uint8_t *data, size_t size, void *)
 {
+    std::lock_guard<std::mutex> lock(receive_mutex);
     for (size_t index = 0; index < size; ++index) {
+        capture.push(static_cast<char>(data[index]));
         replies.push(static_cast<char>(data[index]), [](const wf1::Reply &reply) {
             Event event{};
             event.type = EventType::Reply;
             event.reply = reply;
+            event.generation = controller_generation.load();
             enqueue(event);
         });
     }
@@ -65,6 +83,10 @@ bool handle_rx(const uint8_t *data, size_t size, void *)
 void handle_device_event(const cdc_acm_host_dev_event_data_t *event, void *)
 {
     if (event->type == CDC_ACM_HOST_DEVICE_DISCONNECTED) {
+        controller_available.store(false);
+        controller_generation.fetch_add(1);
+        // A full command queue must not lose a physical disconnect.
+        disconnect_pending.store(true);
         Event message{};
         message.type = EventType::Disconnected;
         enqueue(message);
@@ -147,13 +169,85 @@ void send_style(LedStyle style)
     }
     requested_mode = protocol_mode(style);
     request_id = request_id == 65535 ? 1 : request_id + 1;
-    replies.expect(request_id);
+    {
+        std::lock_guard<std::mutex> lock(receive_mutex);
+        replies.expect(request_id);
+    }
     const std::string request = wf1::mode_request(request_id, requested_mode);
     const esp_err_t sent = cdc_acm_host_data_tx_blocking(
         controller, reinterpret_cast<const uint8_t *>(request.data()), request.size(), kTxTimeoutMs);
     if (sent != ESP_OK) {
         ESP_LOGE(kTag, "WF1 style request failed: %s", esp_err_to_name(sent));
         report(LedControllerState::ProtocolError);
+    }
+}
+
+void finish_capture(AudioCaptureStatus status)
+{
+    uint8_t *pcm = nullptr;
+    size_t received = 0;
+    {
+        std::lock_guard<std::mutex> lock(receive_mutex);
+        received = capture.size();
+        capture.reset();
+        pcm = capture_buffer;
+        capture_buffer = nullptr;
+    }
+    const auto callback = capture_callback;
+    capture_callback = nullptr;
+    capture_reserved.store(false);
+    if (pcm != nullptr) {
+        ESP_LOGI(kTag, "Audio capture result=%u bytes=%u duration_ms=%lld",
+            static_cast<unsigned>(status), static_cast<unsigned>(received),
+            static_cast<long long>((esp_timer_get_time() - capture_deadline
+                + audio_capture::kTimeoutMs * 1000LL) / 1000));
+    }
+    if (status != AudioCaptureStatus::Complete) {
+        heap_caps_free(pcm);
+        pcm = nullptr;
+    }
+    if (callback != nullptr) callback(status, pcm, pcm != nullptr ? audio_capture::kBytes : 0);
+}
+
+void start_capture(AudioCaptureCallback callback, unsigned generation)
+{
+    capture_callback = callback;
+    if (controller == nullptr || generation != controller_generation.load()) {
+        finish_capture(AudioCaptureStatus::Disconnected); return;
+    }
+    uint8_t *pcm = static_cast<uint8_t *>(heap_caps_malloc(
+        audio_capture::kBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (pcm == nullptr) { finish_capture(AudioCaptureStatus::NoMemory); return; }
+    request_id = request_id == 65535 ? 1 : request_id + 1;
+    {
+        std::lock_guard<std::mutex> lock(receive_mutex);
+        capture_buffer = pcm;
+        capture.begin(request_id, pcm, audio_capture::kBytes);
+    }
+    capture_deadline = esp_timer_get_time() + audio_capture::kTimeoutMs * 1000LL;
+    const std::string request = audio_capture::capture_request(request_id);
+    if (cdc_acm_host_data_tx_blocking(controller,
+        reinterpret_cast<const uint8_t *>(request.data()), request.size(), kTxTimeoutMs) != ESP_OK) {
+        finish_capture(AudioCaptureStatus::TransportError);
+    }
+}
+
+void poll_capture()
+{
+    if (capture_callback == nullptr) return;
+    audio_capture::Result result;
+    {
+        std::lock_guard<std::mutex> lock(receive_mutex);
+        result = capture.result();
+    }
+    switch (result) {
+    case audio_capture::Result::Complete: finish_capture(AudioCaptureStatus::Complete); break;
+    case audio_capture::Result::Busy: finish_capture(AudioCaptureStatus::Busy); break;
+    case audio_capture::Result::AudioLost: finish_capture(AudioCaptureStatus::AudioLost); break;
+    case audio_capture::Result::Invalid: finish_capture(AudioCaptureStatus::Invalid); break;
+    default:
+        if (esp_timer_get_time() >= capture_deadline) finish_capture(AudioCaptureStatus::TimedOut);
+        break;
     }
 }
 
@@ -178,40 +272,59 @@ void open_controller(uint16_t vid, uint16_t pid)
         return;
     }
 
+    controller_generation.fetch_add(1);
     controller_available.store(true);
     send_style(LedStyle::Mirrored);
+}
+
+void poll_disconnect()
+{
+    if (disconnect_pending.exchange(false)) {
+        close_controller();
+        if (capture_callback != nullptr) finish_capture(AudioCaptureStatus::Disconnected);
+        report(LedControllerState::Disconnected);
+        ESP_LOGW(kTag, "ESP32-S3 disconnected");
+    }
+}
+
+void process_event(const Event &event)
+{
+    switch (event.type) {
+    case EventType::DeviceFound:
+        open_controller(event.vid, event.pid);
+        break;
+    case EventType::Disconnected:
+        // Physical disconnect is handled by the flag, even if this event is lost.
+        break;
+    case EventType::Reply:
+        if (controller == nullptr || event.generation != controller_generation.load()) break;
+        if (event.reply.ok && event.reply.mode == requested_mode) {
+            report(connected_state(event.reply.mode));
+            ESP_LOGI(kTag, "ESP32-S3 style acknowledged: %.*s",
+                     static_cast<int>(wf1::name(event.reply.mode).size()),
+                     wf1::name(event.reply.mode).data());
+        } else {
+            report(LedControllerState::ProtocolError);
+            ESP_LOGW(kTag, "ESP32-S3 returned an invalid WF1 reply");
+        }
+        break;
+    case EventType::SetStyle:
+        send_style(event.style);
+        break;
+    case EventType::Capture:
+        start_capture(event.capture_callback, event.generation);
+        break;
+    }
 }
 
 void controller_task(void *)
 {
     report(LedControllerState::Waiting);
     while (true) {
+        poll_disconnect();
+        poll_capture();
         Event event{};
-        if (xQueueReceive(events, &event, portMAX_DELAY) != pdTRUE) continue;
-        switch (event.type) {
-        case EventType::DeviceFound:
-            open_controller(event.vid, event.pid);
-            break;
-        case EventType::Disconnected:
-            close_controller();
-            report(LedControllerState::Disconnected);
-            ESP_LOGW(kTag, "ESP32-S3 disconnected");
-            break;
-        case EventType::Reply:
-            if (event.reply.ok && event.reply.mode == requested_mode) {
-                report(connected_state(event.reply.mode));
-                ESP_LOGI(kTag, "ESP32-S3 style acknowledged: %.*s",
-                         static_cast<int>(wf1::name(event.reply.mode).size()),
-                         wf1::name(event.reply.mode).data());
-            } else {
-                report(LedControllerState::ProtocolError);
-                ESP_LOGW(kTag, "ESP32-S3 returned an invalid WF1 reply");
-            }
-            break;
-        case EventType::SetStyle:
-            send_style(event.style);
-            break;
-        }
+        if (xQueueReceive(events, &event, pdMS_TO_TICKS(100)) == pdTRUE) process_event(event);
     }
 }
 
@@ -243,4 +356,22 @@ void usb_controller_start(LedControllerStatusCallback callback)
 StyleRequestResult usb_controller_set_style(LedStyle style)
 {
     return enqueue_style(style);
+}
+
+AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback)
+{
+    if (events == nullptr || callback == nullptr) return AudioCaptureRequestResult::Unavailable;
+    const unsigned generation = controller_generation.load();
+    if (!controller_available.load()) return AudioCaptureRequestResult::Disconnected;
+    bool expected = false;
+    if (!capture_reserved.compare_exchange_strong(expected, true)) return AudioCaptureRequestResult::Busy;
+    Event event{};
+    event.type = EventType::Capture;
+    event.capture_callback = callback;
+    event.generation = generation;
+    if (xQueueSend(events, &event, 0) != pdTRUE) {
+        capture_reserved.store(false);
+        return AudioCaptureRequestResult::QueueFull;
+    }
+    return AudioCaptureRequestResult::Queued;
 }

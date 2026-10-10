@@ -10,7 +10,8 @@ joins the user's home Wi-Fi and hosts the local phone remote.
 
 Migration to the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B display controller is
 under development. Display, touch, home Wi-Fi setup, the phone remote and S3
-style control are working; music recognition is the next milestone. The working
+style control are working. Native music recognition has host/reference
+verification and awaits physical P4 acceptance. The working
 ESP32-S3 audio and HUB75 engine remains intact during this migration.
 
 - [Wiring, firmware programs and build instructions](firmware/esp32/README.md)
