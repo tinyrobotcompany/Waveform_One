@@ -23,6 +23,10 @@ class ScopeTests(unittest.TestCase):
         self.assertEqual(scope.select(['firmware/esp32/mic_test/main/audio_pipeline.h'])['firmware'],
                          ['mic_test', 'visualizer'])
 
+    def test_p4_display_source_selects_only_p4_firmware(self):
+        self.assertEqual(scope.select(['firmware/esp32/p4_display/main/main.cpp']),
+                         {'firmware': ['p4_display'], 'pi': False, 'tests': True})
+
     def test_build_configuration_rebuilds_app(self):
         for name in ['CMakeLists.txt', 'sdkconfig.defaults', 'dependencies.lock', 'main/idf_component.yml']:
             self.assertEqual(scope.select(['firmware/esp32/visualizer/' + name])['firmware'], ['visualizer'])

@@ -5,7 +5,7 @@ import os
 from pathlib import PurePosixPath
 import subprocess
 
-APPS = ['led_test', 'mic_test', 'visualizer', 'kovi_scroll', 'quinie_scroll']
+APPS = ['led_test', 'mic_test', 'visualizer', 'kovi_scroll', 'quinie_scroll', 'p4_display']
 
 
 def select(paths):
