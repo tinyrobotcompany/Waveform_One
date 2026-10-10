@@ -1,4 +1,4 @@
-"""Espressif ESP32-S3-DevKitC-1 placeholder, flat behind the matrix, USB end left (-X)."""
+"""Espressif ESP32-S3-DevKitC-1 placeholder behind the LED panel, USB end left (-X)."""
 
 from build123d import Color
 
@@ -12,9 +12,10 @@ NAME = "ESP32"
 def build() -> Placeholder:
     x, y, z = layout.esp_origin()
     length, width = p.ESP_BOARD_L.v, p.ESP_BOARD_W.v
-    (x_min, _, z_min), _ = layout.interior_bounds()
+    (_, _, z_min), _ = layout.interior_bounds()
+    usb_l = p.ESP_USB_PLUG_KEEPOUT.v
     underside = box((x, y, z_min), (length, width, z - z_min))
-    usb = box((x_min, y, z_min), (x - x_min, width, z - z_min + p.ESP_TOP_HEIGHT.v))
+    usb = box((x - usb_l, y, z_min), (usb_l, width, z - z_min + p.ESP_TOP_HEIGHT.v))
     return Placeholder(
         NAME,
         box((x, y, z), (length, width, p.ESP_TOP_HEIGHT.v)),

@@ -1,54 +1,37 @@
-# Real-hardware measurement checklist
+# Real-hardware measurement checklist (revision B)
 
 Measure with digital calipers. Record each result in this folder (one file per
-item, e.g. `pi7_display.md`), with date, tool, and a photo where useful. Once
-recorded, the matching parameter moves from DATASHEET/PROVISIONAL to MEASURED.
+item), with date, tool, and a photo where useful. Once recorded, the matching
+parameter in `cad/waveform_one/parameters.py` moves to MEASURED.
 
-Measure the real units; do not infer from diagonal sizes or old BOM values.
+Most useful first: these decide whether the screen and LED panel fit.
 
-## Raspberry Pi 7-inch Touchscreen (original, DSI)
-- [ ] Glass outline (W × H) and thickness
-- [ ] Visible active area and its offset from the glass edges
-- [ ] Metal frame outline behind the glass, and total depth including standoffs
-- [ ] Mounting holes/standoffs: positions, thread size, height
-- [ ] Adapter board: outline, height, DSI ribbon exit and bend space
-- [ ] Is the Pi mounted on the display's standoffs? If so, the combined stack depth
-- [ ] Power jumper/wires or USB power arrangement for the display
+## Waveshare 7-inch HDMI screen
+- [x] Outline 165 × 100 mm (owner, 2026-10-10)
+- [ ] Model name (e.g. "7inch HDMI LCD (C)")
+- [ ] Total depth including the back PCB and connectors (`SCREEN_D`, assumed 13 mm)
+- [ ] Visible area and its offset from the outline edges (`SCREEN_ACTIVE_*`, assumed 154.2 × 86 mm, centred)
+- [ ] Where the HDMI and USB sockets sit, and which way they face
+- [ ] Is the back edge flat where the clips press (35 mm in from each side)?
 
-## Raspberry Pi 4 Model B
-- [ ] Board outline, mounting hole positions (confirm against 58 × 49 mm pattern)
-- [ ] Height including cooler/heatsink/fan (none fitted yet; 28 mm reserved above the board)
-- [ ] USB-C, USB-A, Ethernet, micro-HDMI protrusions past the board edge
-- [ ] Space for USB-C power plug and USB-A→ESP32 cable plug + bend
-
-## Waveshare 64×32 HUB75 panel (P3)
-- [x] Rough outline ~195 × 100 × 12 mm (owner, 2026-09-26; see hub75_panel.md)
-- [ ] Caliper outline (expected 192 × 96 mm) and module frame depth
-- [ ] Mounting points: positions, thread size or magnet posts
-- [ ] Depth including HUB75 IDC connectors and power terminal
-- [ ] HUB75 ribbon bend space; power lead exit
+## Waveshare P3 64×32 LED panel
+- [x] Outline 195 × 95 mm (owner, 2026-10-10)
+- [ ] Depth of the frame, and depth including the HUB75 and power connectors (`LED_D`, rough 12 mm)
+- [ ] Is the back edge flat where the clips press?
 
 ## LED diffuser (owner-supplied)
-- [ ] Outline and thickness
-- [ ] Is it a flat sheet, or a grid + sheet? Any mounting features?
-- [ ] Gap between panel and diffuser it was designed for
+- [ ] Outline and thickness (`DIFFUSER_THICKNESS`, assumed 3 mm, panel-sized)
 
-## ESP32-S3 dev board
-- [ ] Board outline, mounting holes (if any), height with headers
-- [ ] USB connector position and cable plug + bend space
+## Raspberry Pi 4 Model B
+- [ ] Height with the fan-heatsink you choose (28 mm reserved above the board)
+- [ ] Micro-HDMI-to-HDMI cable or adapter: plug length and bend
+
+## ESP32-S3-DevKitC-1
+- [ ] Board outline (assumed 63 × 25.5 mm) and height with the HUB75 cable attached
 
 ## INMP441 microphone board
-- [ ] Board outline, hole position, sensor port position (top or bottom port)
+- [ ] Board outline (assumed 15 × 15 mm) and which side the sound port is on
 
-## LED 5 V supply
-- [ ] Internal module or external brick? Outline, mounting, input connector
-
-## Cables
-- [ ] Minimum comfortable bend: DSI ribbon, HUB75 ribbon, USB-C, USB-A
-- [ ] Connector overmould lengths (the rigid part behind each plug)
-
-## LP sleeve
-- [ ] Width/height of a few real sleeves, thickness (single and gatefold)
-
-## Printer (from M4 coupons, per material)
-- [ ] Heat-set insert hole, M3 clearance, joint clearance, alignment-pin clearance
+## Printer (from the calibration coupon, PETG)
+- [ ] Best heat-set insert hole (3.8–4.2 mm)
+- [ ] Smallest M3 clearance hole (3.0–3.4 mm)

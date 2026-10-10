@@ -1,58 +1,102 @@
-"""Where each component sits, derived only from parameters.
+"""Case size and where each component sits, derived only from parameters.
 
 Positions are the minimum (left, front, bottom) corner of each component body
 in world coordinates; see parameters.py for the axis convention.
+
+Front view, left to right: side band | screen | divider | LED panel | side band.
+Both components are centred vertically in the band between TOP_BAND and
+BOTTOM_BAND.
 """
 
 from waveform_one import parameters as p
 from waveform_one.geometry import Vec3
 
 
+def case_width() -> float:
+    return 2 * (p.SHELL_WALL.v + p.SIDE_BAND.v) + p.SCREEN_W.v + p.DIVIDER_WIDTH.v + p.LED_W.v
+
+
+def component_zone_height() -> float:
+    return max(p.SCREEN_H.v, p.LED_H.v)
+
+
+def case_height() -> float:
+    return 2 * p.SHELL_WALL.v + p.TOP_BAND.v + p.BOTTOM_BAND.v + component_zone_height()
+
+
+def case_size() -> Vec3:
+    return (case_width(), p.CASE_DEPTH.v, case_height())
+
+
 def interior_bounds() -> tuple[Vec3, Vec3]:
-    """Space inside the walls, front bezel and rear panel."""
-    half = p.CASE_WIDTH.v / 2 - p.WALL_THICKNESS.v
+    """Space inside the walls, behind the front plate and in front of the rear panel."""
+    half = case_width() / 2 - p.SHELL_WALL.v
     return (
-        (-half, p.FRONT_BEZEL_THICKNESS.v, p.WALL_THICKNESS.v),
-        (half, p.CASE_DEPTH.v - p.REAR_PANEL_THICKNESS.v, p.CASE_HEIGHT.v - p.WALL_THICKNESS.v),
+        (-half, p.FRONT_THICKNESS.v, p.SHELL_WALL.v),
+        (half, p.CASE_DEPTH.v - p.REAR_PANEL_THICKNESS.v, case_height() - p.SHELL_WALL.v),
     )
 
 
+def zone_centre_z() -> float:
+    return p.SHELL_WALL.v + p.BOTTOM_BAND.v + component_zone_height() / 2
+
+
+def screen_origin() -> Vec3:
+    x = -case_width() / 2 + p.SHELL_WALL.v + p.SIDE_BAND.v
+    return (x, p.FRONT_THICKNESS.v, zone_centre_z() - p.SCREEN_H.v / 2)
+
+
+def seam_x() -> float:
+    """Centre of the divider between screen and LED panel; the shell splits here."""
+    return screen_origin()[0] + p.SCREEN_W.v + p.DIVIDER_WIDTH.v / 2
+
+
 def diffuser_origin() -> Vec3:
-    return (-p.MATRIX_W.v / 2, p.FRONT_BEZEL_THICKNESS.v, p.MATRIX_BOTTOM_Z.v)
+    x = screen_origin()[0] + p.SCREEN_W.v + p.DIVIDER_WIDTH.v
+    return (x, p.FRONT_THICKNESS.v, zone_centre_z() - p.LED_H.v / 2)
 
 
-def matrix_origin() -> Vec3:
-    y = p.FRONT_BEZEL_THICKNESS.v + p.DIFFUSER_THICKNESS.v + p.DIFFUSER_TO_MATRIX_GAP.v
-    return (-p.MATRIX_W.v / 2, y, p.MATRIX_BOTTOM_Z.v)
+def led_origin() -> Vec3:
+    x, y, z = diffuser_origin()
+    return (x, y + p.DIFFUSER_THICKNESS.v, z)
 
 
-def matrix_rear_y() -> float:
-    return matrix_origin()[1] + p.MATRIX_D.v
+def led_rear_y() -> float:
+    return led_origin()[1] + p.LED_D.v
 
 
-def display_origin() -> Vec3:
-    z = p.MATRIX_BOTTOM_Z.v + p.MATRIX_H.v + p.DISPLAY_MATRIX_GAP.v
-    return (-p.DISPLAY_W.v / 2, p.FRONT_BEZEL_THICKNESS.v + p.DISPLAY_RECESS.v, z)
+def screen_rear_y() -> float:
+    return screen_origin()[1] + p.SCREEN_D.v
+
+
+def tray_top_z() -> float:
+    return p.SHELL_WALL.v + p.TRAY_PAD_HEIGHT.v + p.TRAY_THICKNESS.v
 
 
 def pi_body_size() -> Vec3:
     return (
         p.PI_BOARD_L.v + p.PI_PORT_OVERHANG.v,
         p.PI_BOARD_W.v,
-        p.PI_UNDERSIDE_CLEARANCE.v + p.PI_BOARD_T.v + p.PI_HEIGHT_ABOVE_BOARD.v,
+        p.PI_BOARD_T.v + p.PI_HEIGHT_ABOVE_BOARD.v,
     )
 
 
 def pi_origin() -> Vec3:
+    """Board's left (non-USB) end, front edge, underside."""
     (x_min, _, _), (_, y_max, _) = interior_bounds()
     y = y_max - p.PI_REAR_PLUG_KEEPOUT.v - p.PI_BOARD_W.v
-    return (x_min + p.PI_USB_PLUG_KEEPOUT.v, y, p.PI_BASE_Z.v)
+    return (x_min + p.PI_SIDE_GAP.v, y, tray_top_z() + p.PI_STANDOFF_HEIGHT.v)
+
+
+def pi_usb_keepout_end_x() -> float:
+    return pi_origin()[0] + pi_body_size()[0] + p.PI_USB_PLUG_KEEPOUT.v
 
 
 def esp_origin() -> Vec3:
-    (x_min, _, z_min), _ = interior_bounds()
-    y = matrix_rear_y() + p.MATRIX_REAR_KEEPOUT.v + p.ESP_REAR_OFFSET.v
-    return (x_min + p.ESP_USB_PLUG_KEEPOUT.v, y, z_min + p.ESP_UNDERSIDE_KEEPOUT.v)
+    (_, _, z_min), _ = interior_bounds()
+    x = pi_usb_keepout_end_x() + p.ESP_GAP_FROM_PI.v + p.ESP_USB_PLUG_KEEPOUT.v
+    y = led_rear_y() + p.LED_REAR_KEEPOUT.v + p.ESP_REAR_OFFSET.v
+    return (x, y, z_min + p.ESP_UNDERSIDE_KEEPOUT.v)
 
 
 def mic_origin() -> Vec3:

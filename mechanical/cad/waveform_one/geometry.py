@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 
-from build123d import Align, Box, Color, Compound, Location, Part, Pos
+from build123d import Align, Box, Color, Compound, Cylinder, Location, Part, Plane, Polygon, Pos, RectangleRounded, Rot, extrude
 
 Vec3 = tuple[float, float, float]
 
@@ -19,6 +19,42 @@ def box(min_corner: Vec3, size: Vec3) -> Part:
 
 def box_between(lo: Vec3, hi: Vec3) -> Part:
     return box(lo, (hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]))
+
+
+def front_plane(y: float, centre_z: float, centre_x: float = 0.0) -> Plane:
+    """A plane facing the viewer (-Y) with local x = world X and local y = world Z."""
+    return Plane(origin=(centre_x, y, centre_z), x_dir=(1, 0, 0), z_dir=(0, -1, 0))
+
+
+def rounded_prism(width: float, height: float, radius: float, y0: float, length: float, centre_z: float) -> Part:
+    """Rounded rectangle in the XZ plane, centred on X=0, extruded rearward from y0."""
+    sketch = front_plane(y0, centre_z) * RectangleRounded(width, height, radius)
+    return extrude(sketch, amount=length, dir=(0, 1, 0))
+
+
+def y_cylinder(x: float, y0: float, y1: float, z: float, diameter: float) -> Part:
+    """Cylinder whose axis runs along Y from y0 to y1."""
+    return Pos(x, (y0 + y1) / 2, z) * Rot(90, 0, 0) * Cylinder(diameter / 2, y1 - y0)
+
+
+def z_cylinder(x: float, y: float, z0: float, z1: float, diameter: float) -> Part:
+    return Pos(x, y, (z0 + z1) / 2) * Cylinder(diameter / 2, z1 - z0)
+
+
+def sloped_pad(x_centre: float, width: float, y0: float, y1: float, wall_z: float, protrusion: float, up: bool) -> Part:
+    """A block standing off a floor (up=True) or hanging from a ceiling (up=False).
+
+    Shells print front-face down, so world Y is the print's vertical axis. The
+    pad's front face is sloped at 45 degrees (it starts `protrusion` in front of
+    y0 at zero height) so it never overhangs during printing. Full height runs
+    from y0 to y1. The base sinks CUT_OVERSHOOT into the wall so they fuse.
+    """
+    sign = 1 if up else -1
+    base = wall_z - sign * CUT_OVERSHOOT
+    top = wall_z + sign * protrusion
+    profile = [(y0 - protrusion - CUT_OVERSHOOT, base), (y0, top), (y1, top), (y1, base)]
+    plane = Plane(origin=(x_centre - width / 2, 0, 0), x_dir=(0, 1, 0), z_dir=(1, 0, 0))
+    return extrude(plane * Polygon(*profile, align=None), amount=width, dir=(1, 0, 0))
 
 
 @dataclass

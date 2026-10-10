@@ -17,23 +17,33 @@ class ValidationError(Exception):
 
 
 def _layout_errors(params: dict[str, p.Param]) -> list[str]:
+    """Design rules that relate several parameters."""
+
     def v(name: str) -> float:
         return params[name].value
 
-    stack = v("MATRIX_BOTTOM_Z") + v("MATRIX_H") + v("DISPLAY_MATRIX_GAP") + v("DISPLAY_H")
     errors = []
-    if v("CASE_HEIGHT") - stack < v("MIN_TOP_MARGIN"):
+    boss_r = v("BOSS_DIAMETER") / 2
+    for band in ("TOP_BAND", "BOTTOM_BAND"):
+        gap = v(band) / 2 - boss_r
+        if gap < v("POCKET_CLEARANCE"):
+            errors.append(f"{band} ({v(band):.1f} mm) leaves clip bosses {gap:.1f} mm from the components")
+    groove_reach = v("TONGUE_DEPTH") + 2 * v("JOINT_CLEARANCE")
+    if groove_reach > v("DIVIDER_WIDTH") / 2:
         errors.append(
-            f"Front stack reaches {stack:.1f} mm, leaving {v('CASE_HEIGHT') - stack:.1f} mm above the "
-            f"display in a {v('CASE_HEIGHT'):.1f} mm case; MIN_TOP_MARGIN is {v('MIN_TOP_MARGIN'):.1f} mm"
+            f"Shell groove reaches {groove_reach:.1f} mm from the seam, past the "
+            f"{v('DIVIDER_WIDTH') / 2:.1f} mm half-divider into the LED window"
         )
-    widest = max(v("DISPLAY_W"), v("MATRIX_W") + 2 * v("MATRIX_CLEARANCE"))
-    side = (v("CASE_WIDTH") - widest) / 2
-    if side < v("MIN_SIDE_MARGIN"):
-        errors.append(
-            f"Widest front component ({widest:.1f} mm) leaves {side:.1f} mm per side in a "
-            f"{v('CASE_WIDTH'):.1f} mm case; MIN_SIDE_MARGIN is {v('MIN_SIDE_MARGIN'):.1f} mm"
-        )
+    groove_t = v("TONGUE_THICKNESS") + 2 * v("JOINT_CLEARANCE")
+    for host in ("SHELL_WALL", "FRONT_THICKNESS"):
+        if groove_t >= v(host):
+            errors.append(f"Shell groove ({groove_t:.2f} mm) leaves no material either side in {host} ({v(host):.1f} mm)")
+    if v("CORNER_RADIUS") <= v("SHELL_WALL"):
+        errors.append("CORNER_RADIUS must exceed SHELL_WALL so the inside corners stay rounded")
+    frame = v("FRAME_GROOVE_INSET") + v("FRAME_GROOVE_WIDTH")
+    for band in ("SIDE_BAND", "BOTTOM_BAND", "TOP_BAND"):
+        if frame >= v("SHELL_WALL") + v(band):
+            errors.append(f"Frame groove ({frame:.1f} mm in) would cut into the components behind {band}")
     return errors
 
 

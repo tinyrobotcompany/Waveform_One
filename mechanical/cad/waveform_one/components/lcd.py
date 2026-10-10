@@ -1,4 +1,4 @@
-"""Official Raspberry Pi 7-inch Touchscreen (original, DSI) placeholder."""
+"""Waveshare 7-inch HDMI touchscreen placeholder, glass against the front plate."""
 
 from build123d import Color
 
@@ -6,29 +6,30 @@ from waveform_one import layout
 from waveform_one import parameters as p
 from waveform_one.geometry import Placeholder, box
 
-NAME = "Display"
+NAME = "Screen"
+
+
+def active_area() -> tuple[tuple[float, float], tuple[float, float]]:
+    """((x_min, x_max), (z_min, z_max)) of the visible area."""
+    x, _, z = layout.screen_origin()
+    cx = x + p.SCREEN_W.v / 2 + p.SCREEN_ACTIVE_OFFSET_X.v
+    cz = z + p.SCREEN_H.v / 2 + p.SCREEN_ACTIVE_OFFSET_Z.v
+    half_w, half_h = p.SCREEN_ACTIVE_W.v / 2, p.SCREEN_ACTIVE_H.v / 2
+    return (cx - half_w, cx + half_w), (cz - half_h, cz + half_h)
 
 
 def build() -> Placeholder:
-    x, y, z = layout.display_origin()
-    w, d, h = p.DISPLAY_W.v, p.DISPLAY_D.v, p.DISPLAY_H.v
-    body = box((x, y, z), (w, d, h))
-
-    active_x = x + (w - p.DISPLAY_ACTIVE_W.v) / 2 + p.DISPLAY_ACTIVE_OFFSET_X.v
-    active_z = z + (h - p.DISPLAY_ACTIVE_H.v) / 2 + p.DISPLAY_ACTIVE_OFFSET_Z.v
-    # Thin marker just in front of the glass, inside the recess behind the bezel.
-    marker_t = min(0.2, p.DISPLAY_RECESS.v)
-    active = box((active_x, y - marker_t, active_z), (p.DISPLAY_ACTIVE_W.v, marker_t, p.DISPLAY_ACTIVE_H.v))
-
-    cable_w, cable_h = p.DISPLAY_CABLE_KEEPOUT_W.v, p.DISPLAY_CABLE_KEEPOUT_H.v
-    cable = box(
-        (-cable_w / 2, y + d, z + (h - cable_h) / 2),
-        (cable_w, p.DISPLAY_CABLE_KEEPOUT_D.v, cable_h),
-    )
+    x, y, z = layout.screen_origin()
+    w, d, h = p.SCREEN_W.v, p.SCREEN_D.v, p.SCREEN_H.v
+    (ax0, ax1), (az0, az1) = active_area()
+    marker_t = 0.2  # visual marker only, sitting in the window opening
+    active = box((ax0, y - marker_t, az0), (ax1 - ax0, marker_t, az1 - az0))
+    inset = p.KEEPOUT_EDGE_INSET.v
+    rear = box((x + inset, y + d, z + inset), (w - 2 * inset, p.SCREEN_REAR_KEEPOUT.v, h - 2 * inset))
     return Placeholder(
         NAME,
-        body,
+        box((x, y, z), (w, d, h)),
         Color(0.25, 0.28, 0.35),
-        keepouts={"DSIRibbon": cable},
+        keepouts={"HdmiAndUsb": rear},
         markers={"ActiveArea": active},
     )

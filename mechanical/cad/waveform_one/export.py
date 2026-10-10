@@ -18,7 +18,7 @@ from waveform_one import parameters as p
 from waveform_one.geometry import PrintedPart
 
 EXPORT_ROOT = Path(__file__).resolve().parents[2] / "exports"
-REVISION = "m3"
+REVISION = "revB"
 ENVELOPE_LABEL = "Envelope"
 MESH_TOLERANCE = 0.01  # mm; well below the 0.4 mm nozzle
 

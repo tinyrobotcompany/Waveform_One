@@ -5,6 +5,10 @@
 >   is the viewer for exported STEP files. Read "Fusion script/component" as
 >   "build123d module/labelled sub-shape". See
 >   `mechanical/docs/decisions/0001-code-first-cad.md`.
+> - **Revision B (2026-10-10)** supersedes the layout below: Waveshare 7-inch
+>   HDMI screen and P3 LED panel side by side in a 404 × 150 × 132 mm rounded
+>   cabinet with a vinyl-sleeve holder on top, printed in PETG. See
+>   `mechanical/docs/decisions/0003-wide-display-revision-b.md`.
 > - Prototype hardware is a Raspberry Pi 4, the official Pi 7-inch touchscreen
 >   and a Waveshare **P3** 64×32 panel (192×96 mm, not P4); encoders are
 >   deferred; the 330×145×245 mm envelope is unchanged. The enclosure is

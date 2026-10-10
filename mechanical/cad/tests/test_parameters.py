@@ -22,15 +22,15 @@ def test_every_parameter_is_classified_and_valid():
     assert parameter_errors(params) == []
 
 
-def test_unset_parameter_is_rejected_once_its_milestone_arrives():
-    assert p.M3_INSERT_HOLE.value is None
-    assert parameter_errors(p.all_params(), milestone=4) == []
-    errors = parameter_errors(p.all_params(), milestone=5)
+def test_owner_measurements_are_marked_measured():
+    for name in ("SCREEN_W", "SCREEN_H", "LED_W", "LED_H"):
+        assert p.all_params()[name].status is p.Status.MEASURED
+
+
+def test_insert_hole_is_required_for_the_enclosure():
+    errors = parameter_errors(with_value("M3_INSERT_HOLE", None))
     assert any("M3_INSERT_HOLE is unset" in e for e in errors)
-
-
-def test_unset_current_parameter_is_rejected():
-    assert any("CASE_WIDTH is unset" in e for e in parameter_errors(with_value("CASE_WIDTH", None)))
+    assert parameter_errors(with_value("M3_INSERT_HOLE", None), milestone=4) == []
 
 
 def test_non_positive_dimension_is_rejected():
@@ -38,29 +38,34 @@ def test_non_positive_dimension_is_rejected():
 
 
 def test_offsets_may_be_negative():
-    assert parameter_errors(with_value("DISPLAY_ACTIVE_OFFSET_X", -2.0)) == []
+    assert parameter_errors(with_value("SCREEN_ACTIVE_OFFSET_X", -2.0)) == []
 
 
 def test_print_limit_cannot_exceed_build_volume():
     assert any("MAX_PRINT_Y (300.0) exceeds" in e for e in parameter_errors(with_value("MAX_PRINT_Y", 300.0)))
 
 
-def test_case_too_short_for_front_stack_fails_clearly():
-    errors = parameter_errors(with_value("CASE_HEIGHT", 220.0))
-    assert len(errors) == 1 and "Front stack reaches 232.0 mm" in errors[0]
+def test_band_too_narrow_for_clip_bosses_fails_clearly():
+    errors = parameter_errors(with_value("TOP_BAND", 8.0))
+    assert "TOP_BAND (8.0 mm) leaves clip bosses 0.0 mm from the components" in errors
 
 
-def test_case_too_narrow_for_front_components_fails_clearly():
-    errors = parameter_errors(with_value("CASE_WIDTH", 205.0))
-    assert len(errors) == 1 and "Widest front component" in errors[0]
+def test_divider_too_narrow_for_the_shell_joint_fails_clearly():
+    errors = parameter_errors(with_value("DIVIDER_WIDTH", 8.0))
+    assert len(errors) == 1 and "Shell groove reaches 5.5 mm" in errors[0]
 
 
-@pytest.mark.parametrize(
-    "module",
-    sorted(PACKAGE.glob("components/*.py")) + sorted(PACKAGE.glob("enclosure/*.py")) + [PACKAGE / "layout.py"],
+GEOMETRY_MODULES = (
+    sorted(PACKAGE.glob("components/*.py"))
+    + sorted(PACKAGE.glob("enclosure/*.py"))
+    + sorted(PACKAGE.glob("calibration/*.py"))
+    + [PACKAGE / "layout.py"]
 )
+
+
+@pytest.mark.parametrize("module", GEOMETRY_MODULES, ids=lambda m: m.name)
 def test_geometry_modules_have_no_dimensional_literals(module):
-    """Dimensions come from parameters.py; colours, 0, 1, 2, the marker size and 90-degree turns are allowed."""
+    """Dimensions come from parameters.py; colours, 0, 1, 2, the marker size and quarter turns are allowed."""
     allowed = {0, 0.0, 1, 2, 0.2, 90}
     tree = ast.parse(module.read_text())
     colour_args = {
@@ -78,3 +83,8 @@ def test_geometry_modules_have_no_dimensional_literals(module):
         and id(node) not in colour_args
     ]
     assert [v for v in literals if v not in allowed] == []
+
+
+def test_tongue_too_thick_for_the_wall_fails_clearly():
+    errors = parameter_errors(with_value("TONGUE_THICKNESS", 3.6))
+    assert any("leaves no material either side in SHELL_WALL" in e for e in errors)
