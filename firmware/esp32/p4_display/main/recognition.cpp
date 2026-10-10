@@ -13,6 +13,7 @@
 #include <mutex>
 #include <new>
 #include <string>
+#include <strings.h>
 
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
@@ -64,6 +65,7 @@ void captured(AudioCaptureStatus status, uint8_t *pcm, size_t)
 struct Response {
     Heap<char> bytes;
     size_t size = 0;
+    int64_t retry_after_us = 0;
 };
 
 bool fetch(const char *url, const char *body, size_t limit, Response &response)
@@ -73,6 +75,15 @@ bool fetch(const char *url, const char *body, size_t limit, Response &response)
     if (!response.bytes) return false;
     esp_http_client_config_t config{};
     config.url = url;
+    config.user_data = &response;
+    config.event_handler = [](esp_http_client_event_t *event) -> esp_err_t {
+        if (event->event_id == HTTP_EVENT_ON_HEADER && event->header_key != nullptr
+            && event->header_value != nullptr && strcasecmp(event->header_key, "Retry-After") == 0) {
+            auto *reply = static_cast<Response *>(event->user_data);
+            reply->retry_after_us = recognition_policy::retry_after(event->header_value, std::time(nullptr));
+        }
+        return ESP_OK;
+    };
     config.crt_bundle_attach = esp_crt_bundle_attach;
     config.timeout_ms = 5000;
     config.disable_auto_redirect = true;
@@ -93,7 +104,12 @@ bool fetch(const char *url, const char *body, size_t limit, Response &response)
         esp_http_client_set_header(client, "X-Shazam-AppVersion", "14.1.0");
         esp_http_client_set_header(client, "Accept-Language", "en-US");
     }
-    if (length > 65536 || esp_http_client_open(client, static_cast<int>(length)) != ESP_OK) return false;
+    if (length > 65536) return false;
+    const esp_err_t opened = esp_http_client_open(client, static_cast<int>(length));
+    if (opened != ESP_OK) {
+        ESP_LOGW(kTag, "HTTP open failed: %s", esp_err_to_name(opened));
+        return false;
+    }
     size_t written = 0;
     while (written < length && esp_timer_get_time() < deadline) {
         const int count = esp_http_client_write(client, body + written, length - written);
@@ -102,8 +118,12 @@ bool fetch(const char *url, const char *body, size_t limit, Response &response)
     }
     if (written != length || esp_timer_get_time() >= deadline) return false;
     const int64_t declared = esp_http_client_fetch_headers(client);
-    if (declared < 0 || declared > static_cast<int64_t>(limit)
-        || esp_http_client_get_status_code(client) != 200) return false;
+    const int status = esp_http_client_get_status_code(client);
+    if (declared < 0 || declared > static_cast<int64_t>(limit) || status != 200) {
+        ESP_LOGW(kTag, "HTTP response rejected: status=%d declared_bytes=%lld limit=%u retry_after_s=%lld",
+            status, static_cast<long long>(declared), static_cast<unsigned>(limit), static_cast<long long>(response.retry_after_us / 1000000));
+        return false;
+    }
     while (esp_timer_get_time() < deadline) {
         // Read one extra byte to detect bodies exceeding the maximum, including chunked bodies.
         const size_t room = limit + 1 - response.size;
@@ -136,7 +156,7 @@ std::string uuid()
 }
 
 enum class Lookup { Matched, NoMatch, Failed };
-Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track)
+Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track, int64_t &service_delay)
 {
     Json root(cJSON_CreateObject());
     if (!root) return Lookup::Failed;
@@ -155,12 +175,20 @@ Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track)
         + "?sync=true&webv3=true&sampling=true&connected=&shazamapiversion=v3"
           "&sharehub=true&hubv5minorversion=v5.1&hidelb=true&video=v3";
     Response response;
-    if (!fetch(url.c_str(), body.get(), 128 * 1024, response)) return Lookup::Failed;
+    const bool received = fetch(url.c_str(), body.get(), 128 * 1024, response);
+    service_delay = response.retry_after_us;
+    if (!received) return Lookup::Failed;
     Json result(cJSON_ParseWithLengthOpts(response.bytes.get(), response.size + 1, nullptr, true));
-    if (!result || !cJSON_IsObject(result.get())) return Lookup::Failed;
+    if (!result || !cJSON_IsObject(result.get())) {
+        ESP_LOGW(kTag, "Recognition response invalid JSON: bytes=%u", static_cast<unsigned>(response.size));
+        return Lookup::Failed;
+    }
     if (recognition_metadata::parse(result.get(), track)) return Lookup::Matched;
     const auto *matches = recognition_metadata::field(result.get(), "matches");
-    return cJSON_IsArray(matches) && cJSON_GetArraySize(matches) == 0 ? Lookup::NoMatch : Lookup::Failed;
+    if (cJSON_IsArray(matches) && cJSON_GetArraySize(matches) == 0) return Lookup::NoMatch;
+    ESP_LOGW(kTag, "Recognition response missing usable track: matches=%d bytes=%u",
+        cJSON_IsArray(matches) ? cJSON_GetArraySize(matches) : -1, static_cast<unsigned>(response.size));
+    return Lookup::Failed;
 }
 
 struct Image {
@@ -208,6 +236,7 @@ void recognition_task(void *)
         const Session start = session();
         const int64_t now = esp_timer_get_time();
         if (track_epoch != start.epoch || recognition_policy::expired(matched_at, now)) {
+            if (track_epoch != start.epoch) retries.activity_changed(now);
             track = {}; image = {}; track_epoch = start.epoch;
         }
         const bool has_track = track.title[0] != '\0';
@@ -237,6 +266,7 @@ void recognition_task(void *)
         Heap<uint8_t> pcm(clip.pcm);
         if (session().epoch != start.epoch) continue;
         Lookup outcome = Lookup::Failed;
+        int64_t service_delay = 0;
         RecognitionTrack next{};
         if (clip.status == AudioCaptureStatus::Complete) {
             const int64_t processing_started = esp_timer_get_time();
@@ -256,7 +286,7 @@ void recognition_task(void *)
                     publish(start.epoch, RecognitionStatus::Identifying, has_track ? &track : nullptr,
                         image.pixels ? &picture : nullptr);
                     const int64_t lookup_started = esp_timer_get_time();
-                    outcome = lookup(signature, next);
+                    outcome = lookup(signature, next, service_delay);
                     ESP_LOGI(kTag, "Recognition result=%u duration_ms=%lld",
                         static_cast<unsigned>(outcome),
                         static_cast<long long>((esp_timer_get_time() - lookup_started) / 1000));
@@ -284,14 +314,14 @@ void recognition_task(void *)
                 picture = image.view();
                 publish(start.epoch, RecognitionStatus::Matched, &track, image.pixels ? &picture : nullptr);
             }
-            retries.succeeded(esp_timer_get_time());
+            retries.succeeded(esp_timer_get_time(), true);
             ESP_LOGI(kTag, "Recognition matched");
         } else {
             if (recognition_policy::expired(matched_at, esp_timer_get_time())) { track = {}; image = {}; }
             picture = image.view();
             if (outcome == Lookup::Failed) {
-                retries.failed(esp_timer_get_time());
-            } else { retries.succeeded(esp_timer_get_time()); }
+                retries.failed(esp_timer_get_time(), service_delay);
+            } else { retries.succeeded(esp_timer_get_time(), false); }
             last_status = outcome == Lookup::Failed ? RecognitionStatus::Unavailable : RecognitionStatus::NoMatch;
             publish(start.epoch, last_status,
                 track.title[0] != '\0' ? &track : nullptr, image.pixels ? &picture : nullptr);

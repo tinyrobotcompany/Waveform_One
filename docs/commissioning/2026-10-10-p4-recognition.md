@@ -21,7 +21,9 @@ and decoded artwork to 1024×1024. HTTP operations use five-second I/O timeouts
 and check a 25-second deadline between operations. A blocking I/O can extend
 that deadline by its own timeout.
 
-Normal retries wait one second after completion during active playback. Service/capture failures back
+Matched attempts wait 30 seconds; misses wait 15 seconds. Playback stop/start
+removes the normal pause, but preserves failure cooldowns. Retry-After delta
+seconds and UTC dates are honored, with overflow-safe scheduling. Service/capture failures back
 off for 60, 120, 240 and then 300 seconds. Backoff survives reconnection.
 Existing artwork survives temporary misses during active playback, expires after
 90 seconds, and is cleared immediately when the Wi-Fi origin or S3 connection
@@ -96,11 +98,17 @@ playback stopped. These are application-policy defects, rather than evidence of
 a stalled worker. A failed match on another song remains a service/fingerprint
 coverage issue unless further evidence establishes a specific defect.
 
-The corrected firmware reduces the normal pause to one second and uses the
+The corrected firmware uses the
 existing calibrated S3 diagnostics to clear silence independently of HTTP and
 invalidate old results. Tests exercise fragmented/invalid diagnostics, quiet
 debouncing, report expiry, disconnects and activity epochs alongside production
-USB capture. The hardware log confirms actual playing/quiet transitions.
+USB capture. The hardware log confirms actual playing/quiet transitions and a subsequent
+match with artwork. An intermediate one-second retry experiment produced three
+successive matches about 11 seconds apart, followed by a verified HTTP 429.
+That experiment was replaced by 30-second pauses after a match and 15 seconds
+after a miss; stop/start removes normal waits, but never failure backoff. Safe
+HTTP status/size diagnostics and Retry-After handling identify and respect the
+service limit without logging response contents or audio.
 Title/artist/album are now vertically laid out with bounded label heights; the
 technical footer is removed, and progress text uses plain language. The user
 provided a photo proving the original fixed-position labels overlapped on a

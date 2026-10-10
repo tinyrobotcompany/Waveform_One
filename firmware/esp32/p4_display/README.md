@@ -20,8 +20,9 @@ locally and sends only the fingerprint over verified HTTPS. Track, artist, album
 and downloaded artwork replace the listening screen when a match is returned.
 No Python or Raspberry Pi is involved, and microphone recordings are not saved.
 
-Successful/no-match attempts are followed by a one-second wait; failures use
-capped backoff. Three consecutive quiet S3 reports (about 1.5 seconds) clear the
+Matched attempts wait 30 seconds; misses wait 15 seconds. A playback stop/start
+removes that normal wait, so a new song can be captured promptly. Failures use
+capped backoff and honor service Retry-After; playback changes cannot bypass it. Three consecutive quiet S3 reports (about 1.5 seconds) clear the
 track and invalidate in-flight lookups. Missing reports for three seconds also
 clear it. Artwork survives temporary misses during active playback for up to
 90 seconds. Wi-Fi

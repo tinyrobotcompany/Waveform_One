@@ -62,6 +62,9 @@ int main()
     assert(usb_controller_set_style(LedStyle::Waterfall) == StyleRequestResult::Queued);
     drain();
     receive("WF1 " + std::to_string(request_id) + " OK MODE waterfall\n"); drain();
+    receive(quiet); receive(quiet); receive(quiet); poll_activity();
+    assert(!music_active && capture_reserved.load());
+    receive(playing); poll_activity(); assert(music_active);
     for (unsigned i = 0; i < 1000; ++i)
         receive(prefix + " PCM " + std::to_string(i) + " " + std::string(512, '0') + " e6a1d1c5\n");
     receive(prefix + " END 1000\n");

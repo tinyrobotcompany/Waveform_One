@@ -51,8 +51,20 @@ int main()
     retries.failed(0); assert(!retries.due(240000000 - 1));
     retries.failed(0); assert(!retries.due(300000000 - 1) && retries.due(300000000));
     retries.failed(0); assert(retries.due(300000000));
-    retries.succeeded(0); assert(retries.due(kIntervalUs));
+    retries.succeeded(0, false); assert(!retries.due(14999999) && retries.due(15000000));
+    retries.activity_changed(100); assert(retries.due(100));
+    retries.succeeded(0, true); assert(!retries.due(29999999) && retries.due(30000000));
+    retries.activity_changed(100); assert(retries.due(100));
+    retries.failed(0, 180000000); retries.activity_changed(100);
+    assert(!retries.due(179999999) && retries.due(180000000));
+    assert(retry_after("Sat, 10 Oct 2026 12:03:00 GMT", 1791633600) == 180000000);
+    assert(retry_after("180") == 180000000);
+    assert(retry_after("0") == 0 && retry_after("invalid") == 0);
+    assert(retry_after("9999999999999999999999999999999") == 0);
+    retries.succeeded(0, false);
     retries.failed(0); assert(retries.due(60000000));
+    retries.failed(1000000, std::numeric_limits<int64_t>::max());
+    assert(!retries.due(std::numeric_limits<int64_t>::max() - 1));
     assert(!expired(100, 100 + kTrackLifetimeUs - 1));
     assert(expired(100, 100 + kTrackLifetimeUs));
 }
