@@ -25,11 +25,16 @@ int main()
     assert(!valid_brightness(9));
     assert(!valid_brightness(101));
 
-    assert(valid_wifi_password(std::string(63, 'p')));
+    assert(valid_wifi_password(std::string(8, 'p'), false));
+    assert(valid_wifi_password(std::string(63, 'p'), false));
     assert(valid_wifi_password(
-        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
-    assert(!valid_wifi_password(std::string(64, 'z')));
-    assert(!valid_wifi_password(std::string(65, 'a')));
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", false));
+    assert(!valid_wifi_password("", false));
+    assert(!valid_wifi_password(std::string(7, 'p'), false));
+    assert(!valid_wifi_password(std::string(64, 'z'), false));
+    assert(!valid_wifi_password(std::string(65, 'a'), false));
+    assert(valid_wifi_password("", true));
+    assert(!valid_wifi_password("password", true));
 
     assert(valid_browser_time(1800000000LL, 0));
     assert(valid_browser_time(1800000300LL, 1800000000LL));
@@ -93,18 +98,25 @@ int main()
     const uint8_t malformed[] = {0xc3, 0x28};
     const uint8_t embedded_nul[] = {'H', 'o', 'm', 'e', 0, 'E', 'v', 'i', 'l'};
     const uint8_t padded[] = {'H', 'o', 'm', 'e', 0, 0, 0, 0};
-    assert(add_wifi_network(networks, home, sizeof(home)));
-    assert(add_wifi_network(networks, cafe, sizeof(cafe)));
-    assert(!add_wifi_network(networks, injected, sizeof(injected)));
-    assert(!add_wifi_network(networks, malformed, sizeof(malformed)));
-    assert(!add_wifi_network(networks, home, sizeof(home)));
+    assert(add_wifi_network(networks, home, sizeof(home), WifiSecurity::Personal));
+    assert(add_wifi_network(networks, cafe, sizeof(cafe), WifiSecurity::Personal));
+    assert(!add_wifi_network(networks, injected, sizeof(injected), WifiSecurity::Personal));
+    assert(!add_wifi_network(networks, malformed, sizeof(malformed), WifiSecurity::Personal));
+    assert(!add_wifi_network(networks, home, sizeof(home), WifiSecurity::Personal));
+    const uint8_t guest[] = {'G', 'u', 'e', 's', 't'};
+    const uint8_t legacy[] = {'O', 'l', 'd'};
+    assert(!add_wifi_network(networks, legacy, sizeof(legacy), WifiSecurity::Unsupported));
+    assert(add_wifi_network(networks, guest, sizeof(guest), WifiSecurity::Open));
     assert(scanned_ssid_size(embedded_nul, sizeof(embedded_nul)) == 0);
     assert(scanned_ssid_size(padded, sizeof(padded)) == 4);
-    assert(networks.count == 2);
+    assert(networks.count == 3);
     assert(std::string_view(networks.items[0].ssid) == "Home");
+    assert(!networks.items[0].open);
     assert(std::string_view(networks.items[1].ssid) == "Caf\xc3\xa9");
+    assert(std::string_view(networks.items[2].ssid) == "Guest");
+    assert(networks.items[2].open);
     assert(selected_wifi_network(networks, 0) == &networks.items[0]);
-    assert(selected_wifi_network(networks, 2) == nullptr);
+    assert(selected_wifi_network(networks, 3) == nullptr);
 
     LedStyle style{};
     assert(acknowledged_style(LedControllerState::ConnectedClassic, style));
@@ -119,7 +131,7 @@ int main()
     WifiNetworkList crowded{};
     for (int index = 0; index < 20; ++index) {
         const uint8_t name[] = {'N', static_cast<uint8_t>('a' + index)};
-        add_wifi_network(crowded, name, sizeof(name));
+        add_wifi_network(crowded, name, sizeof(name), WifiSecurity::Personal);
     }
     assert(crowded.count == kMaxWifiNetworks);
 }

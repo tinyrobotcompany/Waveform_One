@@ -13,8 +13,15 @@ namespace control_policy {
 
 constexpr std::size_t kMaxWifiNetworks = 16;
 
+enum class WifiSecurity {
+    Open,
+    Personal,    // WPA/WPA2/WPA3 with a passphrase or PSK
+    Unsupported, // WEP, enterprise and others the setup flow cannot join
+};
+
 struct WifiNetwork {
     char ssid[33]{};
+    bool open = false;
 };
 
 struct WifiNetworkList {
@@ -65,9 +72,12 @@ inline bool valid_brightness(int percent)
     return percent >= 10 && percent <= 100;
 }
 
-inline bool valid_wifi_password(std::string_view password)
+// Open networks take no password. Secured networks take an 8-63 character
+// passphrase or a 64-digit hexadecimal PSK.
+inline bool valid_wifi_password(std::string_view password, bool open)
 {
-    if (password.size() <= 63) return true;
+    if (open) return password.empty();
+    if (password.size() >= 8 && password.size() <= 63) return true;
     if (password.size() != 64) return false;
     for (const char value : password) {
         const bool hex = (value >= '0' && value <= '9') ||
@@ -256,9 +266,13 @@ inline std::size_t scanned_ssid_size(const uint8_t *bytes, std::size_t capacity)
     return capacity;
 }
 
-inline bool add_wifi_network(WifiNetworkList &networks, const uint8_t *ssid, std::size_t size)
+inline bool add_wifi_network(WifiNetworkList &networks, const uint8_t *ssid, std::size_t size,
+                             WifiSecurity security)
 {
-    if (networks.count >= kMaxWifiNetworks || !safe_utf8_ssid(ssid, size)) return false;
+    if (networks.count >= kMaxWifiNetworks || security == WifiSecurity::Unsupported ||
+        !safe_utf8_ssid(ssid, size)) {
+        return false;
+    }
     const std::string_view name(reinterpret_cast<const char *>(ssid), size);
     for (std::size_t index = 0; index < networks.count; ++index) {
         if (name == networks.items[index].ssid) return false;
@@ -266,6 +280,7 @@ inline bool add_wifi_network(WifiNetworkList &networks, const uint8_t *ssid, std
     WifiNetwork &network = networks.items[networks.count++];
     std::memcpy(network.ssid, ssid, size);
     network.ssid[size] = '\0';
+    network.open = security == WifiSecurity::Open;
     return true;
 }
 

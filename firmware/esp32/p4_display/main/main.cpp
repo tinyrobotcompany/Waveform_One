@@ -119,7 +119,9 @@ void on_wifi_password(lv_event_t *event)
     lv_textarea_set_text(wifi_password, "");
     lv_textarea_set_password_mode(wifi_password, true);
     lv_label_set_text(wifi_entry_show_label, "Show");
-    lv_label_set_text(wifi_entry_status, "Enter the network password.");
+    lv_label_set_text(wifi_entry_status, network->open
+                                             ? "Open network. Leave the password empty."
+                                             : "Enter the network password.");
     lv_obj_clear_state(wifi_entry_cancel, LV_STATE_DISABLED);
     lv_obj_clear_state(wifi_entry_connect, LV_STATE_DISABLED);
     lv_obj_add_flag(wifi_entry_spinner, LV_OBJ_FLAG_HIDDEN);
@@ -165,6 +167,12 @@ void on_wifi_connect(lv_event_t *event)
         lv_label_set_text(wifi_status, "Choose a home Wi-Fi network first.");
         return;
     }
+    if (!control_policy::valid_wifi_password(password, network->open)) {
+        lv_label_set_text(wifi_entry_status,
+                          network->open ? "This network is open. Leave the password empty."
+                                        : "Wi-Fi passwords are 8 to 63 characters.");
+        return;
+    }
     if (network_configure_home(*network, password)) {
         wifi_connecting = true;
         lv_label_set_text(wifi_status, "Checking Wi-Fi credentials…");
@@ -173,8 +181,8 @@ void on_wifi_connect(lv_event_t *event)
         lv_obj_add_state(wifi_entry_connect, LV_STATE_DISABLED);
         lv_obj_remove_flag(wifi_entry_spinner, LV_OBJ_FLAG_HIDDEN);
     } else {
-        lv_label_set_text(wifi_status, "Invalid password or connection already in progress.");
-        lv_label_set_text(wifi_entry_status, "Check the password and try again.");
+        lv_label_set_text(wifi_status, "A Wi-Fi connection is already in progress.");
+        lv_label_set_text(wifi_entry_status, "Please wait and try again.");
     }
 }
 

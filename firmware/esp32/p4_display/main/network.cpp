@@ -441,7 +441,9 @@ wifi_config_t station_config(const std::string &ssid, const std::string &passwor
     wifi_config_t station{};
     std::memcpy(station.sta.ssid, ssid.data(), ssid.size());
     std::memcpy(station.sta.password, password.data(), password.size());
-    station.sta.threshold.authmode = WIFI_AUTH_OPEN;
+    // A saved secured network must never be satisfied by an open access point
+    // that copies its name.
+    station.sta.threshold.authmode = password.empty() ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA_PSK;
     station.sta.pmf_cfg.capable = true;
     station.sta.pmf_cfg.required = false;
     return station;
@@ -498,6 +500,22 @@ void start_time_sync()
     ESP_ERROR_CHECK(esp_netif_sntp_init(&time_config));
 }
 
+control_policy::WifiSecurity wifi_security(wifi_auth_mode_t mode)
+{
+    switch (mode) {
+    case WIFI_AUTH_OPEN:
+        return control_policy::WifiSecurity::Open;
+    case WIFI_AUTH_WPA_PSK:
+    case WIFI_AUTH_WPA2_PSK:
+    case WIFI_AUTH_WPA_WPA2_PSK:
+    case WIFI_AUTH_WPA3_PSK:
+    case WIFI_AUTH_WPA2_WPA3_PSK:
+        return control_policy::WifiSecurity::Personal;
+    default:
+        return control_policy::WifiSecurity::Unsupported;
+    }
+}
+
 void scan_task(void *)
 {
     wifi_scan_config_t config{};
@@ -513,7 +531,8 @@ void scan_task(void *)
             esp_wifi_scan_get_ap_records(&count, records.get()) == ESP_OK) {
             for (uint16_t index = 0; index < count; ++index) {
                 const size_t size = control_policy::scanned_ssid_size(records[index].ssid, 32);
-                control_policy::add_wifi_network(networks, records[index].ssid, size);
+                control_policy::add_wifi_network(networks, records[index].ssid, size,
+                                                 wifi_security(records[index].authmode));
             }
         } else {
             esp_wifi_clear_ap_list();
@@ -678,7 +697,7 @@ bool network_configure_home(const control_policy::WifiNetwork &selected, const c
         configuring_home.exchange(true)) return false;
     const std::string network(selected.ssid);
     const std::string secret(password);
-    if (network.size() > 32 || !control_policy::valid_wifi_password(secret)) {
+    if (network.size() > 32 || !control_policy::valid_wifi_password(secret, selected.open)) {
         configuring_home.store(false);
         return false;
     }

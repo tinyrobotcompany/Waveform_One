@@ -69,8 +69,11 @@ the user's network. Scan results are retained as structured SSID records rather
 than reconstructed from dropdown text. Networks whose names contain control characters, malformed
 UTF-8 or text-direction controls are omitted because LVGL cannot present those
 names safely. SSIDs containing embedded NUL bytes are intentionally unsupported
-and omitted rather than truncated to a different network name. WPA passphrases up
-to 63 characters and valid 64-character hexadecimal PSKs are accepted.
+and omitted rather than truncated to a different network name. Only open and WPA/WPA2/WPA3
+Personal networks are listed. Secured networks require an 8-63 character
+passphrase or a 64-digit hexadecimal PSK, checked on screen before any
+connection attempt, and open networks take no password. A saved secured network
+is never joined through an open access point that copies its name.
 
 After joining the home network, the P4 synchronizes its clock using SNTP. The
 clock does not depend on the phone remote being open. Browser time is accepted
