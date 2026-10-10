@@ -68,6 +68,8 @@ PRINTER_BUILD_Z = Param(256.0, "mm", D, "Centauri Carbon nominal build volume.")
 MAX_PRINT_X = Param(245.0, "mm", POL, "Engineering envelope: margin for brims and bed edges.")
 MAX_PRINT_Y = Param(245.0, "mm", POL, "Engineering envelope: margin for brims and bed edges.")
 MAX_PRINT_Z = Param(245.0, "mm", POL, "Engineering envelope: margin for brims and bed edges.")
+PLATE_DEPTH = Param(225.0, "mm", POL, "Front-to-back room on a print-job plate; the profile keeps ~23 mm at the front for its purge line.")
+PLATE_GAP = Param(8.0, "mm", POL, "Space between parts on a print-job plate.")
 
 # --- Cabinet -----------------------------------------------------------------
 # A rounded tube (top, bottom, sides) with the black front plate printed as one

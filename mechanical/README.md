@@ -89,16 +89,20 @@ Clean the plate with warm soapy water first. Times below use ElegooSlicer's
 **Elegoo PETG** profile. The **Elegoo PETG PRO** profile limits flow and
 roughly doubles the shell times (~37 h per half).
 
-| Order | File(s) | Qty | Time (each) |
-|---|---|---|---|
-| 1 | `calibration_coupon` | 1 | 48 m |
-| 2 | `shell_left`, `shell_right` | 1 each | 19 h / 20 h |
-| 3 | `rear_panel_left`, `rear_panel_right` | 1 each | 3 h 26 m / 2 h 18 m |
-| 4 | `record_holder_left`, `record_holder_right` | 1 each | 1 h 12 m |
-| 5 | `pi_tray` | 1 | 56 m |
-| 6 | the eight `clip_*` files (one plate) | 1 each | ~4 m |
+Each print is **one file** in `exports/print_jobs/`, with all its parts already
+laid out on the bed. Open it (**File → Import**, **Load model only**), check the
+profiles, slice, print.
 
-About 600 cm³ in total (~750 g of PETG).
+| Print | File | Parts | Time |
+|---|---|---|---|
+| 1 | `1_calibration_coupon_revB_PETG.3mf` | hole-size coupon | 48 m |
+| 2 | `2_shell_left_revB_PETG.3mf` | left shell half | 19 h |
+| 3 | `3_shell_right_revB_PETG.3mf` | right shell half | 20 h |
+| 4 | `4_small_parts_a_revB_PETG.3mf` | left rear panel, Pi tray, 4 screen clips | 4 h 31 m |
+| 5 | `5_small_parts_b_revB_PETG.3mf` | right rear panel, 2 record holders, 4 LED clips | 4 h 51 m |
+
+About 600 cm³ in total (~750 g of PETG). Single-part files are also in
+`exports/3mf/` and `exports/stl/` if a part ever needs reprinting on its own.
 
 **Print the coupon first.** Front row: heat-set insert holes 3.8 → 4.2 mm;
 back row: M3 screw holes 3.0 → 3.4 mm; the cut-off corner marks the smallest

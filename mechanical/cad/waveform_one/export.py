@@ -11,7 +11,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from build123d import Compound, Mesher, Shape, export_step, export_stl
+from build123d import Compound, Mesher, Part, Pos, Shape, export_step, export_stl
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
 from waveform_one import parameters as p
@@ -129,3 +129,48 @@ def export_printed_parts(parts: list[PrintedPart], root: Path) -> list[Path]:
             raise RuntimeError(f"STL export failed: {stl_path}")
         written += [mf_path, stl_path]
     return written
+
+
+def arrange_plate(parts: list[PrintedPart]) -> list[tuple[PrintedPart, Part]]:
+    """Lay parts out in rows on one plate, in the order given, centred on the bed origin.
+
+    Raises if the layout exceeds MAX_PRINT_X by PLATE_DEPTH.
+    """
+    gap, max_x = p.PLATE_GAP.v, p.MAX_PRINT_X.v
+    rows: list[list[Part]] = [[]]
+    row_width = 0.0
+    for part in parts:
+        bed = part.on_bed()
+        width = bed.bounding_box().size.X
+        if rows[-1] and row_width + gap + width > max_x:
+            rows.append([])
+            row_width = 0.0
+        row_width += (gap if rows[-1] else 0.0) + width
+        rows[-1].append(bed)
+
+    placed, y = [], 0.0
+    for row in rows:
+        x = 0.0
+        for bed in row:
+            box = bed.bounding_box()
+            placed.append(Pos(x - box.min.X, y - box.min.Y, 0) * bed)
+            x += box.size.X + gap
+        y += max(b.bounding_box().size.Y for b in row) + gap
+
+    total = Compound(children=placed).bounding_box()
+    if total.size.X > max_x + 1e-3 or total.size.Y > p.PLATE_DEPTH.v + 1e-3:
+        names = ", ".join(part.name for part in parts)
+        raise RuntimeError(f"Plate {total.size.X:.0f} x {total.size.Y:.0f} mm is too big for: {names}")
+    centre = Pos(-total.center().X, -total.center().Y, 0)
+    return [(part, centre * shape) for part, shape in zip(parts, placed)]
+
+
+def export_print_job(name: str, parts: list[PrintedPart], root: Path) -> Path:
+    """One 3MF per print job: every part as its own object, already laid out on the bed."""
+    path = root / "print_jobs" / f"{name}_rev{p.PRINT_REVISION}_{p.PRINT_MATERIAL}.3mf"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mesher = Mesher()
+    for part, placed in arrange_plate(parts):
+        mesher.add_shape(placed, linear_deflection=MESH_TOLERANCE, part_number=part.name)
+    mesher.write(path)
+    return path

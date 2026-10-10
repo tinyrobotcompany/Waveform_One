@@ -55,3 +55,30 @@ def test_export_round_trips_and_overwrites(tmp_path, built):
     original, loaded = model.bounding_box(), reimported.bounding_box()
     assert tuple(loaded.min) == pytest.approx(tuple(original.min), abs=1e-3)
     assert tuple(loaded.max) == pytest.approx(tuple(original.max), abs=1e-3)
+
+
+def test_every_printed_part_is_in_exactly_one_print_job(built):
+    from waveform_one.build import PRINT_JOBS, print_jobs
+
+    _, printed = built
+    jobs = print_jobs({pp.name: pp for pp in printed})
+    assert [job for job, _ in jobs] == [job for job, _ in PRINT_JOBS]
+    assert sorted(pp.name for _, parts in jobs for pp in parts) == sorted(pp.name for pp in printed)
+
+
+def test_each_print_job_fits_one_plate_without_overlaps(built, tmp_path):
+    from build123d import Compound
+
+    from waveform_one.build import print_jobs
+    from waveform_one.export import arrange_plate, export_print_job
+
+    _, printed = built
+    for job, parts in print_jobs({pp.name: pp for pp in printed}):
+        placed = [shape for _, shape in arrange_plate(parts)]
+        box = Compound(children=placed).bounding_box()
+        assert box.size.X <= p.MAX_PRINT_X.v and box.size.Y <= p.PLATE_DEPTH.v, job
+        assert box.min.Z == pytest.approx(0.0, abs=1e-6), job
+        for i, a in enumerate(placed):
+            for b in placed[i + 1 :]:
+                assert not a.bounding_box().overlaps(b.bounding_box()), job
+        assert export_print_job(job, parts, tmp_path).exists()
