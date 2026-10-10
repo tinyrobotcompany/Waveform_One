@@ -39377,4 +39377,3 @@ lv_font_t waveform_font_24 = {
 
 
 #endif /*#if WAVEFORM_FONT_24*/
-

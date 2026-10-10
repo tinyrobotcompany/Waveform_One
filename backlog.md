@@ -1,5 +1,51 @@
 # Waveform One backlog
 
+## Music detection shared by the LED matrix and P4
+
+Status: Highest next implementation priority — classifier feasibility and hardware benchmark before integration.
+
+The current S3 gate detects sound above a calibrated spectral noise floor. It
+does not distinguish actual music from conversation or changing background noise.
+Both displays must use one tested music-presence decision rather than independent
+volume thresholds.
+
+- Classify short rolling audio windows as music, speech, other noise or uncertain, including mixtures. Evaluate a compact on-device sound classifier; speech VAD alone is insufficient because singing and rap are music.
+- Music-positive windows enable the LED visualization and P4 recognition. Speech/noise alone must not animate the LEDs, trigger lookups or show a music-search state.
+- Smooth classifier confidence over time with separate entry/exit criteria. Short uncertain windows and conversation over a song must not discard the identified album; sustained confirmed non-music or real silence should end the music session.
+- Preserve the existing fast silence response and account for classification time in the recognition latency budget. Keep a rolling prebuffer so classification does not throw away the beginning of the song.
+- Keep raw audio for fingerprinting independent of visualization EQ, display gating and any speech/noise processing.
+- Benchmark inference time, flash/RAM, task scheduling, USB throughput and LED refresh on the actual S3/P4 before choosing where inference runs. Do not assume a desktop model will meet MCU deadlines.
+- Test real room recordings: silence, fan/traffic noise, conversation, TV dialogue, isolated transients, quiet jazz/classical, solo instruments, percussion, vocal music, rap, a cappella and music mixed with voices.
+- Measure false music triggers, missed music, start/stop latency and album retention under interference. A synthetic sine-wave test or recognition-service match alone does not validate a music classifier.
+- Run classification locally in native firmware; require explicit consent before collecting/storing private-room recordings or sending them elsewhere for training.
+
+Reference candidates: [TensorFlow YAMNet sound classification](https://www.tensorflow.org/hub/tutorials/yamnet)
+for classifier evaluation and [Espressif VADNet](https://docs.espressif.com/projects/esp-sr/en/latest/esp32s3/vadnet/README.html)
+for speech-detection context. Neither has been selected or benchmarked for this device.
+
+## Complete international text rendering
+
+Status: In progress — broad glyph fallback added; full Unicode acceptance remains open.
+
+- Preserve actual song, artist, album and user-name Unicode text; never replace valid unsupported characters with `?` or claim diagnostic boxes are real glyph coverage.
+- Keep the existing typeface for supported text and supply matching fallback fonts for the remaining assigned characters, including rare CJK extensions.
+- Add complete shaping/normalization for complex scripts and combining sequences; test right-to-left and mixed-direction metadata, Indic conjuncts and composed/decomposed equivalents.
+- Define and validate emoji variation, joining, skin tones and flag sequences; standalone monochrome symbol coverage is not composite emoji support.
+- Budget font storage, render caches and shaping memory against recognition and the planned OTA partition layout before PCB flash/RAM decisions.
+- Validate real rendered words with native speakers; code-point coverage tests alone are insufficient. The current 77,872-glyph fallback resolves common missing characters but does not close this item.
+
+## Album artwork colours for the native screen and phone
+
+Status: Next visual feature — prototype before PCB design.
+
+- Keep the background black and the current green/lavender as the default palette.
+- Extract representative colours from the recognized album cover; select two complementary accent roles for the identified-track border/status and the searching/checking indicator.
+- Adjust brightness and saturation for readable contrast against black; keep song, artist and album text readable rather than colouring all text.
+- Use the same palette on the P4 and paired phone, including the search animation. Initial search without artwork stays lavender.
+- Hold the palette steady during rechecks of the same track and transition gently when a new album is identified; do not pulse or recolour every recognition attempt.
+- Fall back to the standard palette for missing artwork, monochrome covers, extraction failures or unsuitable colours. Offer a standard/album-colours preference.
+- Validate warm, cool, very dark, mostly white and monochrome covers alongside recognition performance and animation stability.
+
 ## LED visualization EQ in settings
 
 Status: Planned — assess S3 frequency-band controls before PCB design.

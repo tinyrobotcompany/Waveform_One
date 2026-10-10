@@ -227,3 +227,47 @@ Real paired-phone visual acceptance and the enlarged native heading remain
 user checks. Sustained playback/noise immunity is still separate from this
 short smoke test. The backlog now includes LED visualization EQ, explicitly
 independent of raw recognition audio and speaker playback.
+
+## Unicode fallback and music-detection follow-up
+
+The previous display helper replaced unsupported valid characters with `?`.
+That lost the original text and did not meet the requested character support.
+The helper now preserves all valid UTF-8. A shared immutable glyph pack adds
+77,872 actual assigned characters at all six native sizes, after excluding
+upstream numbered diagnostic boxes, unassigned/private-use characters and
+invisible variation selectors. Existing primary-font glyphs retain their
+typeface. LVGL bidi and Arabic/Persian shaping are enabled.
+
+This is a broader fallback, **not completion of full Unicode rendering**.
+Rare CJK extensions, complete complex-script shaping/normalization and composite
+emoji remain explicit acceptance work in `backlog.md`. Fallback glyphs come from
+16-pixel bitmap sources and are less smooth than the primary typeface. Source
+licenses, attribution, pinned data and reproducible pack hashes are retained.
+
+Validation:
+
+- Eight Node font checks passed, including byte-for-byte verification of every
+  packed glyph against its source, bounds and the exclusion of diagnostic boxes.
+- The complete firmware host suite passed with ASan/UBSan.
+- The actual native LVGL renderer passed with ASan/UBSan, including bitmap
+  retrieval at every size, straight/curly/modifier apostrophes, Japanese, Korean,
+  Hebrew, Arabic, Indic code points and supplementary musical symbols. Native
+  fixtures verify glyph rendering and layout; they do not prove complete word
+  shaping for every language.
+- ESP-IDF 6.1 P4 build passed. Application-only flash was hash verified; no
+  partition-table/settings changes. The app is 7,580,384 bytes, with about 10%
+  of the existing 8 MB slot free. SHA-256:
+  `a2844bd1337bc9288953b5263b0d5868dc4cfd4813ebaf2aff360e133872f5df`.
+- The post-flash serial reader completed 130 seconds: one initial boot, no
+  subsequent reboot/panic, five completed captures and HTTPS lookups returning
+  no match. The audio content in the room was not independently established;
+  this run does not demonstrate a successful song identification. Startup free
+  PSRAM was 26,074,480 bytes. The reader has exited.
+
+The requested album-derived accent palette is recorded in the backlog, with
+black background, green/lavender defaults and shared native/phone colours.
+Music-only response is the highest next implementation priority. Inspection
+confirmed the current S3 gate uses calibrated spectral energy, not a music
+classifier. The classifier is **not implemented by this patch**; model accuracy,
+task timing, memory and shared S3/P4 gating require hardware evaluation before
+integration. Speech detection alone must not suppress singing or rap.

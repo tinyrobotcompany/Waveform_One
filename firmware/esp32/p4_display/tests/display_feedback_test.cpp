@@ -15,12 +15,12 @@ int main()
         assert(!searching(status));
         assert(std::strcmp(text(status, true), "Enjoy the music") == 0);
     }
-    const auto supported = [](uint32_t cp) { return cp < 0x80 || cp == 0x2019 || cp == 0xe9; };
-    assert(display_text::renderable("Don't you want me", supported) == "Don't you want me");
-    assert(display_text::renderable("Don’t you want me · Beyoncé", supported) == "Don’t you want me ? Beyoncé");
-    assert(display_text::renderable("Music 🎵\nNext", supported) == "Music ?\nNext");
-    assert(display_text::renderable(std::string("bad\xc0\xaf", 5), supported) == "bad??");
-    assert(display_text::renderable(std::string("\xed\xa0\x80", 3), supported) == "???");
-    assert(display_text::renderable(std::string("\xf0\x9f", 2), supported) == "??");
-    assert(display_text::renderable("", supported).empty());
+    for (const char *sample : {"Don't you want me", "Don’t you want me · Beyoncé", "Music 🎵\nNext",
+            "Donʼt · 東京 · 서울 · العربية · שלום · हिन्दी", "\xf4\x8f\xbf\xbf"}) {
+        assert(display_text::renderable(sample) == sample);
+    }
+    assert(display_text::renderable(std::string("bad\xc0\xaf", 5)) == "bad��");
+    assert(display_text::renderable(std::string("\xed\xa0\x80", 3)) == "���");
+    assert(display_text::renderable(std::string("\xf0\x9f", 2)) == "��");
+    assert(display_text::renderable("").empty());
 }

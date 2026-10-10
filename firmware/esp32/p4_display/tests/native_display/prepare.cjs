@@ -9,3 +9,6 @@ const panel = source.slice(source.indexOf('    lv_obj_t *information ='), source
 if (!helpers || !panel) throw Error('Native source blocks not found');
 fs.writeFileSync(path.join(out, 'native_helpers.inc'), helpers);
 fs.writeFileSync(path.join(out, 'native_panel.inc'), panel);
+const font = fs.readFileSync(path.join(__dirname, '../../main/fonts/waveform_unicode.bin'));
+fs.writeFileSync(path.join(out, 'unicode_data.inc'), 'static const unsigned char unicode_data[] = {\n' +
+    [...font].map(byte => byte.toString()).join(',') + '\n};\n');

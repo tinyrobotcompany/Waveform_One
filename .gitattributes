@@ -1,1 +1,4 @@
 firmware/esp32/p4_display/main/fonts/waveform_font_*.c linguist-generated=true
+firmware/esp32/p4_display/main/fonts/unicode_coverage.json linguist-generated=true
+# Preserve upstream font/data license text, including original whitespace.
+firmware/esp32/p4_display/third_party/fonts/*.txt whitespace=-blank-at-eol,-blank-at-eof

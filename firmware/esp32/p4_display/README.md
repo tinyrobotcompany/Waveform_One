@@ -37,10 +37,13 @@ The native NOW PLAYING heading uses the 48-pixel font.
 Song titles use 40 pixels, artists 32, albums 24 and feedback 20. A small green
 dot accompanies “Enjoy the music”; initial searches and routine checks use a
 lavender dot with “Finding your song…” and “Checking what’s playing…”. Feedback
-matches the phone app. The [display fonts](main/fonts/README.md) add curly quotes,
-accents and broader punctuation/Latin/Greek/Cyrillic coverage at every label
-size; unsupported metadata characters use `?` while the phone keeps the original
-text. Full Unicode/emoji/complex-script support is not claimed.
+matches the phone app. The [display fonts](main/fonts/README.md) preserve the
+original valid UTF-8 text and extend the existing typeface with a shared 77,872-glyph
+Unicode fallback at every label size. Missing primary-font characters are never
+rewritten as `?`. The fallback adds CJK, international scripts and monochrome
+musical/emoji symbols; bidi layout and LVGL's Arabic/Persian shaping are enabled.
+This is **not complete Unicode rendering**: rare CJK extensions, advanced Indic
+shaping and joined/colour emoji still need a larger font/shaping stack and acceptance.
 When the WAVEFORM ONE placeholder is visible, a lavender waveform flows beneath
 it in one fixed-size image. The animation stops when the lookup ends and never
 overlays an album cover. An existing cover remains visible during the lookup,

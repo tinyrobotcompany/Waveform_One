@@ -172,12 +172,7 @@ void log_board_identity()
 
 void set_label_text(lv_obj_t *label, const char *text)
 {
-    const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
-    const auto supported = [font](uint32_t cp) {
-        lv_font_glyph_dsc_t glyph{};
-        return lv_font_get_glyph_dsc(font, &glyph, cp, 0) && !glyph.is_placeholder;
-    };
-    const std::string rendered = display_text::renderable(text, supported);
+    const std::string rendered = display_text::renderable(text);
     lv_label_set_text(label, rendered.c_str());
 }
 

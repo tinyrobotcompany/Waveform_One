@@ -29880,4 +29880,3 @@ lv_font_t waveform_font_20 = {
 
 
 #endif /*#if WAVEFORM_FONT_20*/
-

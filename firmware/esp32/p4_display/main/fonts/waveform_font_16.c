@@ -22936,4 +22936,3 @@ lv_font_t waveform_font_16 = {
 
 
 #endif /*#if WAVEFORM_FONT_16*/
-

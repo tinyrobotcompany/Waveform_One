@@ -4,11 +4,10 @@
 #include <string_view>
 
 namespace display_text {
-// Keep supported UTF-8 byte-for-byte. Unsupported or malformed characters use
-// a visible '?' instead of LVGL's missing-glyph rectangle. Phone metadata stays
-// untouched. Glyph availability is supplied by the actual label's font.
-template<class Supported>
-std::string renderable(std::string_view text, Supported supported)
+// Preserve every valid Unicode scalar byte-for-byte. Glyph coverage belongs
+// to the font fallback chain, never to a lossy text rewrite. Malformed UTF-8
+// alone receives the Unicode replacement character (not an ASCII question mark).
+inline std::string renderable(std::string_view text)
 {
     std::string result;
     result.reserve(text.size());
@@ -26,9 +25,8 @@ std::string renderable(std::string_view text, Supported supported)
         valid = valid && !(count == 2 && cp < 0x80) && !(count == 3 && cp < 0x800)
             && !(count == 4 && cp < 0x10000) && cp <= 0x10ffff
             && !(cp >= 0xd800 && cp <= 0xdfff);
-        if (!valid) { result += '?'; ++index; continue; }
-        if (cp == '\n' || cp == '\t' || supported(cp)) result.append(text.substr(index, count));
-        else result += '?';
+        if (!valid) { result += "\xef\xbf\xbd"; ++index; continue; }
+        result.append(text.substr(index, count));
         index += count;
     }
     return result;

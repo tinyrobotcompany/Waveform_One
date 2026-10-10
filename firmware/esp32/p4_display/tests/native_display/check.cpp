@@ -44,8 +44,20 @@ int main() {
             assert(!glyph.is_placeholder && glyph.box_w && glyph.box_h);
             assert(lv_font_get_glyph_static_bitmap(&glyph) != nullptr);
         }
+        const auto *international = display_font(font);
+        for (uint32_t cp : {0x2bcU,0x355U,0x6771U,0x4eacU,0xc11cU,0xc6b8U,0x05e9U,0x0639U,
+                            0xfecbU,0x1f3b5U,0x1d11eU,0x0939U}) {
+            lv_font_glyph_dsc_t glyph{};
+            assert(lv_font_get_glyph_dsc(international,&glyph,cp,0));
+            assert(!glyph.is_placeholder && glyph.resolved_font != font);
+            auto *buffer = lv_draw_buf_create(glyph.box_w,glyph.box_h,LV_COLOR_FORMAT_A8,0);
+            assert(buffer && lv_font_get_glyph_bitmap(&glyph,buffer));
+            bool ink = false;
+            for (uint32_t i = 0; i < buffer->data_size; ++i) ink |= buffer->data[i] != 0;
+            assert(ink); lv_draw_buf_destroy(buffer);
+        }
         lv_font_glyph_dsc_t missing{};
-        assert(!lv_font_get_glyph_dsc(font,&missing,0x355,0));
+        assert(!lv_font_get_glyph_dsc(international,&missing,0x10ffff,0));
     }
     #include "native_panel.inc"
     auto *cover = lv_obj_create(screen);
@@ -69,6 +81,10 @@ int main() {
     lv_obj_get_coords(album,&bounds); lv_obj_get_coords(recognition_status,&status_bounds);
     assert(bounds.y2 < status_bounds.y1);
     screenshot("native-long-title.ppm",display);
+    set_label_text(headline,"東京 · 서울 · Donʼt 🎵");
+    set_label_text(artist,"الموسيقى · שלום · हिन्दी");
+    set_label_text(album,"世界の音楽 · 𝄞 · Deluxe");
+    screenshot("native-international.ppm",display);
     set_label_text(headline,"Listening for music"); set_label_text(artist,"Play a song to bring this screen to life.");
     set_label_text(album,""); set_recognition_feedback(RecognitionStatus::Capturing,false);
     static uint16_t wave_pixels[search_waveform::kPixels];

@@ -126057,4 +126057,3 @@ lv_font_t waveform_font_48 = {
 
 
 #endif /*#if WAVEFORM_FONT_48*/
-

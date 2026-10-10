@@ -92758,4 +92758,3 @@ lv_font_t waveform_font_40 = {
 
 
 #endif /*#if WAVEFORM_FONT_40*/
-

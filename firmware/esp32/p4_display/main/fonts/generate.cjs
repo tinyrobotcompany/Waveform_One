@@ -47,7 +47,7 @@ for (const size of [16,20,24,32,40,48]) {
     source = source.replace(/\.unicode_list = NULL, \.glyph_id_ofs_list = glyph_id_ofs_list_(\d+), \.list_length = \d+, \.type = LV_FONT_FMT_TXT_CMAP_FORMAT0_FULL/g,
         (_, id) => `.unicode_list = unicode_list_${id}, .glyph_id_ofs_list = NULL, .list_length = ${lengths.get(id)}, .type = LV_FONT_FMT_TXT_CMAP_SPARSE_TINY`);
     source = source.replace('.user_data = NULL,', '.user_data = NULL,\n    .static_bitmap = 1, /* Plain bitmaps, like the pinned LVGL built-in fonts. */');
-    fs.writeFileSync(file, source);
+    fs.writeFileSync(file, source.trimEnd() + '\n');
 }
 const coverage = selected.flat().sort((a,b) => a-b);
 fs.writeFileSync('coverage.json', JSON.stringify({ converter: 'lv_font_conv 1.5.3', sizes: [16,20,24,32,40,48], codepoints: coverage }, null, 2) + '\n');
