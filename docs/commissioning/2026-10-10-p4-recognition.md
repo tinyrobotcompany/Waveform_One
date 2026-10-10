@@ -52,13 +52,33 @@ PCM stays in memory and is not saved to disk or included in logs.
   upstream Python result exactly for every band, pass, magnitude and frequency.
   These are example recordings, not the device microphone.
 
-## Hardware acceptance — pending
+## Hardware commissioning — initial smoke test passed
 
-No P4 was flashed as part of the evidence above. The connected serial adapter
-alone does not identify its attached MCU. Confirm the P4 port and the P4-to-S3
-USB connection before installation. Preserve a recovery copy of the current P4
-application and flash only the P4 application, keeping its existing partition
-table and saved Wi-Fi credentials.
+The P4 was identified and flashed on 10 October 2026 using
+`/dev/cu.usbmodem5CF71081441`. Silicon is v3.2, flash 32 MB, and PSRAM 32 MB
+at 200 MHz; the PSRAM startup memory test passed. Secure boot and flash encryption
+are disabled. A recovery copy of addresses `0x0` through `0x80ffff` was saved
+privately before writing. Its SHA-256 is
+`3850c9776e29e2385d39d70fa2c6c595202022026b330bb82ebee538b8678868`.
+The saved partition table matched the build byte for byte. Only the application
+at `0x10000` was written; esptool verified its hash. Application SHA-256:
+`a3e964db35ffbb64d3e5d409581fd0c63830580b612cf6f391513e68e25dcfe8`.
+An initial 921600-baud backup read failed with corrupt serial data; the complete
+backup and application flash both succeeded at 460800 baud.
+
+Device logs confirm display/touch initialization, USB S3 connection and Mirrored
+style acknowledgement, and automatic reconnection using saved Wi-Fi credentials.
+The first real microphone capture completed with result 0, 256,000 bytes, in
+8,099 ms. Native fingerprint generation produced 256 peaks from 95,360 samples
+in 1,568 ms. The TLS certificate was validated and the lookup returned no match
+in 1,159 ms. This proves the device capture/fingerprint/HTTPS path; it does not
+prove a known-song match or artwork rendering.
+
+Recovery binary and raw logs remain under
+`/tmp/waveform-p4-recognition-hardware-20261010/`; the recovery binary contains
+saved device settings and must not be committed. No microphone PCM was saved.
+
+## Remaining hardware acceptance
 
 1. Confirm the target is the Waveshare P4 and record silicon/PSRAM identity.
 2. Observe an eight-second capture completing while panel refresh and style
@@ -76,7 +96,7 @@ table and saved Wi-Fi credentials.
 
 The earlier no-subscription recognition choice is retained. This is an unofficial
 external service and needs a separate availability/licensing decision before
-customer distribution. Device capture throughput, fingerprint latency, artwork
-rendering and combined Wi-Fi/USB/display stability are not yet physically
-verified. The phone remote remains the existing control interface; this change
+customer distribution. Device capture throughput, fingerprint latency and HTTPS lookup have been
+physically verified in the initial smoke test. Known-song recognition, artwork
+rendering and prolonged combined Wi-Fi/USB/display stability still need verification. The phone remote remains the existing control interface; this change
 adds Now Playing metadata/artwork to the P4 touchscreen.
