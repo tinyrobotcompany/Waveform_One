@@ -1,12 +1,5 @@
 # Microphone FFT on the LED panel
 
-The feature-branch build now includes an **unflashed native music-classification
-prototype**, with one decision shared by these bars and P4 recognition. It needs
-the new model partition and usable octal PSRAM. Follow the
-[music-detection commissioning report](../../../docs/commissioning/2026-10-10-music-detection.md)
-before updating existing hardware; target timing and room acceptance are pending.
-The historical bench evidence below applies to the energy-gated firmware.
-
 First combined sound-reactive application. Uses the [documented direct
 wiring](../README.md) without changes: microphone GPIO5/6/7 and panel
 GPIO4/8–18/21. Reuses mic_test's audio_pipeline.cpp rather than retuning or

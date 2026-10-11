@@ -2,17 +2,18 @@
 
 ## Song recognition within five seconds
 
-Status: Next priority — mandatory product target. The current real-song test took approximately ten seconds.
+Status: Five-second recognition remains unaccepted. At the user's request, the complete audio/capture/recognition implementation is restored to pre-filter commit `f4e6752`; classifier-related optimizations and timing experiments are removed. Keep UI, phone and Unicode improvements, plus the independent Wi-Fi RX ownership safety fix. Validate this baseline before attempting further latency or music-versus-speech changes. See [complete rollback record](docs/commissioning/2026-10-11-complete-filter-rollback.md).
 
 - Measure from audible music starting to the correct song, artist and album appearing on the P4 and paired phone. Target: **five seconds or less**, including music classification, capture, fingerprinting and lookup.
 - Keep a bounded rolling raw-audio buffer so music classification and recognition capture overlap. Start external lookups only after music is confirmed.
 - Evaluate shorter recognition clips and faster fingerprint processing against catalogue-match reliability. Preserve raw audio, music/voice discrimination, capture integrity and service cooldowns.
 - Validate first-song and stop/start recognition with vocal, jazz, classical and quiet music on the connected hardware. Record timing and incorrect/missed matches; do not treat a faster animation as faster recognition.
+- Include long eight-second lookups and repeated artwork downloads in the internal SRAM/AES DMA budget; release temporary signature/JSON data before TLS and verify continued correct recognition under memory pressure.
 - Complete this performance work and sustained-playback acceptance before PCB design.
 
 ## Music detection shared by the LED matrix and P4
 
-Status: In progress — both native firmware images flashed and verified; audio starvation corrected, music/speech smoke test and user-confirmed song match passed. Recognition latency and broader room acceptance remain open.
+Status: Completely rolled back to `f4e6752` on this feature branch, including classifier/model sources, activity protocol, capture transport/history, fingerprint experiments, retry/expiry timing and S3 build configuration. The classifier was introduced in `92103a6`, never merged to main. Speech/noise discrimination remains a future requirement; reintroduction requires measured music reliability and latency acceptance. See [complete rollback record](docs/commissioning/2026-10-11-complete-filter-rollback.md).
 
 The previous S3 gate detected sound above a calibrated spectral noise floor. It
 did not distinguish actual music from conversation or changing background noise.
@@ -42,6 +43,8 @@ against catalogue-match reliability, targeting the mandatory five-second
 recognition time above. Broad noise/music-mixture and prolonged-playback acceptance remain open.
 Initial fixture evidence is in
 [the music-detection commissioning report](docs/commissioning/2026-10-10-music-detection.md).
+Latest regression evidence and remaining limitations are in
+[the music-stability commissioning report](docs/commissioning/2026-10-11-music-stability.md).
 
 ## Complete international text rendering
 

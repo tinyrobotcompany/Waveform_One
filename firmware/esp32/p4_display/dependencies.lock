@@ -353,6 +353,6 @@ direct_dependencies:
 - espressif/usb_host_cdc_acm
 - lvgl/lvgl
 - waveshare/esp32_p4_wifi6_touch_lcd_7b
-manifest_hash: 3c98f637002b50ab157b08139d1620360b1907be50107b85f415e4c3410f42d8
+manifest_hash: 8ac1a4973ed6c334c9b78e42223d4bb202d1869b286f5e75132c562f8acc458d
 target: esp32p4
 version: 3.0.0

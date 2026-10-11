@@ -7,4 +7,4 @@ dependencies:
   espressif/usb_host_cdc_acm:
     version: "^2.3"
   espressif/esp_hosted:
-    version: "1.4.*"
+    version: "==1.4.7"

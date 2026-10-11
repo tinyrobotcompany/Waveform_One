@@ -45,10 +45,8 @@ int main()
     assert(usb_controller_capture(nullptr) == AudioCaptureRequestResult::Unavailable);
     assert(usb_controller_capture(completed, 1234) == AudioCaptureRequestResult::Disconnected);
     open_controller(0x303a, 0x1001);
-    // Loud energy alone must never be treated as music.
+    // Existing S3 diagnostics drive recognition without changing its firmware.
     receive("BEAT OPEN RMS=0.01 GATE_RMS=0.01 DISPLAY=BARS BANDS=8 |123|\n");
-    poll_activity(); assert(!music_active);
-    receive("WF1 MUSIC MUSIC\n");
     poll_activity(); assert(music_active);
     const unsigned initial_updates = activity_updates;
     poll_activity();
@@ -57,22 +55,16 @@ int main()
     receive("WF1 4 PCM 0 SHUT RMS=0 GATE_RMS=0 DISPLAY=GATE_CLOSED |0|\n");
     receive("     SHUT RMS=0 GATE_RMS=0 DISPLAY=GATE_CLOSED\n");
     poll_activity(); assert(music_active);
-    receive("WF1 MUSIC MUSIC EXTRA\nWF1 MUSIC QUIET ");
-    poll_activity(); assert(music_active);
-    receive("\n");
-    const std::string quiet = "WF1 MUSIC QUIET\n";
+    const std::string quiet = "     SHUT RMS=0.0001 GATE_RMS=0 DISPLAY=GATE_CLOSED BANDS=0 |000|\n";
+    receive(quiet); receive(quiet); poll_activity(); assert(music_active);
     receive(quiet); poll_activity(); assert(music_state == audio_activity::State::Quiet);
-    const std::string playing = "WF1 MUSIC MUSIC\n";
+    const std::string playing = "     OPEN RMS=0.001 GATE_RMS=0.001 DISPLAY=BARS BANDS=8 |123|\n";
     // Fragmented diagnostics coexist with PCM and style acknowledgements.
     receive(playing.substr(0, 13)); receive(playing.substr(13));
     poll_activity(); assert(music_active);
     test_time_us += 3000000; poll_activity(); assert(music_state == audio_activity::State::Unknown);
     const unsigned unknown_updates = activity_updates;
     poll_activity(); assert(activity_updates == unknown_updates); // no fake quiet heartbeat
-    receive(playing); poll_activity(); assert(music_active);
-    receive("WF1 MUSIC UNKNOWN\n"); poll_activity(); assert(music_state == audio_activity::State::Unknown);
-    receive("BEAT OPEN RMS=0.01 GATE_RMS=0.01 DISPLAY=BARS BANDS=8 |123|\n");
-    poll_activity(); assert(music_state == audio_activity::State::Unknown);
     receive(playing); poll_activity(); assert(music_active);
     const unsigned id = begin();
     const std::string prefix = "WF1 " + std::to_string(id);

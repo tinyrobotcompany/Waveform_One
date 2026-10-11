@@ -9,26 +9,6 @@ sh "$esp_dir/mic_test/tests/run.sh"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
-    "$esp_dir/common/music_policy_test.cpp" -o "$build_dir/music_policy"
-"$build_dir/music_policy"
-printf '%s\n' 'PASS: music evidence, speech interruptions, stale inference and bounded retention'
-
-"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Werror \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I "$esp_dir/common/music_model" \
-    "$esp_dir/common/music_features_test.cpp" "$esp_dir/common/music_features.cpp" \
-    -o "$build_dir/music_features"
-"$build_dir/music_features"
-printf '%s\n' 'PASS: native classifier features, PCM bounds and bounded level normalization'
-
-"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Werror -pthread \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    "$esp_dir/common/music_windows_test.cpp" -o "$build_dir/music_windows"
-"$build_dir/music_windows"
-printf '%s\n' 'PASS: classifier window ownership, dropped samples, discontinuities and concurrent capture'
-
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$esp_dir/led_test/tests/patterns_test.cpp" -o "$build_dir/patterns"
 "$build_dir/patterns"
 printf '%s\n' 'PASS: LED diagnostic patterns'
@@ -92,18 +72,6 @@ printf '%s\n' 'PASS: ESP32-P4 bounded PCM capture, sequence and checksum validat
     "$esp_dir/p4_display/tests/usb_capture_transport_test.cpp" -o "$build_dir/p4_usb_capture"
 "$build_dir/p4_usb_capture"
 printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disconnects and cleanup'
-
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/visualizer/tests/stubs" \
-    -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/usb_bridge_test.cpp" \
-    -o "$build_dir/p4_usb_bridge"
-"$build_dir/p4_usb_bridge"
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
-    -fsanitize=address,undefined -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/development_bridge_test.cpp" -o "$build_dir/p4_bridge_auth"
-"$build_dir/p4_bridge_auth"
-printf '%s\n' 'PASS: development USB bridge reset sequence, byte transport, exclusivity, disconnects and authentication policy'
 
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -182,3 +150,13 @@ printf '%s\n' 'PASS: fixed search waveform buffer bounds, gutters and animation 
     "$esp_dir/p4_display/tests/display_feedback_test.cpp" -o "$build_dir/p4_feedback"
 "$build_dir/p4_feedback"
 printf '%s\n' 'PASS: native recognition feedback and UTF-8 display fallback'
+
+for remote_version in 0x010300 0x010302; do
+    "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+        -fsanitize=address,undefined -fno-omit-frame-pointer \
+        -DTEST_REMOTE_VERSION="$remote_version" \
+        -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/p4_display/main" \
+        "$esp_dir/p4_display/tests/hosted_rx_ownership_test.cpp" -o "$build_dir/p4_rx_ownership"
+    "$build_dir/p4_rx_ownership"
+done
+printf '%s\n' 'PASS: hosted Wi-Fi RX buffer ownership on old and consuming callback contracts'
