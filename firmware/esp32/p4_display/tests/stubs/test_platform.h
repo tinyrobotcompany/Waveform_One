@@ -52,6 +52,11 @@ struct cdc_acm_host_device_config_t {
 };
 inline cdc_acm_host_device_config_t test_cdc_config{};
 inline int test_tx_result = ESP_OK;
+inline int test_control_line_result = ESP_OK;
+inline std::vector<std::pair<bool, bool>> test_control_lines;
+inline int cdc_acm_host_set_control_line_state(cdc_acm_dev_hdl_t, bool dtr, bool rts) {
+    test_control_lines.emplace_back(dtr, rts); return test_control_line_result;
+}
 inline std::vector<std::string> test_transmissions;
 inline void (*test_tx_callback)(std::string_view) = nullptr;
 inline int cdc_acm_host_install(const cdc_acm_host_driver_config_t *) { return ESP_OK; }

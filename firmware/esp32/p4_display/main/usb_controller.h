@@ -39,3 +39,13 @@ enum class AudioCaptureRequestResult { Queued, Busy, Disconnected, Unavailable, 
 // capture_id is returned unchanged, including on failure and disconnect.
 using AudioCaptureCallback = void (*)(AudioCaptureStatus status, uint8_t *pcm, size_t bytes, uint64_t capture_id);
 AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback, uint64_t capture_id = 0);
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+// Development-only transport. Disabled in the normal product build.
+bool usb_controller_bridge_begin();
+bool usb_controller_bridge_reset(bool bootloader);
+bool usb_controller_bridge_write(const uint8_t *data, size_t size);
+void usb_controller_bridge_end(bool reset = true);
+void development_bridge_receive(const uint8_t *data, size_t size);
+bool development_bridge_observing();
+void development_bridge_start();
+#endif

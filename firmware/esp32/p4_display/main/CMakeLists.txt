@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "main.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
-         "recognition.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
+         "recognition.cpp" "unicode_font.cpp" "development_bridge.cpp" "../third_party/cJSON.c"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
          "fonts/waveform_font_24.c" "fonts/waveform_font_32.c"
          "fonts/waveform_font_40.c" "fonts/waveform_font_48.c"
@@ -9,7 +9,12 @@ idf_component_register(
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif
                   esp_http_server esp_timer nvs_flash esp_driver_sdmmc heap
-                  esp_http_client mbedtls esp_new_jpeg)
+                  esp_http_client mbedtls esp_new_jpeg lwip)
+
+option(WAVEFORM_DEV_FLASH_BRIDGE "Temporary physical-access development bridge" OFF)
+if(WAVEFORM_DEV_FLASH_BRIDGE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE WAVEFORM_DEV_FLASH_BRIDGE WAVEFORM_ALLOW_LEGACY_ACTIVITY)
+endif()
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CJSON_NESTING_LIMIT=32)
 

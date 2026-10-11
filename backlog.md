@@ -1,11 +1,21 @@
 # Waveform One backlog
 
+## Song recognition within five seconds
+
+Status: Next priority — mandatory product target. The current real-song test took approximately ten seconds.
+
+- Measure from audible music starting to the correct song, artist and album appearing on the P4 and paired phone. Target: **five seconds or less**, including music classification, capture, fingerprinting and lookup.
+- Keep a bounded rolling raw-audio buffer so music classification and recognition capture overlap. Start external lookups only after music is confirmed.
+- Evaluate shorter recognition clips and faster fingerprint processing against catalogue-match reliability. Preserve raw audio, music/voice discrimination, capture integrity and service cooldowns.
+- Validate first-song and stop/start recognition with vocal, jazz, classical and quiet music on the connected hardware. Record timing and incorrect/missed matches; do not treat a faster animation as faster recognition.
+- Complete this performance work and sustained-playback acceptance before PCB design.
+
 ## Music detection shared by the LED matrix and P4
 
-Status: Highest next implementation priority — classifier feasibility and hardware benchmark before integration.
+Status: In progress — both native firmware images flashed and verified; audio starvation corrected, music/speech smoke test and user-confirmed song match passed. Recognition latency and broader room acceptance remain open.
 
-The current S3 gate detects sound above a calibrated spectral noise floor. It
-does not distinguish actual music from conversation or changing background noise.
+The previous S3 gate detected sound above a calibrated spectral noise floor. It
+did not distinguish actual music from conversation or changing background noise.
 Both displays must use one tested music-presence decision rather than independent
 volume thresholds.
 
@@ -21,7 +31,17 @@ volume thresholds.
 
 Reference candidates: [TensorFlow YAMNet sound classification](https://www.tensorflow.org/hub/tutorials/yamnet)
 for classifier evaluation and [Espressif VADNet](https://docs.espressif.com/projects/esp-sr/en/latest/esp32s3/vadnet/README.html)
-for speech-detection context. Neither has been selected or benchmarked for this device.
+for speech-detection context. The YAMNet prototype runs on the S3; its embedded
+8 MB PSRAM has been identified and successfully used by the classifier.
+The first short sample missed a later scheduling problem. After moving routine
+printing out of the audio task and raising audio priority, a two-minute target
+check reported zero dropped audio buffers and zero crashes. The user confirmed
+voice rejection, music detection and a real-song match at about ten seconds.
+Prioritize a rolling recognition prebuffer and evaluate shorter capture windows
+against catalogue-match reliability, targeting the mandatory five-second
+recognition time above. Broad noise/music-mixture and prolonged-playback acceptance remain open.
+Initial fixture evidence is in
+[the music-detection commissioning report](docs/commissioning/2026-10-10-music-detection.md).
 
 ## Complete international text rendering
 

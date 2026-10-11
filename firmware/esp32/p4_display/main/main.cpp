@@ -963,4 +963,7 @@ extern "C" void app_main()
     remote.set_networks = remote_set_networks;
     remote.set_wifi_configuration = remote_set_wifi_configuration;
     network_start(remote);
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    development_bridge_start();
+#endif
 }

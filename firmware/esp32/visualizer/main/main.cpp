@@ -1,5 +1,6 @@
 #include "capture.h"
 #include "update.h"
+#include "music_detector.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -13,8 +14,10 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_attr.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 
 void control_start();
 
@@ -29,6 +32,14 @@ static audio::Spectrum spectrum;
 static audio::Pipeline pipeline(visualizerConfig());
 static portMUX_TYPE overflow_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint32_t overflow_count = 0;
+struct Diagnostics {
+    audio::Frame frame;
+    bool beat;
+    music_detection::State music;
+    uint32_t overflows;
+    float noise_rms;
+};
+static QueueHandle_t diagnostics = nullptr;
 
 static bool IRAM_ATTR on_receive_overflow(i2s_chan_handle_t, i2s_event_data_t*, void*)
 {
@@ -190,6 +201,30 @@ static void print_visualizer(const audio::Frame& frame, bool beat_since_print)
     funlockfile(stdout);
 }
 
+static void diagnostics_task(void *)
+{
+    Diagnostics snapshot{};
+    uint32_t reported_overflows = 0;
+    bool calibrated = false;
+    while (true) {
+        if (xQueueReceive(diagnostics, &snapshot, portMAX_DELAY) != pdTRUE) continue;
+        if (snapshot.overflows != reported_overflows) {
+            ESP_LOGW(TAG, "I2S dropped %lu buffers; discarding frame and re-priming detection",
+                static_cast<unsigned long>(snapshot.overflows - reported_overflows));
+            reported_overflows = snapshot.overflows;
+        }
+        if (!calibrated && snapshot.frame.calibrated) {
+            ESP_LOGI(TAG, "Calibration complete: noise RMS=%.6f; open=%.6f; close=%.6f",
+                snapshot.noise_rms, snapshot.frame.openRms, snapshot.frame.closeRms);
+            calibrated = true;
+        }
+        print_visualizer(snapshot.frame, snapshot.beat);
+        flockfile(stdout);
+        printf("WF1 MUSIC %s\n", music_detection::name(snapshot.music));
+        funlockfile(stdout);
+    }
+}
+
 extern "C" void app_main()
 {
     ESP_LOGI(TAG, "Waveform One FFT pipeline v2: independent detection / fixed dB display");
@@ -208,6 +243,13 @@ extern "C" void app_main()
     verify_fft_pipeline();
     panel_start();
     control_start();
+    music_detector_start();
+    diagnostics = xQueueCreate(1, sizeof(Diagnostics));
+    ESP_ERROR_CHECK(diagnostics ? ESP_OK : ESP_ERR_NO_MEM);
+    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(diagnostics_task, "audio_diagnostics", 4096,
+        nullptr, 1, nullptr, 0) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+    // Audio must preempt inference and must never wait on routine console I/O.
+    vTaskPrioritySet(nullptr, 3);
     initialise_i2s();
     for (int i = 0; i < 5; ++i) read_audio_frame();
 
@@ -218,6 +260,7 @@ extern "C" void app_main()
     uint32_t last_overflows = receive_overflows();
     while (true) {
         if (!read_audio_frame()) {
+            music_detector_discontinuity();
             capture_discontinuity();
             pipeline.discontinuity();
             beat_since_print = false;
@@ -226,8 +269,7 @@ extern "C" void app_main()
         }
         const uint32_t overflows = receive_overflows();
         if (overflows != last_overflows) {
-            ESP_LOGW(TAG, "I2S dropped %lu buffers; discarding frame and re-priming detection",
-                     static_cast<unsigned long>(overflows - last_overflows));
+            music_detector_discontinuity();
             last_overflows = overflows;
             capture_discontinuity();
             pipeline.discontinuity();
@@ -235,24 +277,29 @@ extern "C" void app_main()
             continue;
         }
         capture_audio(i2s_words, audio::kFftSize);
+        music_detector_audio(i2s_words, audio::kFftSize);
         const float rms = spectrum.prepare(i2s_words, fft_data);
         if (!calculate_fft()) {
+            music_detector_discontinuity();
             pipeline.discontinuity();
             beat_since_print = false;
             continue;
         }
-        const bool was_calibrated = pipeline.calibrated();
         const audio::Frame frame = pipeline.process(rms, spectrum.power(fft_data));
-        panel_publish(frame);
-        if (frame.calibrated && frame_number >= 24) update_healthy();
-        if (!was_calibrated && frame.calibrated) {
-            ESP_LOGI(TAG, "Calibration complete: noise RMS=%.6f; open=%.6f; close=%.6f",
-                     pipeline.noiseRms(), frame.openRms, frame.closeRms);
+        const auto music = music_detector_state(frame.calibrated && frame.active, esp_timer_get_time());
+        audio::Frame visible = frame;
+        if (music != music_detection::State::Music) {
+            visible.active = false; visible.beat = false;
+            visible.levels.fill(0);
         }
+        panel_publish(visible);
+        if (frame.calibrated && frame_number >= 24 && music_detector_ready()) update_healthy();
         beat_since_print |= frame.beat;
         // ~2 updates/s; full-rate audio and display continue independently.
         if ((frame_number++ % 12) == 0) {
-            print_visualizer(frame, beat_since_print);
+            const Diagnostics snapshot{frame, beat_since_print, music, last_overflows, pipeline.noiseRms()};
+            // A stalled diagnostic consumer drops old text snapshots, never audio.
+            xQueueOverwrite(diagnostics, &snapshot);
             beat_since_print = false;
         }
         // Blocking I2S reads yield to FreeRTOS and pace the analysis. Do not

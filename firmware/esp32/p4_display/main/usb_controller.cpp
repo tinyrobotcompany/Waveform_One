@@ -57,6 +57,10 @@ int64_t capture_deadline = 0;
 std::atomic_bool capture_reserved{false};
 std::atomic_bool disconnect_pending{false};
 std::atomic_uint controller_generation{1};
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+std::mutex transport_mutex;
+std::atomic_bool bridge_active{false};
+#endif
 
 void report(LedControllerState state)
 {
@@ -72,6 +76,10 @@ void enqueue(const Event &event)
 
 bool handle_rx(const uint8_t *data, size_t size, void *)
 {
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    if (bridge_active.load()) { development_bridge_receive(data, size); return true; }
+    if (development_bridge_observing()) development_bridge_receive(data, size);
+#endif
     std::lock_guard<std::mutex> lock(receive_mutex);
     for (size_t index = 0; index < size; ++index) {
         capture.push(static_cast<char>(data[index]));
@@ -221,6 +229,9 @@ void start_capture(AudioCaptureCallback callback, unsigned generation, uint64_t 
 {
     capture_callback = callback;
     capture_id = id;
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    if (bridge_active.load()) { finish_capture(AudioCaptureStatus::Busy); return; }
+#endif
     if (controller == nullptr || generation != controller_generation.load()) {
         finish_capture(AudioCaptureStatus::Disconnected); return;
     }
@@ -283,6 +294,9 @@ void open_controller(uint16_t vid, uint16_t pid)
 
     controller_generation.fetch_add(1);
     controller_available.store(true);
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    if (bridge_active.load()) return;
+#endif
     send_style(LedStyle::Mirrored);
 }
 
@@ -318,6 +332,9 @@ void process_event(const Event &event)
         }
         break;
     case EventType::SetStyle:
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+        if (bridge_active.load()) break;
+#endif
         send_style(event.style);
         break;
     case EventType::Capture:
@@ -331,6 +348,9 @@ void poll_activity()
     audio_activity::State state;
     { std::lock_guard<std::mutex> lock(receive_mutex);
       state = controller_available.load() ? activity.state(esp_timer_get_time()) : audio_activity::State::Unknown; }
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    if (bridge_active.load()) state = audio_activity::State::Unknown;
+#endif
     if (state != activity_reported) {
         ESP_LOGI(kTag, "Audio activity=%s", state == audio_activity::State::Playing ? "playing"
             : state == audio_activity::State::Quiet ? "quiet" : "unknown");
@@ -344,11 +364,22 @@ void controller_task(void *)
 {
     report(LedControllerState::Waiting);
     while (true) {
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+        { std::lock_guard<std::mutex> transport_lock(transport_mutex);
+#endif
         poll_disconnect();
         poll_activity();
         poll_capture();
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+        }
+#endif
         Event event{};
-        if (xQueueReceive(events, &event, pdMS_TO_TICKS(100)) == pdTRUE) process_event(event);
+        if (xQueueReceive(events, &event, pdMS_TO_TICKS(100)) == pdTRUE) {
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+            std::lock_guard<std::mutex> transport_lock(transport_mutex);
+#endif
+            process_event(event);
+        }
     }
 }
 
@@ -380,11 +411,18 @@ void usb_controller_start(LedControllerStatusCallback callback, AudioActivityCal
 
 StyleRequestResult usb_controller_set_style(LedStyle style)
 {
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    if (bridge_active.load()) return StyleRequestResult::Unavailable;
+#endif
     return enqueue_style(style);
 }
 
 AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback, uint64_t id)
 {
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+    std::lock_guard<std::mutex> transport_lock(transport_mutex);
+    if (bridge_active.load()) return AudioCaptureRequestResult::Unavailable;
+#endif
     if (events == nullptr || callback == nullptr) return AudioCaptureRequestResult::Unavailable;
     const unsigned generation = controller_generation.load();
     if (!controller_available.load()) return AudioCaptureRequestResult::Disconnected;
@@ -401,3 +439,44 @@ AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback, 
     }
     return AudioCaptureRequestResult::Queued;
 }
+
+#ifdef WAVEFORM_DEV_FLASH_BRIDGE
+bool usb_controller_bridge_begin() {
+    std::lock_guard<std::mutex> lock(transport_mutex);
+    if (!controller || !controller_available.load() || capture_reserved.load()) return false;
+    bridge_active.store(true);
+    return true;
+}
+bool usb_controller_bridge_reset(bool bootloader) {
+    std::lock_guard<std::mutex> lock(transport_mutex);
+    if (!controller || !bridge_active.load()) return false;
+    auto lines = [](bool dtr, bool rts) {
+        return cdc_acm_host_set_control_line_state(controller, dtr, rts) == ESP_OK;
+    };
+    // Espressif esp_pylib USB-Serial-JTAG reset sequence (active-low lines).
+    if (!lines(false, false)) return false;
+    vTaskDelay(pdMS_TO_TICKS(100));
+    if (bootloader) {
+        if (!lines(true, false)) return false;
+        vTaskDelay(pdMS_TO_TICKS(100));
+        if (!lines(true, true) || !lines(false, true)) return false;
+        vTaskDelay(pdMS_TO_TICKS(100));
+    } else {
+        if (!lines(false, true)) return false;
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    return lines(false, false);
+}
+bool usb_controller_bridge_write(const uint8_t *data, size_t size) {
+    std::lock_guard<std::mutex> lock(transport_mutex);
+    return controller && bridge_active.load() && size <= 4096 &&
+        cdc_acm_host_data_tx_blocking(controller, data, size, kTxTimeoutMs) == ESP_OK;
+}
+void usb_controller_bridge_end(bool reset) {
+    if (reset) usb_controller_bridge_reset(false);
+    std::lock_guard<std::mutex> lock(transport_mutex);
+    bridge_active.store(false);
+    { std::lock_guard<std::mutex> receive_lock(receive_mutex); activity = {}; capture.reset(); }
+    if (controller) send_style(LedStyle::Mirrored);
+}
+#endif
