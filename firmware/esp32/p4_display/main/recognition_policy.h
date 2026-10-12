@@ -92,26 +92,23 @@ private:
     int64_t next_ = 0;
 };
 
-// Caps lookups at a short burst and a sustained rate, whatever the music
-// does: a few quick tries when a song starts, then at most one per interval.
+// At most three lookups in any rolling minute. The recognition service
+// answers a fourth with HTTP 429 and a minute's lockout (measured 2026-10-12),
+// which costs far more than waiting.
 class Budget {
 public:
-    static constexpr unsigned kBurst = 4;
-    static constexpr int64_t kRefillUs = 15000000;
-    bool available(int64_t now) { refill(now); return tokens_ > 0; }
-    void spend(int64_t now) { refill(now); if (tokens_ > 0) --tokens_; }
-private:
-    void refill(int64_t now)
+    static constexpr unsigned kPerWindow = 3;
+    static constexpr int64_t kWindowUs = 60000000;
+    bool available(int64_t now) const
     {
-        if (last_ < 0) { last_ = now; return; }
-        if (now <= last_) return;
-        const int64_t earned = (now - last_) / kRefillUs;
-        if (earned == 0) return;
-        tokens_ = unsigned(std::min<int64_t>(kBurst, tokens_ + earned));
-        last_ = tokens_ == kBurst ? now : last_ + earned * kRefillUs;
+        unsigned recent = 0;
+        for (int64_t at : spent_) recent += at >= 0 && now - at < kWindowUs;
+        return recent < kPerWindow;
     }
-    unsigned tokens_ = kBurst;
-    int64_t last_ = -1;
+    void spend(int64_t now) { spent_[next_++ % kPerWindow] = now; }
+private:
+    int64_t spent_[kPerWindow] = {-1, -1, -1};
+    unsigned next_ = 0;
 };
 
 // Which audio to send, and when. Positions are 128-sample hops of the
@@ -121,7 +118,7 @@ private:
 //   the latest 8 s every 30 s while it stays unidentified.
 // - Once a song is identified, the service says where in the song the clip
 //   was and the catalogue says how long the song is, so the next lookup waits
-//   until 3 s after that song should end. Without a length, check every 60 s.
+//   until 4 s after that song should end. Without a length, check every 60 s.
 // - Silence ends everything: the display returns to its standard screen.
 struct Window { uint32_t first = 0, last = 0; };
 
@@ -129,10 +126,11 @@ class Planner {
 public:
     static constexpr uint32_t kHopsPerSecond = 125;
     static constexpr uint32_t kMaxWindow = 8 * kHopsPerSecond;
-    static constexpr uint32_t kFirstTries[3] = {3 * kHopsPerSecond, 5 * kHopsPerSecond, 8 * kHopsPerSecond};
+    static constexpr unsigned kQuickTries = 2;
+    static constexpr uint32_t kFirstTries[kQuickTries] = {4 * kHopsPerSecond, 10 * kHopsPerSecond};
     static constexpr uint32_t kRetryHops = 30 * kHopsPerSecond;
     static constexpr uint32_t kVerifyHops = 60 * kHopsPerSecond;
-    static constexpr uint32_t kNextSongHops = 3 * kHopsPerSecond;
+    static constexpr uint32_t kNextSongHops = 4 * kHopsPerSecond;
 
     void sound_started(uint32_t hop) { begin(hop); active_ = true; }
     // Silence or a gap in the audio. Returns true if a song was showing.
@@ -151,7 +149,7 @@ public:
         const uint32_t elapsed = heard - segment_;
         bool ready;
         if (matched_ && !ended_) ready = end_ == 0 && heard >= verify_;
-        else if (attempts_ < 3) ready = elapsed >= kFirstTries[attempts_];
+        else if (attempts_ < kQuickTries) ready = elapsed >= kFirstTries[attempts_];
         else ready = heard >= last_attempt_ + kRetryHops;
         if (!ready) return false;
         window.last = heard;
@@ -188,8 +186,8 @@ public:
     }
 
     uint32_t expected_end() const { return end_; }
-    // Sound that the first three lookups could not identify.
-    bool unidentified() const { return active_ && !matched_ && attempts_ >= 3; }
+    // Sound that the quick lookups could not identify.
+    bool unidentified() const { return active_ && !matched_ && attempts_ >= kQuickTries; }
 
 private:
     void begin(uint32_t hop) { segment_ = hop; attempts_ = 0; last_attempt_ = hop; }

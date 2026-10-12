@@ -28,7 +28,7 @@ struct Run {
             uint32_t begin = 0;
             const auto event = detector.push(samples, 128, hops, begin);
             if (event == want && at < 0) { at = hops; if (start) *start = begin; }
-            assert(event == listening::Event::None || event == want);
+            assert(event == listening::Event::None || event == want || event == listening::Event::Gap);
             ++hops;
         }
         return at;
@@ -52,15 +52,42 @@ int main()
     assert(start <= music + 10 && start + 120 >= music);
     // A four-minute song does not become the background.
     assert(room.play(240, 520, Event::SilenceStarted) < 0 && room.detector.sound());
-    // A one-second pause in the music is not silence...
+    // A one-second pause in the music is not silence but a gap: reported
+    // when the music returns, from where the pause began.
+    const uint32_t pause = room.hops;
     assert(room.play(1, 130, Event::SilenceStarted) < 0);
-    assert(room.play(5, 520, Event::SilenceStarted) < 0);
-    // ...but two seconds back at the background is.
+    uint32_t gap_start = 0;
+    const long dip = room.play(5, 520, Event::Gap, &gap_start);
+    assert(dip >= 0 && dip - long(pause) <= 175);
+    assert(gap_start + 50 >= pause && gap_start <= pause + 50);
+    assert(room.detector.gap_end() + 50 >= pause + 125 && room.detector.gap_end() <= pause + 175);
+    // A dip shorter than 0.4 s is not a gap.
+    assert(room.play(0.2, 130, Event::Gap) < 0 && room.play(2, 520, Event::Gap) < 0);
+    // ...but 1.6 s back at the background is.
     const uint32_t stop = room.hops;
     const long silent = room.play(5, 130, Event::SilenceStarted);
-    // Ten 0.2 s blocks; the first may straddle the stop.
-    assert(silent >= 0 && silent - stop >= 225 && silent - stop <= 275);
+    // Eight 0.2 s blocks; the first may straddle the stop.
+    assert(silent >= 0 && silent - stop >= 175 && silent - stop <= 225);
     assert(!room.detector.sound());
+
+    // A real room wanders several dB from moment to moment; that is not sound,
+    // and returning to it after music is silence.
+    Run uneven;
+    uint32_t wander = 7;
+    auto room_noise = [&](double seconds, listening::Event want) {
+        long at = -1;
+        for (int second = 0; second < seconds; ++second) {
+            wander = 1664525u * wander + 1013904223u;
+            const double rms = 90 + (wander >> 24) * 90.0 / 255; // -51..-45 dBFS
+            const long event = uneven.play(1, rms, want);
+            if (event >= 0 && at < 0) at = event;
+        }
+        return at;
+    };
+    assert(room_noise(60, Event::SoundStarted) < 0 && !uneven.detector.sound());
+    assert(uneven.play(3, 520, Event::SoundStarted) >= 0);
+    uneven.play(60, 520, Event::SilenceStarted);
+    assert(room_noise(5, Event::SilenceStarted) >= 0 && !uneven.detector.sound());
 
     // A fan turning on raises the background within a minute or two.
     Run fan;
@@ -68,7 +95,7 @@ int main()
     fan.play(8, 400, Event::SoundStarted);       // heard as sound at first
     // Slowly while recognition might still identify it...
     fan.play(30, 400, Event::SilenceStarted);
-    assert(fan.detector.sound() && fan.detector.background_db() < -47);
+    assert(fan.detector.sound() && fan.detector.background_db() < -45);
     // ...quickly once it has failed to.
     fan.detector.set_unrecognised(true);
     assert(fan.play(150, 400, Event::SilenceStarted) >= 0);

@@ -116,6 +116,14 @@ printf '%s\n' 'PASS: recognition metadata, UTF-8 and artwork origin validation'
 "$build_dir/p4_album"
 printf '%s\n' 'PASS: album choice from catalogue releases, current-album preference and fallbacks'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/album_sequence_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_album_sequence"
+"$build_dir/p4_album_sequence"
+printf '%s\n' 'PASS: album track order, gaps, silences, gapless tracks and returning to live listening'
+
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \

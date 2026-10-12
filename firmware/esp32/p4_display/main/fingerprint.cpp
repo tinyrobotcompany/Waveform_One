@@ -8,7 +8,7 @@
 
 #if defined(ESP_PLATFORM)
 #include "dsps_fft2r.h"
-#include "sdkconfig.h"
+#include "esp_heap_caps.h"
 #endif
 
 namespace fingerprint {
@@ -41,7 +41,10 @@ void reference_fft(std::complex<float> *data, const std::complex<float> *twiddle
 #if defined(ESP_PLATFORM)
 bool platform_fft(std::complex<float> *data)
 {
-    static bool ready = dsps_fft2r_init_fc32(nullptr, CONFIG_DSP_MAX_FFT_SIZE) == ESP_OK;
+    // Keep the 8 KB twiddle table in PSRAM: internal RAM is needed for TLS.
+    static float *table = static_cast<float *>(heap_caps_aligned_alloc(16, sizeof(float) * 2048,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    static bool ready = table != nullptr && dsps_fft2r_init_fc32(table, 2048) == ESP_OK;
     if (!ready) return false;
     float *values = reinterpret_cast<float *>(data);
     return dsps_fft2r_fc32(values, 2048) == ESP_OK && dsps_bit_rev_fc32(values, 2048) == ESP_OK;
