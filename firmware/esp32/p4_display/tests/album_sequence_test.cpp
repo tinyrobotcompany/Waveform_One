@@ -72,14 +72,17 @@ int main()
     follow.start(*album, 0, 0);
     assert(follow.sound(50 * s) == Action::Lost);
 
-    // A pause mid-track is checked, not trusted.
+    // Quiet moments inside a track cost nothing: no advance, no check.
     follow.start(*album, 0, 0);
-    assert(follow.gap(80 * s, 81 * s) == Action::None && follow.index() == 0);
-    assert(follow.tick(87 * s) == Action::Verify);
+    for (uint32_t t = 10; t < 190; t += 3) assert(follow.gap(t * s, (t + 1) * s) == Action::None);
+    for (uint32_t t = 10; t < 190; ++t) assert(follow.tick(t * s) == Action::None);
+    assert(follow.index() == 0);
     // Two inconclusive checks in a row give up on the album.
-    assert(follow.unconfirmed(87 * s) == Action::None);
-    assert(follow.tick(97 * s) == Action::Verify);
-    assert(follow.unconfirmed(97 * s) == Action::Lost && !follow.active());
+    assert(follow.gap(199 * s, 201 * s) == Action::Advance);
+    assert(follow.tick(207 * s) == Action::Verify);
+    assert(follow.unconfirmed(207 * s) == Action::None);
+    assert(follow.tick(217 * s) == Action::Verify);
+    assert(follow.unconfirmed(217 * s) == Action::Lost && !follow.active());
 
     // No gap where the track should end (gapless or a playlist): move on, check.
     follow.start(*album, 0, 0);

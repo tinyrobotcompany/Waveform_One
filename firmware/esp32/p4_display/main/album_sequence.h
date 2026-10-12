@@ -125,9 +125,10 @@ public:
     Action gap(uint32_t start, uint32_t end)
     {
         if (!active() || holding_) return Action::None;
+        // Quiet moments inside a track are music, not a change: only a gap
+        // where the track should end counts. Real changes show up as silence
+        // or as no gap at the expected end.
         if (near_boundary(start)) return advance(end, !trusted_);
-        // A pause mid-track: quiet music, or the music changed.
-        verify_at_ = end + kVerifyAfterHops;
         return Action::None;
     }
 

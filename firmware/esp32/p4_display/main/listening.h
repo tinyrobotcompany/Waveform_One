@@ -15,8 +15,12 @@ inline constexpr unsigned kBlockHops = 25;           // 0.2 s level blocks
 inline constexpr double kStartAboveDb = 6;           // sound: 6 dB over background...
 inline constexpr unsigned kStartBlocks = 3;          // ...for 0.6 s
 inline constexpr double kStopAboveDb = 5;            // silence: within 5 dB of background...
-inline constexpr unsigned kStopBlocks = 8;           // ...for 1.6 s
-inline constexpr unsigned kCalibrationBlocks = 10;   // first 2 s set the background
+inline constexpr unsigned kStopBlocks = 8;           // ...for 1.6 s, or
+inline constexpr unsigned kShowingStopBlocks = 15;   // 3 s while a song is shown: quiet passages are not stops
+inline constexpr unsigned kCalibrationBlocks = 10;   // first 2 s set the background...
+// ...but never louder than a quiet room: music already playing at power-on
+// must not become the background. A noisy room is learnt within seconds.
+inline constexpr double kLoudestStartDb = -50;
 // The background is the room's average quiet level, not its quietest moment:
 // ordinary room noise wanders a few dB from block to block. It follows quieter
 // levels quickly. It follows louder ones gradually while quiet (a fan turns
@@ -55,12 +59,25 @@ public:
     void discontinuity()
     {
         energy_ = 0; count_ = 0; block_hops_ = 0;
-        loud_ = quiet_ = 0;
+        loud_ = quiet_ = 0; quiet_history_ = 0;
         sound_ = unrecognised_ = false;
     }
 
+    // A song is on screen: a longer quiet is needed before it is cleared.
+    void set_patient(bool value) { patient_ = value; }
+    unsigned stop_blocks() const { return patient_ ? kShowingStopBlocks : kStopBlocks; }
+
     // Recognition has tried and failed to identify the current sound.
     void set_unrecognised(bool value) { unrecognised_ = value; }
+
+    // The last kRecentBlocks block levels in dB, oldest first, for logs.
+    static constexpr unsigned kRecentBlocks = 50;  // 10 s
+    unsigned recent(float *out) const
+    {
+        const unsigned count = recent_count_ < kRecentBlocks ? recent_count_ : kRecentBlocks;
+        for (unsigned i = 0; i < count; ++i) out[i] = recent_[(recent_count_ - count + i) % kRecentBlocks];
+        return count;
+    }
 
     // Quietest and loudest block since the last call, for tuning logs.
     struct Range { double low, high; };
@@ -77,10 +94,11 @@ private:
     {
         level = std::max(level, kLowestDb);
         low_ = std::min(low_, level); high_ = std::max(high_, level);
+        recent_[recent_count_++ % kRecentBlocks] = float(level);
         if (calibration_ < kCalibrationBlocks) {
             // Average of the first blocks.
             background_ += (level - background_) / (calibration_ + 1);
-            ++calibration_;
+            if (++calibration_ == kCalibrationBlocks) background_ = std::min(background_, kLoudestStartDb);
             return Event::None;
         }
         if (level < background_) background_ += (level - background_) * kFallFraction;
@@ -95,7 +113,9 @@ private:
             start_hop = hop_number + 1 > back ? hop_number + 1 - back : 0;
             return Event::SoundStarted;
         }
-        if (level >= background_ + kStopAboveDb) {
+        const bool quiet = level < background_ + kStopAboveDb;
+        quiet_history_ = (quiet_history_ << 1) | (quiet ? 1u : 0u);
+        if (!quiet) {
             const unsigned dip = quiet_;
             quiet_ = 0;
             if (dip < kGapBlocks) return Event::None;
@@ -105,8 +125,14 @@ private:
             gap_end_ = resumed;
             return Event::Gap;
         }
-        if (++quiet_ < kStopBlocks) return Event::None;
-        sound_ = unrecognised_ = false; loud_ = 0;
+        ++quiet_;
+        // Mostly quiet for the stop time: a creak or a cough in the room must
+        // not restart the count.
+        const unsigned window = stop_blocks();
+        const uint32_t mask = window >= 32 ? 0xffffffffu : (1u << window) - 1;
+        const unsigned quiet_blocks = unsigned(__builtin_popcount(quiet_history_ & mask));
+        if (quiet_blocks * 5 < window * 4) return Event::None;
+        sound_ = unrecognised_ = false; loud_ = 0; quiet_ = 0; quiet_history_ = 0;
         return Event::SilenceStarted;
     }
 
@@ -115,8 +141,10 @@ private:
     unsigned calibration_ = 0, loud_ = 0, quiet_ = 0;
     double background_ = kLowestDb, last_level_ = kLowestDb;
     double low_ = 0, high_ = kLowestDb;
-    uint32_t gap_end_ = 0;
-    bool sound_ = false, unrecognised_ = false;
+    uint32_t gap_end_ = 0, quiet_history_ = 0;
+    float recent_[kRecentBlocks]{};
+    unsigned recent_count_ = 0;
+    bool sound_ = false, unrecognised_ = false, patient_ = false;
 };
 
 } // namespace listening

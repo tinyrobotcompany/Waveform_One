@@ -124,6 +124,14 @@ printf '%s\n' 'PASS: album choice from catalogue releases, current-album prefere
 "$build_dir/p4_album_sequence"
 printf '%s\n' 'PASS: album track order, gaps, silences, gapless tracks and returning to live listening'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/acrcloud_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_acrcloud"
+"$build_dir/p4_acrcloud"
+printf '%s\n' 'PASS: ACRCloud signing, 8 kHz audio, multipart body and best-match parsing'
+
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \

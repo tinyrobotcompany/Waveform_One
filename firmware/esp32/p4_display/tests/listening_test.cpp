@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <vector>
@@ -66,8 +67,8 @@ int main()
     // ...but 1.6 s back at the background is.
     const uint32_t stop = room.hops;
     const long silent = room.play(5, 130, Event::SilenceStarted);
-    // Eight 0.2 s blocks; the first may straddle the stop.
-    assert(silent >= 0 && silent - stop >= 175 && silent - stop <= 225);
+    // Mostly quiet (7 of 8 blocks of 0.2 s); the first may straddle the stop.
+    assert(silent >= 0 && silent - stop >= 150 && silent - stop <= 225);
     assert(!room.detector.sound());
 
     // A real room wanders several dB from moment to moment; that is not sound,
@@ -113,6 +114,39 @@ int main()
     gap.detector.discontinuity();
     assert(!gap.detector.sound() && gap.detector.background_db() == background);
     assert(gap.play(2, 520, Event::SoundStarted) >= 0);
+
+    // A stop in a room with the odd louder moment (a creak every second)
+    // is still found within about two seconds.
+    {
+        Run creaky;
+        creaky.play(5, 130, Event::SoundStarted);
+        assert(creaky.play(5, 520, Event::SoundStarted) >= 0);
+        long found = -1;
+        const uint32_t stopped = creaky.hops;
+        for (int second = 0; second < 6 && found < 0; ++second) {
+            found = creaky.play(0.8, 130, Event::SilenceStarted);
+            if (found < 0) found = creaky.play(0.2, 400, Event::SilenceStarted);
+        }
+        assert(found >= 0 && found - long(stopped) <= 3 * 125);
+        float levels[listening::Detector::kRecentBlocks];
+        assert(creaky.detector.recent(levels) == listening::Detector::kRecentBlocks);
+        assert(levels[49] < -40 && *std::max_element(levels, levels + 50) > -40);
+    }
+
+    // While a song is shown, a 2 s quiet passage is a gap, not a stop.
+    room.detector.set_patient(true);
+    assert(room.play(5, 520, Event::SoundStarted) >= 0);
+    assert(room.play(2, 130, Event::SilenceStarted) < 0);
+    assert(room.play(2, 520, Event::Gap) >= 0 && room.detector.sound());
+    const long patient = room.play(5, 130, Event::SilenceStarted);
+    assert(patient >= 0 && room.detector.stop_blocks() == 15);
+    room.detector.set_patient(false);
+
+    // Switched on while music plays: the music is heard as sound, not learnt
+    // as the background.
+    Run playing;
+    assert(playing.play(4, 520, Event::SoundStarted) >= 0);
+    assert(playing.detector.background_db() <= -48);
 
     // Digital silence is the quietest possible background, not an error.
     Run zero;

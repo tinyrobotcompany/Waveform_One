@@ -34,6 +34,8 @@ CONFIG_LV_USE_QRCODE=y
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_SPI_FLASH_SUPPORT_GD_CHIP=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-# TLS buffers live in PSRAM: internal RAM is short once audio streams continuously.
-CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y
+# TLS uses the ordinary heap: its large buffers land in PSRAM (above the
+# 16 KB internal threshold) while start-up allocations stay internal.
+# EXTERNAL_MEM_ALLOC crashed at boot, before PSRAM was ready.
+CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y

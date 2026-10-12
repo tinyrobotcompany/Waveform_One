@@ -2,6 +2,8 @@
 #include "recognition_metadata.h"
 #include "recognition_http.h"
 #include "recognition_policy.h"
+#include "acrcloud.h"
+#include "acrcloud_config.h"
 #include "album_resolver.h"
 #include "album_sequence.h"
 #include "fingerprint.h"
@@ -9,6 +11,7 @@
 #include "usb_controller.h"
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -106,6 +109,47 @@ Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track, 
     return Lookup::Failed;
 }
 
+constexpr acrcloud::Credentials kAcrcloud{ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET};
+
+// Identifies a stretch of audio with ACRCloud. pcm holds 16 kHz samples.
+Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64_t &service_delay)
+{
+    track = {};
+    Heap<int16_t> reduced(static_cast<int16_t *>(heap_caps_malloc((count / 2) * sizeof(int16_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
+    if (!reduced) return Lookup::Failed;
+    acrcloud::downsample(pcm, count, reduced.get());
+    const std::string timestamp = std::to_string(static_cast<long long>(std::time(nullptr)));
+    const std::string boundary = "waveform" + uuid();
+    const auto body = acrcloud::body(kAcrcloud, timestamp, reduced.get(), count / 2, boundary);
+    reduced.reset();
+    const std::string type = "multipart/form-data; boundary=" + boundary;
+    const std::string url = std::string("https://") + kAcrcloud.host + "/v1/identify";
+    Response response;
+    // One connection kept open: no TCP/TLS handshake per lookup.
+    static recognition_http::Connection connection;
+    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false}, 64 * 1024,
+               response, &connection)) {
+        service_delay = response.retry_after_us;
+        return Lookup::Failed;
+    }
+    Json result(cJSON_ParseWithLengthOpts(response.bytes.get(), response.size + 1, nullptr, true));
+    if (!result) return Lookup::Failed;
+    switch (acrcloud::parse(result.get(), track)) {
+    case acrcloud::Result::Matched: return Lookup::Matched;
+    case acrcloud::Result::NoMatch: return Lookup::NoMatch;
+    case acrcloud::Result::Limited:
+        ESP_LOGW(kTag, "Recognition quota or rate limit reached");
+        service_delay = 60000000;
+        return Lookup::Failed;
+    case acrcloud::Result::Failed: break;
+    }
+    const cJSON *status = recognition_metadata::field(result.get(), "status");
+    const cJSON *code = recognition_metadata::field(status, "code");
+    ESP_LOGW(kTag, "Recognition service error code=%d", cJSON_IsNumber(code) ? code->valueint : -1);
+    return Lookup::Failed;
+}
+
 struct Image {
     Heap<uint8_t> pixels;
     unsigned width = 0, height = 0;
@@ -177,9 +221,29 @@ int load_album(uint64_t collection_id, const RecognitionTrack &track, album_sequ
     return index;
 }
 
+// The same recording, even when services word it differently
+// ("Whole Lotta Love" and "Whole Lotta Love (1990 Remaster)").
 bool same_song(const RecognitionTrack &a, const RecognitionTrack &b)
 {
-    return a.title[0] != '\0' && std::strcmp(a.title, b.title) == 0 && std::strcmp(a.artist, b.artist) == 0;
+    if (a.title[0] == '\0' || b.title[0] == '\0') return false;
+    if (album_resolver::normalise(a.title) != album_resolver::normalise(b.title)) return false;
+    const std::string x = album_resolver::lead_artist(a.artist), y = album_resolver::lead_artist(b.artist);
+    return x.empty() || y.empty() || x.find(y) != std::string::npos || y.find(x) != std::string::npos;
+}
+
+// The last 10 s of levels relative to the background, for tuning start/stop.
+void log_levels(const char *event, const listening::Detector &detector)
+{
+    float levels[listening::Detector::kRecentBlocks];
+    const unsigned count = detector.recent(levels);
+    char text[4 * listening::Detector::kRecentBlocks + 1];
+    size_t used = 0;
+    for (unsigned i = 0; i < count && used + 5 < sizeof(text); ++i) {
+        used += std::snprintf(text + used, sizeof(text) - used, "%s%d", i ? "," : "",
+            int(std::lround(levels[i] - detector.background_db())));
+    }
+    text[used] = '\0';
+    ESP_LOGI(kTag, "%s background=%.1fdB last_10s_vs_background=[%s]", event, detector.background_db(), text);
 }
 
 int64_t ms(uint32_t hops) { return int64_t(hops) * 1000 / listening::kHopsPerSecond; }
@@ -204,10 +268,19 @@ void recognition_task(void *)
     ESP_ERROR_CHECK(memory != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
     Heap<album_sequence::Sequence> album(new (memory) album_sequence::Sequence);
 
+    // A paid service allows quick retries; the free fallback allows three a minute.
+    const bool paid = kAcrcloud.valid();
+    ESP_LOGI(kTag, "Recognition service=%s", paid ? "acrcloud" : "shazam");
     listening::Detector detector;
-    recognition_policy::Planner planner;
+    recognition_policy::Planner planner = paid ? recognition_policy::Planner{3, 5, 8} : recognition_policy::Planner{4, 10};
     recognition_policy::Retries retries;
-    recognition_policy::Budget budget;
+    recognition_policy::Budget budget(paid ? 12 : 3);
+    // Audio for a lookup: up to eight seconds of 16 kHz samples.
+    Heap<int16_t> clip(static_cast<int16_t *>(heap_caps_malloc(
+        recognition_policy::Planner::kMaxWindow * fingerprint::kHopSamples * sizeof(int16_t),
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
+    ESP_ERROR_CHECK(clip ? ESP_OK : ESP_ERR_NO_MEM);
+    uint64_t analysis_base = 0;  // stream position of analysed hop zero
     album_resolver::Context album_context;
     album_sequence::Follower follower;
     RecognitionTrack track{};
@@ -219,6 +292,14 @@ void recognition_task(void *)
     uint32_t analysed = 0;
     unsigned lookups = 0;
     bool verify_due = false;
+    // The song cleared most recently, to restore it if it is simply heard again.
+    RecognitionTrack recent{};
+    Image recent_image;
+    int recent_index = -1;
+    int64_t recent_at = 0;
+    // Consecutive sounds the service could not identify (air conditioning, talk).
+    unsigned unidentified_streak = 0;
+    int64_t unidentified_at = 0;
     constexpr size_t kReadSamples = fingerprint::kHopSamples * 32;
     Heap<int16_t> buffer(static_cast<int16_t *>(heap_caps_malloc(kReadSamples * sizeof(int16_t),
         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
@@ -231,7 +312,12 @@ void recognition_task(void *)
         publish(epoch, status, track.title[0] != '\0' ? &track : nullptr, image.pixels ? &picture : nullptr);
     };
     const auto clear = [&](const char *reason) {
-        if (track.title[0] != '\0') ESP_LOGI(kTag, "Display cleared reason=%s", reason);
+        if (track.title[0] != '\0') {
+            ESP_LOGI(kTag, "Display cleared reason=%s", reason);
+            recent = track; recent_image = std::move(image);
+            recent_index = follower.active() ? int(follower.index()) : -1;
+            recent_at = esp_timer_get_time();
+        }
         track = {}; image = {};
         follower.stop(); verify_due = false;
     };
@@ -288,11 +374,13 @@ void recognition_task(void *)
                     : read.skipped ? "fell behind" : "interrupted");
                 segment = read.segment;
                 analyzer->reset(); detector.discontinuity();
+                analysis_base = read.position;
                 const bool showing = track.title[0] != '\0';
                 planner.stopped(); clear("audio_interrupted");
                 if (showing) show_now(RecognitionStatus::Waiting);
             }
             const int64_t started = esp_timer_get_time();
+            detector.set_patient(track.title[0] != '\0');
             hops = read.count / fingerprint::kHopSamples;
             for (uint32_t i = 0; i < hops; ++i) {
                 const int16_t *hop = samples + i * fingerprint::kHopSamples;
@@ -301,18 +389,19 @@ void recognition_task(void *)
                 const auto event = detector.push(hop, fingerprint::kHopSamples, analyzer->hops() - 1, start);
                 if (event == listening::Event::SoundStarted) {
                     sound_hop = start;
-                    ESP_LOGI(kTag, "Sound started level=%.1fdB background=%.1fdB",
-                        detector.level_db(), detector.background_db());
+                    log_levels("Sound started", detector);
                     if (follower.active()) {
                         follow(follower.sound(start), start, "sound_after_silence");
                     } else {
+                        // After repeated sound nobody could identify, spend lookups sparingly.
+                        planner.set_cautious(unidentified_streak >= 2
+                            && esp_timer_get_time() - unidentified_at < 180000000);
                         planner.sound_started(start);
                         if (current.ready) show_now(RecognitionStatus::Capturing);
                     }
                 } else if (event == listening::Event::SilenceStarted) {
-                    ESP_LOGI(kTag, "Silence level=%.1fdB background=%.1fdB",
-                        detector.level_db(), detector.background_db());
-                    const auto action = follower.silence(analyzer->hops() - listening::kStopBlocks * listening::kBlockHops);
+                    log_levels("Silence", detector);
+                    const auto action = follower.silence(analyzer->hops() - detector.stop_blocks() * listening::kBlockHops);
                     if (action == album_sequence::Action::None && follower.active()) {
                         ESP_LOGI(kTag, "Album gap: holding for the next track");
                     } else {
@@ -374,13 +463,27 @@ void recognition_task(void *)
                 budget.spend(now);
                 if (track.title[0] == '\0') show_now(RecognitionStatus::Identifying);
                 const int64_t lookup_started = esp_timer_get_time();
-                outcome = lookup(signature, next, service_delay);
+                if (paid) {
+                    // The same audio the planner chose, straight from the stream.
+                    const size_t count = size_t(window.last - window.first) * fingerprint::kHopSamples;
+                    const auto read = audio->read(analysis_base + uint64_t(window.first) * fingerprint::kHopSamples,
+                        clip.get(), count);
+                    outcome = read.count == count && !read.skipped && read.segment == segment
+                        ? identify(clip.get(), count, next, service_delay) : Lookup::Failed;
+                } else {
+                    outcome = lookup(signature, next, service_delay);
+                }
                 ESP_LOGI(kTag, "Lookup id=%u result=%s offset_s=%.1f duration_ms=%lld", id,
                     outcome == Lookup::Matched ? "matched" : outcome == Lookup::NoMatch ? "no_match" : "failed",
                     next.offset_s, static_cast<long long>((esp_timer_get_time() - lookup_started) / 1000));
             }
             if (session().epoch != epoch) continue;
             detector.set_unrecognised(!checking && outcome == Lookup::NoMatch && planner.unidentified());
+            if (outcome == Lookup::Matched) unidentified_streak = 0;
+            else if (!checking && outcome == Lookup::NoMatch && planner.unidentified()) {
+                if (esp_timer_get_time() - unidentified_at > 180000000) unidentified_streak = 0;
+                ++unidentified_streak; unidentified_at = esp_timer_get_time();
+            }
             if (outcome == Lookup::Matched) {
                 retries.succeeded();
                 if (same_song(track, next)) {
@@ -390,6 +493,21 @@ void recognition_task(void *)
                         follower.confirmed(song_start(window, next.offset_s));
                         ESP_LOGI(kTag, "Album check confirmed position=%u", follower.index() + 1);
                     }
+                } else if (track.title[0] == '\0' && same_song(recent, next)
+                           && esp_timer_get_time() - recent_at < 300000000) {
+                    // Heard again after a pause: bring back its album, cover and place.
+                    track = recent; track.offset_s = next.offset_s;
+                    track.matched_at_us = esp_timer_get_time();
+                    image = std::move(recent_image);
+                    planner.stopped(); planner.sound_started(sound_hop);
+                    planner.attempted(window.last);
+                    if (recent_index >= 0 && unsigned(recent_index) < album->count) {
+                        follower.start(*album, unsigned(recent_index), song_start(window, next.offset_s));
+                        follower.confirmed(song_start(window, next.offset_s));
+                    }
+                    recent = {}; recent_index = -1;
+                    ESP_LOGI(kTag, "Restored recent song following_album=%d", follower.active());
+                    show_now(RecognitionStatus::Matched);
                 } else {
                     if (checking) ESP_LOGI(kTag, "Album left reason=different_song");
                     clear("new_song");

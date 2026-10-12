@@ -28,3 +28,28 @@ endif()
 # The vendor's C aggregate macro intentionally zero-initializes newer optional
 # esp_lvgl_adapter fields. Keep C++ warnings strict except for that C interop case.
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=missing-field-initializers)
+
+# Recognition-service credentials from the untracked acrcloud.local at the
+# repository root. Without it, the device uses its fallback service.
+set(acrcloud_file "${CMAKE_CURRENT_LIST_DIR}/../../../../acrcloud.local")
+set(ACRCLOUD_HOST "")
+set(ACRCLOUD_ACCESS_KEY "")
+set(ACRCLOUD_ACCESS_SECRET "")
+if(EXISTS "${acrcloud_file}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${acrcloud_file}")
+    file(STRINGS "${acrcloud_file}" acrcloud_lines)
+    foreach(line IN LISTS acrcloud_lines)
+        if(line MATCHES "^(host|access_key|access_secret)=([A-Za-z0-9._-]+)$")
+            string(TOUPPER "${CMAKE_MATCH_1}" acrcloud_name)
+            set(ACRCLOUD_${acrcloud_name} "${CMAKE_MATCH_2}")
+        endif()
+    endforeach()
+endif()
+file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/acrcloud_config.h" CONTENT
+"#pragma once
+// Generated from acrcloud.local; never commit.
+#define ACRCLOUD_HOST \"@ACRCLOUD_HOST@\"
+#define ACRCLOUD_ACCESS_KEY \"@ACRCLOUD_ACCESS_KEY@\"
+#define ACRCLOUD_ACCESS_SECRET \"@ACRCLOUD_ACCESS_SECRET@\"
+" @ONLY)
+target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")

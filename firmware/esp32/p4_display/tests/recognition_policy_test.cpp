@@ -50,6 +50,33 @@ int main()
     // A late lookup (service limits) still takes at most eight seconds.
     assert(planner.due(90 * s, window) && window.last - window.first == 8 * s);
 
+    // A paid service allows three quick tries: 3, 5 and 8 s.
+    Planner fast{3, 5, 8};
+    fast.sound_started(0);
+    assert(!fast.due(3 * s - 1, window) && fast.due(3 * s, window) && window.last == 3 * s);
+    fast.attempted(3 * s);
+    assert(fast.due(5 * s, window) && window.last == 5 * s);
+    fast.attempted(5 * s);
+    assert(!fast.unidentified() && fast.due(8 * s, window) && window.first == 0);
+    fast.attempted(8 * s);
+    assert(fast.unidentified() && !fast.due(37 * s, window) && fast.due(38 * s, window));
+    // Stopping keeps the service's tries.
+    fast.stopped(); fast.sound_started(100 * s);
+    assert(fast.due(103 * s, window));
+
+    // Cautious after repeated unidentified sound: one try at 6 s, then a minute.
+    Planner careful{3, 5, 8};
+    careful.set_cautious(true);
+    careful.sound_started(0);
+    assert(!careful.due(3 * s, window) && !careful.due(6 * s - 1, window) && careful.due(6 * s, window));
+    careful.attempted(6 * s);
+    assert(careful.unidentified() && !careful.due(66 * s - 1, window) && careful.due(66 * s, window));
+    // stopped() keeps the caution; the caller lifts it after a match.
+    careful.stopped(); careful.sound_started(100 * s);
+    assert(careful.cautious() && !careful.due(103 * s, window));
+    careful.set_cautious(false);
+    assert(careful.due(103 * s, window));
+
     // A match with a known length waits for the end of the song.
     Planner song;
     song.sound_started(0);
@@ -133,6 +160,10 @@ int main()
     // Long quiet periods do not bank extra lookups.
     for (int i = 0; i < 3; ++i) { assert(budget.available(3600000000)); budget.spend(3600000000); }
     assert(!budget.available(3600000000));
+
+    Budget paid(12);
+    for (int i = 0; i < 12; ++i) { assert(paid.available(i)); paid.spend(i); }
+    assert(!paid.available(12) && paid.available(60000000));
 
     assert(retry_after("Sat, 10 Oct 2026 12:03:00 GMT", 1791633600) == 180000000);
     assert(retry_after("Sat, 31 Feb 2026 12:00:00 GMT", 1) == 0);

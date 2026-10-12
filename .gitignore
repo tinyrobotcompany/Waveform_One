@@ -96,4 +96,4 @@ electronics/gerbers/*
 # The working mic_test source and host tests are intentionally versioned.
 
 # Local recognition-service credentials
-acrcloud.local
+acrcloud.local*

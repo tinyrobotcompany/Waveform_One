@@ -228,7 +228,14 @@ double self_test()
 {
     std::complex<float> twiddles[1024];
     fill_twiddles(twiddles);
-    alignas(16) static std::complex<float> expected[2048], actual[2048];
+    // Temporary buffers, never static: internal RAM is scarce at boot.
+    std::vector<std::complex<float>> expected_buffer(2048 + 4), actual_buffer(2048 + 4);
+    // 16-byte alignment for the platform FFT.
+    const auto aligned = [](std::vector<std::complex<float>> &buffer) {
+        auto address = reinterpret_cast<uintptr_t>(buffer.data());
+        return reinterpret_cast<std::complex<float> *>((address + 15) & ~uintptr_t(15));
+    };
+    std::complex<float> *expected = aligned(expected_buffer), *actual = aligned(actual_buffer);
     uint32_t random = 0x2468ace1;
     for (unsigned i = 0; i < 2048; ++i) {
         random = 1664525u * random + 1013904223u;

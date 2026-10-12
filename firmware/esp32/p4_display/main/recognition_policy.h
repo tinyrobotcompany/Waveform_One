@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <ctime>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -92,22 +93,24 @@ private:
     int64_t next_ = 0;
 };
 
-// At most three lookups in any rolling minute. The recognition service
-// answers a fourth with HTTP 429 and a minute's lockout (measured 2026-10-12),
-// which costs far more than waiting.
+// At most a fixed number of lookups in any rolling minute. The free
+// fallback service answers a fourth with HTTP 429 and a minute's lockout
+// (measured 2026-10-12); a paid service allows more.
 class Budget {
 public:
-    static constexpr unsigned kPerWindow = 3;
+    static constexpr unsigned kMaxPerWindow = 16;
     static constexpr int64_t kWindowUs = 60000000;
+    explicit Budget(unsigned per_window = 3) : per_window_(std::min(per_window, kMaxPerWindow)) {}
     bool available(int64_t now) const
     {
         unsigned recent = 0;
-        for (int64_t at : spent_) recent += at >= 0 && now - at < kWindowUs;
-        return recent < kPerWindow;
+        for (unsigned i = 0; i < per_window_; ++i) recent += spent_[i] >= 0 && now - spent_[i] < kWindowUs;
+        return recent < per_window_;
     }
-    void spend(int64_t now) { spent_[next_++ % kPerWindow] = now; }
+    void spend(int64_t now) { spent_[next_++ % per_window_] = now; }
 private:
-    int64_t spent_[kPerWindow] = {-1, -1, -1};
+    unsigned per_window_;
+    int64_t spent_[kMaxPerWindow] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
     unsigned next_ = 0;
 };
 
@@ -126,15 +129,34 @@ class Planner {
 public:
     static constexpr uint32_t kHopsPerSecond = 125;
     static constexpr uint32_t kMaxWindow = 8 * kHopsPerSecond;
-    static constexpr unsigned kQuickTries = 2;
-    static constexpr uint32_t kFirstTries[kQuickTries] = {4 * kHopsPerSecond, 10 * kHopsPerSecond};
+    static constexpr unsigned kMaxQuickTries = 3;
+
+    Planner() = default;
+    // Seconds of sound before each quick try.
+    explicit Planner(std::initializer_list<uint32_t> seconds)
+    {
+        tries_ = 0;
+        for (uint32_t value : seconds) if (tries_ < kMaxQuickTries) first_tries_[tries_++] = value * kHopsPerSecond;
+    }
     static constexpr uint32_t kRetryHops = 30 * kHopsPerSecond;
+    static constexpr uint32_t kCautiousFirstHops = 6 * kHopsPerSecond;
+    static constexpr uint32_t kCautiousRetryHops = 60 * kHopsPerSecond;
     static constexpr uint32_t kVerifyHops = 60 * kHopsPerSecond;
     static constexpr uint32_t kNextSongHops = 4 * kHopsPerSecond;
 
     void sound_started(uint32_t hop) { begin(hop); active_ = true; }
+    // Recent sounds were not music the service knows (an air conditioner,
+    // talk): one try after 6 s, then once a minute, until something matches.
+    void set_cautious(bool value) { cautious_ = value; }
+    bool cautious() const { return cautious_; }
     // Silence or a gap in the audio. Returns true if a song was showing.
-    bool stopped() { const bool showing = matched_; *this = Planner{}; return showing; }
+    bool stopped()
+    {
+        const bool showing = matched_;
+        active_ = matched_ = ended_ = false;
+        segment_ = attempts_ = last_attempt_ = end_ = verify_ = 0; misses_ = 0;
+        return showing;
+    }
     bool active() const { return active_; }
     bool matched() const { return matched_; }
 
@@ -149,7 +171,8 @@ public:
         const uint32_t elapsed = heard - segment_;
         bool ready;
         if (matched_ && !ended_) ready = end_ == 0 && heard >= verify_;
-        else if (attempts_ < kQuickTries) ready = elapsed >= kFirstTries[attempts_];
+        else if (cautious_) ready = attempts_ == 0 ? elapsed >= kCautiousFirstHops : heard >= last_attempt_ + kCautiousRetryHops;
+        else if (attempts_ < tries_) ready = elapsed >= first_tries_[attempts_];
         else ready = heard >= last_attempt_ + kRetryHops;
         if (!ready) return false;
         window.last = heard;
@@ -187,11 +210,14 @@ public:
 
     uint32_t expected_end() const { return end_; }
     // Sound that the quick lookups could not identify.
-    bool unidentified() const { return active_ && !matched_ && attempts_ >= kQuickTries; }
+    bool unidentified() const { return active_ && !matched_ && attempts_ >= (cautious_ ? 1u : tries_); }
 
 private:
     void begin(uint32_t hop) { segment_ = hop; attempts_ = 0; last_attempt_ = hop; }
 
+    uint32_t first_tries_[kMaxQuickTries] = {4 * kHopsPerSecond, 10 * kHopsPerSecond};
+    unsigned tries_ = 2;
+    bool cautious_ = false;
     bool active_ = false, matched_ = false, ended_ = false;
     uint32_t segment_ = 0, attempts_ = 0, last_attempt_ = 0;
     uint32_t end_ = 0, verify_ = 0;
