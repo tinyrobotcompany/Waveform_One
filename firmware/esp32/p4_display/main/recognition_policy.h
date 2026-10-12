@@ -140,13 +140,13 @@ public:
     }
     static constexpr uint32_t kRetryHops = 30 * kHopsPerSecond;
     static constexpr uint32_t kCautiousFirstHops = 6 * kHopsPerSecond;
-    static constexpr uint32_t kCautiousRetryHops = 60 * kHopsPerSecond;
+    static constexpr uint32_t kCautiousRetryHops = 120 * kHopsPerSecond;
     static constexpr uint32_t kVerifyHops = 60 * kHopsPerSecond;
     static constexpr uint32_t kNextSongHops = 4 * kHopsPerSecond;
 
     void sound_started(uint32_t hop) { begin(hop); active_ = true; }
     // Recent sounds were not music the service knows (an air conditioner,
-    // talk): one try after 6 s, then once a minute, until something matches.
+    // talk): one try after 6 s, then every two minutes, until something matches.
     void set_cautious(bool value) { cautious_ = value; }
     bool cautious() const { return cautious_; }
     // Silence or a gap in the audio. Returns true if a song was showing.

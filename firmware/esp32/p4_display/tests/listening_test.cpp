@@ -90,20 +90,14 @@ int main()
     uneven.play(60, 520, Event::SilenceStarted);
     assert(room_noise(5, Event::SilenceStarted) >= 0 && !uneven.detector.sound());
 
-    // A fan turning on raises the background within a minute or two.
-    Run fan;
-    fan.play(10, 130, Event::SoundStarted);
-    fan.play(8, 400, Event::SoundStarted);       // heard as sound at first
-    // Slowly while recognition might still identify it...
-    fan.play(30, 400, Event::SilenceStarted);
-    assert(fan.detector.sound() && fan.detector.background_db() < -45);
-    // ...quickly once it has failed to.
-    fan.detector.set_unrecognised(true);
-    assert(fan.play(150, 400, Event::SilenceStarted) >= 0);
-    assert(fan.detector.background_db() > -40);
-    // Music must then be louder than the fan to count.
-    fan.play(10, 400, Event::SilenceStarted);
-    assert(!fan.detector.sound());
+    // Sound that recognition cannot identify stays sound: music the service
+    // misses at first must never become the background.
+    Run missed;
+    missed.play(10, 130, Event::SoundStarted);
+    assert(missed.play(3, 520, Event::SoundStarted) >= 0);
+    missed.detector.set_unrecognised(true);
+    assert(missed.play(120, 520, Event::SilenceStarted) < 0 && missed.detector.sound());
+    assert(missed.detector.background_db() < -44);
 
     // A discontinuity forgets the half-built state but keeps the background.
     Run gap;

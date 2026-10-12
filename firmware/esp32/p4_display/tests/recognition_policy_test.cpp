@@ -64,13 +64,13 @@ int main()
     fast.stopped(); fast.sound_started(100 * s);
     assert(fast.due(103 * s, window));
 
-    // Cautious after repeated unidentified sound: one try at 6 s, then a minute.
+    // Cautious after repeated unidentified sound: one try at 6 s, then two minutes.
     Planner careful{3, 5, 8};
     careful.set_cautious(true);
     careful.sound_started(0);
     assert(!careful.due(3 * s, window) && !careful.due(6 * s - 1, window) && careful.due(6 * s, window));
     careful.attempted(6 * s);
-    assert(careful.unidentified() && !careful.due(66 * s - 1, window) && careful.due(66 * s, window));
+    assert(careful.unidentified() && !careful.due(126 * s - 1, window) && careful.due(126 * s, window));
     // stopped() keeps the caution; the caller lifts it after a match.
     careful.stopped(); careful.sound_started(100 * s);
     assert(careful.cautious() && !careful.due(103 * s, window));

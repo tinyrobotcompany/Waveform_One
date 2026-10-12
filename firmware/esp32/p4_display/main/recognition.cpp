@@ -401,11 +401,13 @@ void recognition_task(void *)
                     }
                 } else if (event == listening::Event::SilenceStarted) {
                     log_levels("Silence", detector);
+                    const int following = follower.active() ? int(follower.index()) : -1;
                     const auto action = follower.silence(analyzer->hops() - detector.stop_blocks() * listening::kBlockHops);
                     if (action == album_sequence::Action::None && follower.active()) {
                         ESP_LOGI(kTag, "Album gap: holding for the next track");
                     } else {
                         planner.stopped(); clear("silence");
+                        if (following >= 0) recent_index = following;
                         show_now(RecognitionStatus::Waiting);
                     }
                 } else if (event == listening::Event::Gap) {
@@ -473,9 +475,10 @@ void recognition_task(void *)
                 } else {
                     outcome = lookup(signature, next, service_delay);
                 }
-                ESP_LOGI(kTag, "Lookup id=%u result=%s offset_s=%.1f duration_ms=%lld", id,
+                ESP_LOGI(kTag, "Lookup id=%u result=%s title=\"%s\" artist=\"%s\" offset_s=%.1f duration_ms=%lld", id,
                     outcome == Lookup::Matched ? "matched" : outcome == Lookup::NoMatch ? "no_match" : "failed",
-                    next.offset_s, static_cast<long long>((esp_timer_get_time() - lookup_started) / 1000));
+                    next.title, next.artist, next.offset_s,
+                    static_cast<long long>((esp_timer_get_time() - lookup_started) / 1000));
             }
             if (session().epoch != epoch) continue;
             detector.set_unrecognised(!checking && outcome == Lookup::NoMatch && planner.unidentified());

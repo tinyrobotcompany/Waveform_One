@@ -25,8 +25,9 @@ inline constexpr double kLoudestStartDb = -50;
 // ordinary room noise wanders a few dB from block to block. It follows quieter
 // levels quickly. It follows louder ones gradually while quiet (a fan turns
 // on) but only very slowly while sound plays, so a long song cannot become the
-// new background. Sound that recognition has repeatedly failed to identify is
-// treated like quiet: a fan or a dishwasher must not be "music" for minutes.
+// new background. (Unidentified sound is not absorbed either: music the
+// service misses at first must not turn into "silence". Lookups for noise
+// are limited by the planner's caution instead.)
 inline constexpr double kFallFraction = 0.2;           // per block, towards quieter levels
 inline constexpr double kQuietRiseFraction = 0.05;     // per block, towards louder levels...
 inline constexpr double kQuietRiseDbPerBlock = 0.25;   // ...at most 1.25 dB a second
@@ -102,7 +103,7 @@ private:
             return Event::None;
         }
         if (level < background_) background_ += (level - background_) * kFallFraction;
-        else if (sound_ && !unrecognised_) background_ = std::min(level, background_ + kSoundRiseDbPerBlock);
+        else if (sound_) background_ = std::min(level, background_ + kSoundRiseDbPerBlock);
         else background_ += std::min(kQuietRiseDbPerBlock, (level - background_) * kQuietRiseFraction);
         if (!sound_) {
             loud_ = level >= background_ + kStartAboveDb ? loud_ + 1 : 0;

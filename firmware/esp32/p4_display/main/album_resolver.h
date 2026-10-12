@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cctype>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -11,9 +12,10 @@
 // Audio identifies a recording, not a release: the same recording appears on
 // the original album, singles, compilations and reissues, and the recognition
 // service picks one of them. This chooses the release a listener expects:
-// the album already playing if it contains the song; else the service's own
-// album when it is a regular one; else the catalogue's most relevant regular
-// album, avoiding singles, EPs, compilations, soundtracks and other versions.
+// the album already playing if it contains the song; else the catalogue's
+// most relevant regular album, avoiding singles, EPs, compilations,
+// soundtracks and other versions. Recognition services often answer with a
+// compilation, so their album is used only when nothing better is listed.
 // Catalogue release dates belong to the song, not the album (a compilation
 // carries the song's original date), so they cannot tell albums apart.
 namespace album_resolver {
@@ -116,6 +118,17 @@ inline int penalty(const char *collection, const char *collection_artist, const 
     }
     if (has_word(song, "version") && !has_word(original, "version")) score += 20;
     if (has_word(album, "live") && !has_word(original, "live")) score += 40;
+    // "1962 - 1966", "1967-1970": a career span is a compilation.
+    for (size_t i = 0; i + 9 <= name.size(); ++i) {
+        const auto year = [&](size_t at) {
+            return at + 4 <= name.size() && (name.compare(at, 2, "19") == 0 || name.compare(at, 2, "20") == 0)
+                && std::isdigit(static_cast<unsigned char>(name[at + 2])) && std::isdigit(static_cast<unsigned char>(name[at + 3]));
+        };
+        if (!year(i)) continue;
+        size_t at = i + 4;
+        while (at < name.size() && (name[at] == ' ' || name[at] == '-' || name[at] == '/')) ++at;
+        if (at > i + 4 && year(at)) { score += 50; break; }
+    }
     for (const char *word : {"deluxe", "remastered", "remaster", "expanded", "anniversary", "edition"}) {
         if (has_word(album, word)) { score += 5; break; }
     }
@@ -174,8 +187,8 @@ inline bool choose(const cJSON *root, const RecognitionTrack &track, const Conte
         if (!service_album.empty() && normalise(collection->valuestring) == service_album
             && (service == nullptr || score < service_penalty)) { service = result; service_penalty = score; }
     }
-    // The service's album stands unless it is not a regular album.
-    if (service != nullptr && service_penalty < 50) best = service;
+    // The service's album stands only as good as the best listed one.
+    if (service != nullptr && service_penalty <= best_penalty) best = service;
     // Nothing better than a compilation: keep whatever the service said.
     if (best == nullptr || (best != service && best_penalty >= 50 && !service_album.empty())) return false;
     // Keep the service's own wording for its album, e.g. without "(Deluxe Edition)".
