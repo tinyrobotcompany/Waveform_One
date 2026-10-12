@@ -1,17 +1,26 @@
 #pragma once
 
 #include <mutex>
+#include <cstdio>
 #include <string>
 #include "recognition_metadata.h"
 #include "recognition_policy.h"
+#include "album_palette.h"
 
 // Owns the worker's borrowed metadata. HTTP never takes a GUI/session lock.
 class RemoteState {
 public:
     void recognition(RecognitionStatus status, const RecognitionTrack *track) {
         const std::lock_guard<std::mutex> lock(mutex_);
+        if (track == nullptr || std::strcmp(track_.artwork_url, track->artwork_url) != 0) palette_ = {};
         status_ = status;
         track_ = track == nullptr ? RecognitionTrack{} : *track;
+    }
+    void palette(const album_palette::Palette &value) {
+        const std::lock_guard<std::mutex> lock(mutex_); palette_ = value;
+    }
+    void appearance(bool value) {
+        const std::lock_guard<std::mutex> lock(mutex_); album_colours_ = value;
     }
     void brightness(int value) {
         const std::lock_guard<std::mutex> lock(mutex_);
@@ -38,6 +47,18 @@ public:
             && cJSON_AddStringToObject(root, "name", name_.c_str()) != nullptr
             && cJSON_AddNumberToObject(root, "brightness", brightness_) != nullptr
             && cJSON_AddStringToObject(root, "style", style_.c_str()) != nullptr;
+        ok = ok && cJSON_AddStringToObject(root, "appearance", album_colours_ ? "album" : "classic") != nullptr;
+        const auto colours = visible && album_colours_ ? palette_ : album_palette::Palette{};
+        cJSON *palette = cJSON_AddObjectToObject(root, "palette");
+        ok = ok && palette != nullptr;
+        if (palette != nullptr) {
+            const uint32_t values[] = {colours.background, colours.panel, colours.accent, colours.search, colours.line};
+            const char *keys[] = {"background", "panel", "accent", "search", "line"};
+            for (unsigned i=0; i<5; ++i) {
+                char hex[8]; std::snprintf(hex, sizeof(hex), "#%06x", static_cast<unsigned>(values[i]));
+                ok = ok && cJSON_AddStringToObject(palette, keys[i], hex) != nullptr;
+            }
+        }
         cJSON *track = visible ? cJSON_AddObjectToObject(root, "track") : nullptr;
         if (visible) {
             ok = ok && track != nullptr;
@@ -75,4 +96,6 @@ private:
     RecognitionTrack track_{};
     std::string name_ = "Simon", style_ = "";
     int brightness_ = 100;
+    bool album_colours_ = true;
+    album_palette::Palette palette_{};
 };

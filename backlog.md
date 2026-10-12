@@ -59,10 +59,10 @@ Status: In progress — broad glyph fallback added; full Unicode acceptance rema
 
 ## Album artwork colours for the native screen and phone
 
-Status: Next visual feature — prototype before PCB design.
+Status: Prototype implemented on `feature/p4-recognition-stability`; MacBook/browser and native LVGL previews, firmware host tests and the P4 build passed. Physical P4/phone acceptance and flashing await the user’s instructions.
 
-- Keep the background black and the current green/lavender as the default palette.
-- Extract representative colours from the recognized album cover; select two complementary accent roles for the identified-track border/status and the searching/checking indicator.
+- Use a dark album-derived background for Album colours mode; retain the near-black background and green/lavender accents for Classic black, missing artwork and idle/search states.
+- Extract representative colours from the recognized album cover; select readable accent roles for the identified-track border/status and the searching/checking indicator.
 - Adjust brightness and saturation for readable contrast against black; keep song, artist and album text readable rather than colouring all text.
 - Use the same palette on the P4 and paired phone, including the search animation. Initial search without artwork stays lavender.
 - Hold the palette steady during rechecks of the same track and transition gently when a new album is identified; do not pulse or recolour every recognition attempt.

@@ -387,6 +387,18 @@ esp_err_t brightness_handler(httpd_req_t *request)
     return reply(request);
 }
 
+esp_err_t appearance_handler(httpd_req_t *request)
+{
+    if (!require_authorized(request)) return ESP_OK;
+    std::string value;
+    if (!read_form_field(request, "value", value)) return ESP_OK;
+    if (value != "album" && value != "classic")
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid appearance");
+    if (controls.set_appearance == nullptr || !controls.set_appearance(value == "album"))
+        return service_unavailable(request, "Appearance update failed");
+    return reply(request);
+}
+
 esp_err_t name_handler(httpd_req_t *request)
 {
     if (!require_authorized(request)) return ESP_OK;
@@ -592,6 +604,13 @@ void network_task(void *)
         return;
     }
     ESP_ERROR_CHECK(result);
+    nvs_handle_t appearance_handle{};
+    uint8_t album_colours = 1;
+    if (nvs_open("waveform", NVS_READONLY, &appearance_handle) == ESP_OK) {
+        nvs_get_u8(appearance_handle, "album_colours", &album_colours);
+        nvs_close(appearance_handle);
+    }
+    if (controls.set_appearance != nullptr) controls.set_appearance(album_colours != 0);
     ESP_ERROR_CHECK(esp_netif_init());
     result = esp_event_loop_create_default();
     if (result != ESP_OK && result != ESP_ERR_INVALID_STATE) ESP_ERROR_CHECK(result);
@@ -629,7 +648,7 @@ void network_task(void *)
     network_request_scan();
 
     httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
-    server_config.max_uri_handlers = 10;
+    server_config.max_uri_handlers = 12;
     httpd_handle_t server = nullptr;
     ESP_ERROR_CHECK(httpd_start(&server, &server_config));
     register_uri(server, "/", HTTP_GET, page_handler);
@@ -639,6 +658,7 @@ void network_task(void *)
     register_uri(server, "/api/style", HTTP_POST, style_handler);
     register_uri(server, "/api/brightness", HTTP_POST, brightness_handler);
     register_uri(server, "/api/name", HTTP_POST, name_handler);
+    register_uri(server, "/api/appearance", HTTP_POST, appearance_handler);
     register_uri(server, "/api/time", HTTP_POST, time_handler);
     if (connected) {
         ESP_LOGI(kTag, "Phone remote ready on home Wi-Fi: http://%s", acquired_host);
@@ -755,5 +775,18 @@ bool network_configure_home(const control_policy::WifiNetwork &selected, const c
         configuring_home.store(false);
         return false;
     }
+    return true;
+}
+
+void network_set_palette(const album_palette::Palette &palette) { remote_state.palette(palette); }
+bool network_set_appearance(bool album_colours)
+{
+    nvs_handle_t handle{};
+    if (nvs_open("waveform", NVS_READWRITE, &handle) != ESP_OK) return false;
+    esp_err_t result = nvs_set_u8(handle, "album_colours", album_colours ? 1 : 0);
+    if (result == ESP_OK) result = nvs_commit(handle);
+    nvs_close(handle);
+    if (result != ESP_OK) return false;
+    remote_state.appearance(album_colours);
     return true;
 }

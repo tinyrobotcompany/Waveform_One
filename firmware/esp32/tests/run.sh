@@ -160,3 +160,9 @@ for remote_version in 0x010300 0x010302; do
     "$build_dir/p4_rx_ownership"
 done
 printf '%s\n' 'PASS: hosted Wi-Fi RX buffer ownership on old and consuming callback contracts'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/album_palette_test.cpp" -o "$build_dir/p4_palette"
+"$build_dir/p4_palette"
+printf '%s\n' 'PASS: artwork palette bounds, neutral fallbacks, deterministic extraction and readable contrast'

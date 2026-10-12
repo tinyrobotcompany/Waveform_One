@@ -2,6 +2,10 @@
 #include <cstdio>
 #include <cstdint>
 #include <string>
+#include <cstdlib>
+#include <vector>
+#include "album_palette.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
 #include "display_fonts.h"
 #include "display_text.h"
 #include "recognition_feedback.h"
@@ -11,8 +15,20 @@ constexpr lv_color_t kBackground = LV_COLOR_MAKE(0x08,0x0d,0x0a);
 constexpr lv_color_t kForeground = LV_COLOR_MAKE(0xed,0xf3,0xe8);
 constexpr lv_color_t kAccent = LV_COLOR_MAKE(0xa8,0xd5,0x7a);
 constexpr lv_color_t kSearchAccent = LV_COLOR_MAKE(0xa7,0x9a,0xe8);
-constexpr lv_color_t kMuted = LV_COLOR_MAKE(0x84,0x91,0x84);
+constexpr lv_color_t kPanel = LV_COLOR_MAKE(0x12,0x1a,0x13);
+constexpr lv_color_t kLine = LV_COLOR_MAKE(0x37,0x48,0x38);
+constexpr lv_color_t kMuted = LV_COLOR_MAKE(0xa7,0xb2,0xa7);
 lv_obj_t *headline, *artist, *album, *eyebrow, *recognition_status, *recognition_dot;
+RecognitionStatus theme_status = RecognitionStatus::Waiting;
+album_palette::Palette current_palette{};
+bool album_colours=true, searching=false;
+RecognitionTrack displayed_track{};
+lv_obj_t *artwork=nullptr, *brand_label=nullptr, *appearance_buttons[2]{}, *style_buttons[3]{}, *style_status=nullptr;
+void on_style(lv_event_t *) {}
+void on_appearance(lv_event_t *) {}
+lv_color_t theme_search() { return lv_color_hex(current_palette.search); }
+lv_color_t theme_accent() { return lv_color_hex(current_palette.accent); }
+#include "native_palette.inc"
 #include "native_helpers.inc"
 static uint16_t pixels[1024*600];
 static void flush(lv_display_t *display, const lv_area_t *, uint8_t *) { lv_display_flush_ready(display); }
@@ -98,5 +114,45 @@ int main() {
     lv_obj_align(image,LV_ALIGN_BOTTOM_MID,0,-26);
     lv_obj_set_style_border_color(cover,kSearchAccent,0);
     screenshot("native-search.ppm",display);
+    if (const char *directory=std::getenv("WAVEFORM_ALBUM_FIXTURES")) {
+        lv_obj_add_flag(image,LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(mark,LV_OBJ_FLAG_HIDDEN);
+        artwork=cover;
+        const char *names[]={"monty","emmet","beatles","dexter"};
+        const char *titles[]={"A Jamaican in Paris","Universal Truth","Rubber Soul","Other Side of Round Midnight"};
+        const char *artists[]={"Monty Alexander","Emmet Cohen","The Beatles","Dexter Gordon"};
+        for(unsigned i=0;i<4;++i) {
+            std::string base=std::string(directory)+"/"+names[i];
+            FILE *palette=std::fopen((base+".palette").c_str(),"r"); assert(palette);
+            assert(std::fscanf(palette,"%x %x %x %x %x",&current_palette.background,&current_palette.panel,
+                &current_palette.accent,&current_palette.search,&current_palette.line)==5); std::fclose(palette);
+            std::vector<uint8_t> rgb(320*320*2);
+            FILE *pixels=std::fopen((base+".rgb565").c_str(),"rb"); assert(pixels);
+            assert(std::fread(rgb.data(),1,rgb.size(),pixels)==rgb.size()); std::fclose(pixels);
+            lv_image_dsc_t descriptor{};
+            descriptor.header.magic=LV_IMAGE_HEADER_MAGIC; descriptor.header.cf=LV_COLOR_FORMAT_RGB565;
+            descriptor.header.w=320; descriptor.header.h=320; descriptor.header.stride=640;
+            descriptor.data_size=rgb.size(); descriptor.data=rgb.data();
+            auto *picture=lv_image_create(cover); lv_image_set_src(picture,&descriptor);
+            lv_image_set_scale(picture,358*256/320); lv_obj_center(picture);
+            std::snprintf(displayed_track.title,sizeof(displayed_track.title),"%s",titles[i]);
+            set_label_text(headline,titles[i]); set_label_text(artist,artists[i]); set_label_text(album,"Album colours");
+            set_recognition_feedback(RecognitionStatus::Matched,true); paint_palette();
+            screenshot(("native-album-"+std::string(names[i])+".ppm").c_str(),display);
+            lv_obj_delete(picture); lv_image_cache_drop(&descriptor);
+        }
+    }
+    auto *settings_panel=lv_obj_create(screen);
+    lv_obj_set_size(settings_panel,1024,600); lv_obj_set_pos(settings_panel,0,0);
+    lv_obj_set_style_bg_color(settings_panel,kBackground,0);
+    lv_obj_set_style_border_width(settings_panel,0,0); lv_obj_set_style_pad_all(settings_panel,0,0);
+    #include "native_appearance.inc"
+    lv_obj_update_layout(settings_panel);
+    for(auto *button : appearance_buttons) {
+        lv_area_t button_bounds{},label_bounds{};
+        lv_obj_get_coords(button,&button_bounds); lv_obj_get_coords(lv_obj_get_child(button,0),&label_bounds);
+        assert(button_bounds.y2<255 && button_bounds.x2<535);
+        assert(label_bounds.x1>=button_bounds.x1 && label_bounds.x2<=button_bounds.x2);
+    }
+    screenshot("native-appearance-settings.ppm",display);
     std::puts("PASS: actual LVGL font glyphs and native text layout, apostrophes/accents and feedback states");
 }

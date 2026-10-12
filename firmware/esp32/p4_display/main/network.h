@@ -5,6 +5,7 @@
 #include "control_policy.h"
 #include "usb_controller.h"
 #include "recognition.h"
+#include "album_palette.h"
 
 enum class NetworkMode {
     Unconfigured,
@@ -19,6 +20,7 @@ enum class WifiConfigurationState {
 };
 
 struct RemoteCallbacks {
+    bool (*set_appearance)(bool album_colours) = nullptr;
     bool (*set_style)(LedStyle style) = nullptr;
     bool (*set_brightness)(int percent) = nullptr;
     void (*set_name)(const char *name) = nullptr;
@@ -35,3 +37,6 @@ void network_set_brightness(int percent);
 void network_set_name(const char *name);
 void network_set_style(LedStyle style);
 bool network_configure_home(const control_policy::WifiNetwork &network, const char *password);
+
+void network_set_palette(const album_palette::Palette &palette);
+bool network_set_appearance(bool album_colours);

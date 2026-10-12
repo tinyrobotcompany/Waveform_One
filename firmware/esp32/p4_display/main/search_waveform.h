@@ -15,10 +15,11 @@ inline constexpr uint16_t kBackground = rgb565(0x12, 0x1a, 0x13);
 
 // Decorative search feedback, not a representation of microphone levels.
 // Render into one fixed RGB565 image; no per-bar LVGL objects or resizing.
-inline bool render(uint16_t *pixels, size_t count, unsigned phase)
+inline bool render(uint16_t *pixels, size_t count, unsigned phase,
+                   uint32_t foreground = 0xa79ae8, uint32_t background = 0x121a13)
 {
     if (pixels == nullptr || count != kPixels) return false;
-    std::fill_n(pixels, count, kBackground);
+    std::fill_n(pixels, count, rgb565((background>>16)&255, (background>>8)&255, background&255));
     for (unsigned bar = 0; bar < 15; ++bar) {
         const float wave = 0.5f + 0.5f * std::sin((phase % 1024) * 0.006135923f + bar * 0.65f);
         const unsigned height = 16 + static_cast<unsigned>(64 * wave);
@@ -28,7 +29,8 @@ inline bool render(uint16_t *pixels, size_t count, unsigned phase)
         const auto blend = [opacity](unsigned color, unsigned background) {
             return (color * opacity + background * (255 - opacity)) / 255;
         };
-        const uint16_t color = rgb565(blend(0xa7, 0x12), blend(0x9a, 0x1a), blend(0xe8, 0x13));
+        const uint16_t color = rgb565(blend((foreground>>16)&255, (background>>16)&255),
+            blend((foreground>>8)&255, (background>>8)&255), blend(foreground&255, background&255));
         for (unsigned y = 0; y < height; ++y) {
             for (unsigned x = 0; x < 12; ++x) {
                 const int dx = static_cast<int>(x) * 2 - 11;

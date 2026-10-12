@@ -9,7 +9,9 @@ const pageHtml = source.match(/R"HTML\(([\s\S]*)\)HTML";/)[1];
 const output = process.env.WAVEFORM_SCREENSHOTS || '/tmp/waveform-phone-preview';
 fs.mkdirSync(output, { recursive: true });
 const track = { title: 'In My Time of Dying (Live from Earls Court, 1975)', artist: 'Led Zeppelin', album: 'Physical Graffiti', artwork: 'https://is1-ssl.mzstatic.com/test.svg' };
-let state = { status: 'capturing', track: null, name: 'Simon', brightness: 65, style: 'classic' };
+const standard={background:'#080d0a',panel:'#121a13',accent:'#a8d57a',search:'#a79ae8',line:'#374838'};
+const albumPalette={background:'#331a12',panel:'#472519',accent:'#f0a48b',search:'#9cdbf0',line:'#6b534b'};
+let state = { appearance:'album', status: 'capturing', track: null, name: 'Simon', brightness: 65, style: 'classic' };
 let unauthorized = false, failing = false;
 const posts = [];
 const server = http.createServer((req, res) => {
@@ -30,7 +32,7 @@ const server = http.createServer((req, res) => {
     }
     if (req.url === '/api/state') {
         res.writeHead(!paired || unauthorized ? 401 : failing ? 503 : 200, { 'Content-Type': 'application/json' });
-        return res.end(JSON.stringify(state));
+        return res.end(JSON.stringify({...state,palette:state.track&&state.appearance!=='classic'?albumPalette:standard}));
     }
     if (req.method === 'POST') {
         if (!paired || req.headers['x-waveform-csrf'] !== 'fixture-csrf') { res.writeHead(403); return res.end(); }
@@ -42,6 +44,7 @@ const server = http.createServer((req, res) => {
             if (req.url === '/api/brightness') state.brightness = Number(form.get('value'));
             if (req.url === '/api/name') state.name = form.get('name');
             if (req.url === '/api/style') state.style = form.get('style');
+            if (req.url === '/api/appearance') state.appearance = form.get('value');
             res.end('OK');
         });
         return;
@@ -85,6 +88,13 @@ const server = http.createServer((req, res) => {
         await page.getByRole('button', { name: 'Settings', exact: true }).click();
         assert(await page.getByRole('dialog').isVisible());
         assert.equal(await page.locator('#brightness').inputValue(), '65');
+        assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--green')),albumPalette.accent);
+        await page.getByRole('button',{name:'Classic black',exact:true}).click();
+        await page.locator('[data-appearance=classic][aria-pressed=true]').waitFor();
+        assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--bg')),standard.background);
+        assert(posts.some(post=>post.path==='/api/appearance'&&post.body==='value=classic'));
+        await page.getByRole('button',{name:'Album colours',exact:true}).click();
+        await page.locator('[data-appearance=album][aria-pressed=true]').waitFor();
         await page.locator('#name').fill('Zoë');
         await page.getByRole('button', { name: 'Save name' }).click();
         await page.getByText('Saved', { exact: true }).waitFor();
