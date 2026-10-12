@@ -23,7 +23,6 @@
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "network.h"
 #include "recognition.h"
-#include "recognition_policy.h"
 #include "recognition_feedback.h"
 #include "search_waveform.h"
 #include "album_palette.h"
@@ -446,12 +445,6 @@ void remote_set_time(std::time_t epoch)
 
 void update_clock(lv_timer_t *)
 {
-    if (displayed_track.title[0] != '\0'
-        && recognition_policy::expired(displayed_track.matched_at_us, esp_timer_get_time(), recognition_last_activity_us())) {
-        clear_recognition_track();
-        set_searching(false);
-        set_recognition_feedback(RecognitionStatus::Waiting, false);
-    }
     const std::time_t now = std::time(nullptr);
     if (now < 1700000000) return;
     tm local{};
@@ -965,10 +958,6 @@ void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
     network_set_recognition(status, track);
     // The recognition/session mutex is acquired before this GUI lock everywhere.
     if (!bsp_display_lock(1000)) return;
-    if (track != nullptr && recognition_policy::expired(track->matched_at_us, esp_timer_get_time(), recognition_last_activity_us())) {
-        track = nullptr; image = nullptr;
-        if (status == RecognitionStatus::Matched) status = RecognitionStatus::Waiting;
-    }
     const bool same_cover = track != nullptr
         && std::strcmp(displayed_track.artwork_url, track->artwork_url) == 0;
     const bool same_track = track != nullptr
@@ -1051,7 +1040,7 @@ extern "C" void app_main()
 
     ESP_LOGI(kTag, "Display and touch initialized");
     recognition_start(update_recognition);
-    usb_controller_start(update_controller_status, recognition_set_activity);
+    usb_controller_start(update_controller_status);
     RemoteCallbacks remote{};
     remote.set_appearance = remote_set_appearance;
     remote.set_style = remote_set_style;

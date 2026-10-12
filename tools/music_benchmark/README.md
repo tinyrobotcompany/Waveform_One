@@ -107,7 +107,8 @@ physical-device timing measurement. See the separate catalogue report.
 
 ### Four-second hardware trial
 
-The native P4 now explicitly requests `CAPTURE 4`; the S3 continues to support
+The native P4 later moved to continuous streaming (see the streaming recognition
+commissioning record); at the time of this trial it requested `CAPTURE 4`; the S3 continues to support
 legacy eight-second requests. This is separate from the reference music-only
 classifier, which remains disabled on both boards. Current firmware fingerprint
 outputs are checked against the four-second benchmark signatures. The benchmark
@@ -115,3 +116,15 @@ itself pins its original eight-second source to colour commit `29f8bcd` so later
 firmware changes cannot silently change historical comparisons. See
 [the commissioning record](../../docs/commissioning/2026-10-12-four-second-recognition.md)
 for pre-flash checks and live-test limitations.
+
+### Streaming signatures
+
+`stream_cli.cpp` runs a saved WAV through the device's continuous analyser
+and prints the signature for each `START_S:LENGTH_S` window, with its peak
+overlap against the same audio fingerprinted as a separate recording:
+
+```sh
+c++ -O2 -std=c++17 -I firmware/esp32/p4_display/main tools/music_benchmark/stream_cli.cpp \
+  firmware/esp32/p4_display/main/fingerprint.cpp -o build/stream_cli
+build/stream_cli "$BENCH_DIR/fixtures/jazz.wav" 2:3 2:5 2:8
+```

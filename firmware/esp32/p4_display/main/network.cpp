@@ -312,7 +312,7 @@ esp_err_t state_handler(httpd_req_t *request)
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
     httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
     if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
-    const std::string state = remote_state.json(esp_timer_get_time(), recognition_last_activity_us());
+    const std::string state = remote_state.json();
     if (state.empty()) return service_unavailable(request, "State temporarily unavailable");
     httpd_resp_set_type(request, "application/json");
     return httpd_resp_send(request, state.data(), state.size());

@@ -4,7 +4,7 @@
 #include <cstdio>
 #include <string>
 #include "recognition_metadata.h"
-#include "recognition_policy.h"
+#include "recognition.h"
 #include "album_palette.h"
 
 // Owns the worker's borrowed metadata. HTTP never takes a GUI/session lock.
@@ -35,12 +35,12 @@ public:
         style_ = value;
     }
     // Empty means allocation failed; never publish a partial JSON object.
-    std::string json(int64_t now, int64_t last_activity) {
+    std::string json() {
         const std::lock_guard<std::mutex> lock(mutex_);
         cJSON *root = cJSON_CreateObject();
         if (root == nullptr) return {};
-        const bool visible = track_.title[0] != '\0'
-            && !recognition_policy::expired(track_.matched_at_us, now, last_activity);
+        // Recognition clears the track itself when the music stops.
+        const bool visible = track_.title[0] != '\0';
         const auto status = !visible && status_ == RecognitionStatus::Matched
             ? RecognitionStatus::Waiting : status_;
         bool ok = cJSON_AddStringToObject(root, "status", status_name(status)) != nullptr

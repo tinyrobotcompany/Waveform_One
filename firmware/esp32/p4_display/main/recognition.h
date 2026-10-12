@@ -2,11 +2,12 @@
 
 #include <cstddef>
 #include <cstdint>
-#include "audio_activity.h"
 
 enum class RecognitionStatus { Waiting, Capturing, Identifying, Matched, NoMatch, Unavailable };
 struct RecognitionTrack {
     int64_t matched_at_us = 0;
+    double offset_s = -1;   // song position at the clip's start; negative if unknown
+    double duration_s = 0;  // song length from the catalogue; zero if unknown
     char title[513]{};
     char artist[513]{};
     char album[513]{};
@@ -25,5 +26,3 @@ void recognition_start(RecognitionCallback callback);
 void recognition_set_network(bool online, const char *address);
 void recognition_set_controller(bool connected);
 
-void recognition_set_activity(audio_activity::State state);
-int64_t recognition_last_activity_us();

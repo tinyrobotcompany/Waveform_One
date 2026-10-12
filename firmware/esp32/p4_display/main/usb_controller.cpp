@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <new>
 
-#include "audio_capture.h"
 #include "audio_activity.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
@@ -24,7 +24,7 @@ namespace {
 constexpr char kTag[] = "waveform_usb";
 constexpr uint32_t kTxTimeoutMs = 1000;
 
-enum class EventType { DeviceFound, Disconnected, Reply, SetStyle, Capture };
+enum class EventType { DeviceFound, Disconnected, Reply, SetStyle };
 
 struct Event {
     EventType type;
@@ -32,8 +32,6 @@ struct Event {
     uint16_t pid = 0;
     wf1::Reply reply{};
     LedStyle style = LedStyle::Mirrored;
-    AudioCaptureCallback capture_callback = nullptr;
-    uint64_t capture_id = 0;
     unsigned generation = 0;
 };
 
@@ -46,15 +44,16 @@ wf1::Mode requested_mode = wf1::Mode::Mirrored;
 wf1::Replies replies(1);
 // CDC RX runs on the driver's task, while requests run on the controller task.
 std::mutex receive_mutex;
-audio_capture::Decoder capture;
+audio_stream::Decoder stream;
+RecognitionAudio *audio = nullptr;
 audio_activity::Decoder activity;
 AudioActivityCallback report_activity = nullptr;
 audio_activity::State activity_reported = audio_activity::State::Unknown;
-uint8_t *capture_buffer = nullptr;
-AudioCaptureCallback capture_callback = nullptr;
-uint64_t capture_id = 0;
-int64_t capture_deadline = 0;
-std::atomic_bool capture_reserved{false};
+// Restart a stream that failed, was refused or has gone quiet.
+constexpr int64_t kStreamRetryUs = 1000000;
+constexpr int64_t kStreamSilentUs = 2000000;
+int64_t stream_started = 0;
+std::atomic<int64_t> stream_received{0};
 std::atomic_bool disconnect_pending{false};
 std::atomic_uint controller_generation{1};
 
@@ -74,7 +73,10 @@ bool handle_rx(const uint8_t *data, size_t size, void *)
 {
     std::lock_guard<std::mutex> lock(receive_mutex);
     for (size_t index = 0; index < size; ++index) {
-        capture.push(static_cast<char>(data[index]));
+        stream.push(static_cast<char>(data[index]), [](const int16_t *samples) {
+            audio->write(samples, audio_stream::kPacketSamples);
+            stream_received.store(esp_timer_get_time());
+        });
         activity.push(static_cast<char>(data[index]), esp_timer_get_time());
         replies.push(static_cast<char>(data[index]), [](const wf1::Reply &reply) {
             Event event{};
@@ -190,74 +192,44 @@ void send_style(LedStyle style)
     }
 }
 
-void finish_capture(AudioCaptureStatus status)
+void start_stream()
 {
-    uint8_t *pcm = nullptr;
-    size_t received = 0;
-    {
-        std::lock_guard<std::mutex> lock(receive_mutex);
-        received = capture.size();
-        capture.reset();
-        pcm = capture_buffer;
-        capture_buffer = nullptr;
-    }
-    const auto callback = capture_callback;
-    capture_callback = nullptr;
-    capture_reserved.store(false);
-    if (pcm != nullptr) {
-        ESP_LOGI(kTag, "Audio capture result=%u bytes=%u duration_ms=%lld",
-            static_cast<unsigned>(status), static_cast<unsigned>(received),
-            static_cast<long long>((esp_timer_get_time() - capture_deadline
-                + audio_capture::kTimeoutMs * 1000LL) / 1000));
-    }
-    if (status != AudioCaptureStatus::Complete) {
-        heap_caps_free(pcm);
-        pcm = nullptr;
-    }
-    if (callback != nullptr) callback(status, pcm, pcm != nullptr ? audio_capture::kBytes : 0, capture_id);
-}
-
-void start_capture(AudioCaptureCallback callback, unsigned generation, uint64_t id)
-{
-    capture_callback = callback;
-    capture_id = id;
-    if (controller == nullptr || generation != controller_generation.load()) {
-        finish_capture(AudioCaptureStatus::Disconnected); return;
-    }
-    uint8_t *pcm = static_cast<uint8_t *>(heap_caps_malloc(
-        audio_capture::kBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    if (pcm == nullptr) { finish_capture(AudioCaptureStatus::NoMemory); return; }
     request_id = request_id == 65535 ? 1 : request_id + 1;
     {
         std::lock_guard<std::mutex> lock(receive_mutex);
-        capture_buffer = pcm;
-        capture.begin(request_id, pcm, audio_capture::kBytes);
+        stream.begin(request_id);
     }
-    capture_deadline = esp_timer_get_time() + audio_capture::kTimeoutMs * 1000LL;
-    const std::string request = audio_capture::capture_request(request_id);
+    // Whatever arrives next is a new recording, never spliced to the last.
+    audio->discontinuity();
+    stream_started = esp_timer_get_time();
+    stream_received.store(stream_started);
+    const std::string request = audio_stream::request(request_id);
     if (cdc_acm_host_data_tx_blocking(controller,
         reinterpret_cast<const uint8_t *>(request.data()), request.size(), kTxTimeoutMs) != ESP_OK) {
-        finish_capture(AudioCaptureStatus::TransportError);
+        ESP_LOGW(kTag, "Audio stream request failed");
+        std::lock_guard<std::mutex> lock(receive_mutex);
+        stream.reset();
     }
 }
 
-void poll_capture()
+void poll_stream()
 {
-    if (capture_callback == nullptr) return;
-    audio_capture::Result result;
+    if (controller == nullptr) return;
+    audio_stream::Result result;
     {
         std::lock_guard<std::mutex> lock(receive_mutex);
-        result = capture.result();
+        result = stream.result();
     }
-    switch (result) {
-    case audio_capture::Result::Complete: finish_capture(AudioCaptureStatus::Complete); break;
-    case audio_capture::Result::Busy: finish_capture(AudioCaptureStatus::Busy); break;
-    case audio_capture::Result::AudioLost: finish_capture(AudioCaptureStatus::AudioLost); break;
-    case audio_capture::Result::Invalid: finish_capture(AudioCaptureStatus::Invalid); break;
-    default:
-        if (esp_timer_get_time() >= capture_deadline) finish_capture(AudioCaptureStatus::TimedOut);
-        break;
+    const int64_t now = esp_timer_get_time();
+    const bool healthy = (result == audio_stream::Result::Starting || result == audio_stream::Result::Streaming)
+        && now - stream_received.load() < kStreamSilentUs;
+    if (healthy || now - stream_started < kStreamRetryUs) return;
+    if (result != audio_stream::Result::Idle) {
+        ESP_LOGW(kTag, "Audio stream %s; restarting",
+            result == audio_stream::Result::Busy ? "refused" : result == audio_stream::Result::Lost ? "lost audio"
+            : result == audio_stream::Result::Invalid ? "corrupted" : "stalled");
     }
+    start_stream();
 }
 
 void open_controller(uint16_t vid, uint16_t pid)
@@ -284,13 +256,18 @@ void open_controller(uint16_t vid, uint16_t pid)
     controller_generation.fetch_add(1);
     controller_available.store(true);
     send_style(LedStyle::Mirrored);
+    start_stream();
 }
 
 void poll_disconnect()
 {
     if (disconnect_pending.exchange(false)) {
         close_controller();
-        if (capture_callback != nullptr) finish_capture(AudioCaptureStatus::Disconnected);
+        {
+            std::lock_guard<std::mutex> lock(receive_mutex);
+            stream.reset();
+        }
+        audio->discontinuity();
         report(LedControllerState::Disconnected);
         ESP_LOGW(kTag, "ESP32-S3 disconnected");
     }
@@ -320,9 +297,6 @@ void process_event(const Event &event)
     case EventType::SetStyle:
         send_style(event.style);
         break;
-    case EventType::Capture:
-        start_capture(event.capture_callback, event.generation, event.capture_id);
-        break;
     }
 }
 
@@ -346,7 +320,7 @@ void controller_task(void *)
     while (true) {
         poll_disconnect();
         poll_activity();
-        poll_capture();
+        poll_stream();
         Event event{};
         if (xQueueReceive(events, &event, pdMS_TO_TICKS(100)) == pdTRUE) process_event(event);
     }
@@ -370,6 +344,9 @@ void usb_controller_start(LedControllerStatusCallback callback, AudioActivityCal
 {
     report_status = callback;
     report_activity = activity_callback;
+    void *memory = heap_caps_malloc(sizeof(RecognitionAudio), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    ESP_ERROR_CHECK(memory != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
+    audio = new (memory) RecognitionAudio;
     events = xQueueCreate(8, sizeof(Event));
     ESP_ERROR_CHECK(events != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreatePinnedToCore(controller_task, "s3_control", 6144, nullptr, 10,
@@ -383,21 +360,7 @@ StyleRequestResult usb_controller_set_style(LedStyle style)
     return enqueue_style(style);
 }
 
-AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback, uint64_t id)
+const RecognitionAudio *usb_controller_audio()
 {
-    if (events == nullptr || callback == nullptr) return AudioCaptureRequestResult::Unavailable;
-    const unsigned generation = controller_generation.load();
-    if (!controller_available.load()) return AudioCaptureRequestResult::Disconnected;
-    bool expected = false;
-    if (!capture_reserved.compare_exchange_strong(expected, true)) return AudioCaptureRequestResult::Busy;
-    Event event{};
-    event.type = EventType::Capture;
-    event.capture_callback = callback;
-    event.capture_id = id;
-    event.generation = generation;
-    if (xQueueSend(events, &event, 0) != pdTRUE) {
-        capture_reserved.store(false);
-        return AudioCaptureRequestResult::QueueFull;
-    }
-    return AudioCaptureRequestResult::Queued;
+    return audio;
 }

@@ -42,7 +42,7 @@ done
     -I "$esp_dir/visualizer/main" -I "$esp_dir/mic_test/main" \
     "$esp_dir/visualizer/tests/capture_transport_test.cpp" -o "$build_dir/capture_transport"
 "$build_dir/capture_transport"
-printf '%s\n' 'PASS: production capture/control transport, overflow recovery and failed headers'
+printf '%s\n' 'PASS: production capture/stream/control transport, overflow recovery and failed headers'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -61,31 +61,24 @@ printf '%s\n' 'PASS: ESP32-P4 WF1 client protocol'
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/audio_capture_test.cpp" -o "$build_dir/p4_audio_capture"
-"$build_dir/p4_audio_capture"
-printf '%s\n' 'PASS: ESP32-P4 bounded PCM capture, sequence and checksum validation'
+    "$esp_dir/p4_display/tests/audio_stream_test.cpp" -o "$build_dir/p4_audio_stream"
+"$build_dir/p4_audio_stream"
+printf '%s\n' 'PASS: ESP32-P4 continuous PCM stream, sequence/checksum validation and sample ring'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/visualizer/tests/stubs" \
     -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/usb_capture_transport_test.cpp" -o "$build_dir/p4_usb_capture"
-"$build_dir/p4_usb_capture"
-printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disconnects and cleanup'
+    "$esp_dir/p4_display/tests/usb_stream_transport_test.cpp" -o "$build_dir/p4_usb_stream"
+"$build_dir/p4_usb_stream"
+printf '%s\n' 'PASS: production P4 USB audio stream, restarts, shared controls and disconnects'
 
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+"${CXX:-c++}" -O1 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/capture_quality_test.cpp" -o "$build_dir/p4_capture_quality"
-"$build_dir/p4_capture_quality"
-printf '%s\n' 'PASS: PCM aggregate quality diagnostics, signed samples and bounds'
-
-"${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra -Werror \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/fingerprint_gain_test.cpp" -o "$build_dir/p4_fingerprint_gain"
-"$build_dir/p4_fingerprint_gain"
-printf '%s\n' 'PASS: exact fingerprint gain across signed PCM, boundaries and workspace reuse'
+    "$esp_dir/p4_display/tests/listening_test.cpp" -o "$build_dir/p4_listening"
+"$build_dir/p4_listening"
+printf '%s\n' 'PASS: sound start and silence detection against the learnt room background'
 
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -93,14 +86,7 @@ printf '%s\n' 'PASS: exact fingerprint gain across signed PCM, boundaries and wo
     "$esp_dir/p4_display/tests/fingerprint_test.cpp" \
     "$esp_dir/p4_display/main/fingerprint.cpp" -o "$build_dir/p4_fingerprint"
 "$build_dir/p4_fingerprint"
-printf '%s\n' 'PASS: native fingerprints against upstream reference and binary encoding'
-
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/capture_completion_test.cpp" -o "$build_dir/p4_completion"
-"$build_dir/p4_completion"
-printf '%s\n' 'PASS: recognition completion deadlines, cancellation, stale callbacks and PCM ownership'
+printf '%s\n' 'PASS: streaming fingerprints against upstream reference, recordings and binary encoding'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -122,6 +108,14 @@ printf '%s\n' 'PASS: production recognition HTTP chunked reads, size bounds, err
 "$build_dir/p4_metadata"
 printf '%s\n' 'PASS: recognition metadata, UTF-8 and artwork origin validation'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/album_resolver_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_album"
+"$build_dir/p4_album"
+printf '%s\n' 'PASS: album choice from catalogue releases, current-album preference and fallbacks'
+
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
@@ -135,7 +129,7 @@ printf '%s\n' 'PASS: phone recognition snapshot ownership, expiry, JSON and conc
     -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/recognition_policy_test.cpp" -o "$build_dir/p4_recognition_policy"
 "$build_dir/p4_recognition_policy"
-printf '%s\n' 'PASS: recognition session invalidation, pairing rotation, backoff and expiry'
+printf '%s\n' 'PASS: recognition sessions, lookup planning, request budget and backoff'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \

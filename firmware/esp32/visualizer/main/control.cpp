@@ -21,6 +21,11 @@ static void control_handle_line(std::string_view line) {
     bool started = false;
     if (!control::parse(line, command)) {
         size = snprintf(reply, sizeof(reply), "\nWF1 0 ERR BAD_COMMAND\n");
+    } else if (command.stream) {
+        started = !update_active() && capture_start_stream(command.id);
+        size = started
+            ? snprintf(reply, sizeof(reply), "\nWF1 %u AUDIO 16000 STREAM\n", command.id)
+            : snprintf(reply, sizeof(reply), "\nWF1 %u ERR BUSY\n", command.id);
     } else if (command.capture) {
         started = !update_active() && capture_start(command.id, command.capture_seconds);
         size = started

@@ -13,24 +13,34 @@ protocol.
 
 ## Native music recognition
 
-After Wi-Fi, clock synchronization, the S3 USB connection and calibrated audio activity are ready, a
-background task captures an eight-second microphone clip over the existing WF1
-protocol. The worker bounds the completion wait to 17 seconds and cancels it
-on session changes; capture IDs prevent late callbacks completing a newer clip.
-It validates packet order and checksums, generates a Shazam fingerprint
-locally and sends only the fingerprint over verified HTTPS. Track, artist, album
-and downloaded artwork replace the listening screen when a match is returned.
-No Python or Raspberry Pi is involved, and microphone recordings are not saved.
+The S3 streams microphone audio to the P4 continuously (`WF1 <id> STREAM`). The
+P4 keeps the last 16 seconds in PSRAM, validates packet order and checksums, and
+fingerprints every 8 ms hop as it arrives with the ESP-DSP FFT, so a signature
+for any recent stretch of audio is ready the moment that audio has been heard.
+Only the compact fingerprint leaves the device, over verified HTTPS; no Python
+or Raspberry Pi is involved, and microphone audio is never saved. A gap in the
+stream is a new recording: audio is never spliced across it.
 
-Matched attempts wait 30 seconds; misses wait 15 seconds. A playback stop/start
-removes that normal wait, so a new song can be captured promptly. Failures use
-capped backoff and honor service Retry-After; playback changes cannot bypass it.
-Capture enqueue failures also back off. Busy retries have a 17-second grace
-window for an outstanding capture, then back off if the controller stays busy. Three consecutive quiet S3 reports (about 1.5 seconds) clear the
-track and invalidate in-flight lookups. Missing reports for three seconds pause
-new captures without treating the reporting gap as silence. Artwork survives
-misses and service failures for as long as active audio reports continue; it
-expires after 90 seconds without a match or positive audio report. Capturing and
+The P4 decides for itself when sound starts and stops, against the room's own
+background level learnt while quiet: sound is 6 dB above it for 0.6 s; silence
+is within 4 dB of it for 2 s. Silence immediately clears the song and returns to
+the standard screen. Sound that three lookups cannot identify joins the
+background quickly, so a fan or dishwasher stops being treated as music.
+
+When sound starts, the first 3, 5 and 8 seconds are looked up, then the latest
+8 seconds every 30 seconds while it stays unidentified. After a match, the
+service's position in the song and the catalogue's song length say when it
+ends; the next lookup is 3 seconds into whatever follows. Without a length, the
+song is checked once a minute and cleared after two misses. Lookups are capped
+at a burst of four and one per 15 seconds; failures back off from 60 seconds to
+five minutes and honour Retry-After.
+
+Audio identifies a recording, not a release. After a match the P4 asks Apple's
+public catalogue search for every release of the song and keeps the service's
+album unless it is a single, EP, compilation, soundtrack or another recording;
+otherwise it picks the catalogue's most relevant regular album. The album already
+playing wins when it contains the next song. Title and artist appear at once;
+album and artwork follow. Capturing and
 identifying gently pulse the lavender artwork frame and show “Finding your song...”.
 Once a track is known, the frame stays green, including during routine checks.
 The native NOW PLAYING heading uses the 48-pixel font.

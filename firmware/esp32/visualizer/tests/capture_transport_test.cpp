@@ -94,4 +94,45 @@ int main() {
   assert(output.size()==501 && output.front().find("\nWF1 12 PCM 0 ")==0);
   assert(output.back()=="\nWF1 12 END 500\n");
   assert(!capture_active());
+
+  // A stream runs past any bounded length without END and keeps its sequence.
+  output.clear();
+  control_handle_line("WF1 20 STREAM");
+  assert(output.back()=="\nWF1 20 AUDIO 16000 STREAM\n");
+  assert(!capture_active()); // streams never block updates
+  for(int i=0;i<200;++i) {capture_audio(audio.data(),2048);capture_send();}
+  assert(output.size()==1+1066);
+  for(const auto& line : output) assert(line.find(" END ")==std::string::npos);
+  assert(output.back().find("\nWF1 20 PCM 1065 ")==0);
+  // Bounded captures are refused while streaming; MODE still works.
+  control_handle_line("WF1 21 CAPTURE 4");
+  assert(output.back()=="\nWF1 21 ERR BUSY\n");
+  control_handle_line("WF1 22 MODE waterfall");
+  assert(output.back()=="\nWF1 22 OK MODE waterfall\n");
+  // A new STREAM replaces the old one and restarts its sequence.
+  control_handle_line("WF1 23 STREAM");
+  assert(output.back()=="\nWF1 23 AUDIO 16000 STREAM\n");
+  output.clear();
+  capture_audio(audio.data(),2048);capture_send();
+  assert(output.at(0).find("\nWF1 23 PCM 0 ")==0);
+  // Lost audio ends the stream so the host restarts it.
+  capture_discontinuity();
+  capture_send();
+  assert(output.back()=="\nWF1 23 ERR AUDIO_LOST\n");
+  control_handle_line("WF1 24 STREAM");
+  assert(output.back()=="\nWF1 24 AUDIO 16000 STREAM\n");
+  // Stopping a stream leaves bounded captures available again.
+  capture_stop_stream();
+  output.clear();
+  capture_audio(audio.data(),2048);capture_send();
+  assert(output.empty());
+  assert(capture_start(25, 4));
+  capture_stop_stream(); // never cancels a bounded capture
+  assert(capture_active());
+  capture_abort(25);
+  // A bounded capture keeps refusing a stream.
+  assert(capture_start(26, 4));
+  control_handle_line("WF1 27 STREAM");
+  assert(output.back()=="\nWF1 27 ERR BUSY\n");
+  capture_abort(26);
 }

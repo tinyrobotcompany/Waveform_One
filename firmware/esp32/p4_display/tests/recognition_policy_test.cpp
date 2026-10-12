@@ -4,13 +4,14 @@
 int main()
 {
     using namespace recognition_policy;
+    constexpr uint32_t s = Planner::kHopsPerSecond;
+
+    // Sessions: network and controller changes invalidate work.
     Sessions sessions;
     assert(!sessions.snapshot().ready);
     assert(sessions.set_controller(true));
     assert(!sessions.snapshot().ready);
     assert(sessions.set_network(true, "http://192.168.1.10/pair?code=first"));
-    assert(!sessions.snapshot().ready);
-    assert(sessions.set_activity(true));
     const auto original = sessions.snapshot();
     assert(original.ready);
     assert(!sessions.set_network(true, "http://192.168.1.10/pair?code=rotated"));
@@ -19,119 +20,123 @@ int main()
     assert(sessions.set_network(false, ""));
     assert(!sessions.snapshot().ready && sessions.snapshot().epoch != original.epoch);
     assert(sessions.set_network(true, "http://192.168.1.10/pair?code=new"));
-    assert(sessions.snapshot().ready && sessions.snapshot().epoch != original.epoch);
     auto before = sessions.snapshot();
     assert(sessions.set_network(true, "http://192.168.1.11/pair?code=changed"));
     assert(sessions.snapshot().epoch != before.epoch);
     before = sessions.snapshot();
     assert(sessions.set_controller(false));
     assert(!sessions.snapshot().ready && sessions.snapshot().epoch != before.epoch);
-    assert(sessions.set_controller(true));
-    assert(sessions.snapshot().ready);
-    auto music = sessions.snapshot();
-    assert(sessions.set_activity(false));
-    assert(!sessions.snapshot().ready && sessions.snapshot().epoch != music.epoch);
-    assert(!sessions.set_activity(false));
-    assert(sessions.set_activity(true));
-    assert(sessions.snapshot().ready && sessions.snapshot().epoch != music.epoch);
     assert(sessions.set_network(true, ""));
     assert(!sessions.snapshot().ready);
 
-    // Availability and queue failures back off; Busy is transient only within
-    // the maximum outstanding capture window, then becomes a failure too.
-    for (auto result : {AudioCaptureRequestResult::Disconnected,
-                        AudioCaptureRequestResult::Unavailable,
-                        AudioCaptureRequestResult::QueueFull}) {
-        Retries request;
-        assert(!request.capture_requested(result, 100));
-        request.activity_changed(200);
-        assert(!request.due(60000099) && request.due(60000100));
-        assert(!request.capture_requested(result, 60000100));
-        assert(!request.due(180000099) && request.due(180000100));
-    }
-    Retries busy;
-    assert(!busy.capture_requested(AudioCaptureRequestResult::Busy, 0));
-    assert(!busy.due(999999) && busy.due(1000000));
-    busy.activity_changed(1000000);
-    assert(!busy.capture_requested(AudioCaptureRequestResult::Busy, kCaptureCompletionTimeoutUs - 1));
-    assert(!busy.capture_requested(AudioCaptureRequestResult::Busy, kCaptureCompletionTimeoutUs));
-    busy.activity_changed(kCaptureCompletionTimeoutUs + 1);
-    assert(!busy.due(kCaptureCompletionTimeoutUs + 59999999));
-    assert(busy.due(kCaptureCompletionTimeoutUs + 60000000));
-    Retries transient;
-    assert(!transient.capture_requested(AudioCaptureRequestResult::Busy, 0));
-    assert(transient.capture_requested(AudioCaptureRequestResult::Queued, 1000000));
-    assert(transient.due(1000000));
-    // A later independent Busy period gets a new, bounded grace window.
-    assert(!transient.capture_requested(AudioCaptureRequestResult::Busy, 20000000));
-    assert(!transient.due(20999999) && transient.due(21000000));
+    // Planner: nothing happens without sound.
+    Planner planner;
+    Window window;
+    assert(!planner.due(10 * s, window));
+    // Sound at 10 s: lookups at 3, 5 and 8 s of it, each from its start.
+    planner.sound_started(10 * s);
+    assert(!planner.due(13 * s - 1, window));
+    assert(planner.due(13 * s, window) && window.first == 10 * s && window.last == 13 * s);
+    planner.attempted(13 * s);
+    assert(!planner.missed());
+    assert(!planner.due(15 * s - 1, window));
+    assert(planner.due(15 * s, window) && window.first == 10 * s && window.last == 15 * s);
+    planner.attempted(15 * s);
+    assert(!planner.unidentified());
+    assert(planner.due(18 * s, window) && window.first == 10 * s && window.last == 18 * s);
+    planner.attempted(18 * s);
+    assert(planner.unidentified());
+    // Then the latest eight seconds every 30 s.
+    assert(!planner.due(48 * s - 1, window));
+    assert(planner.due(48 * s, window) && window.first == 40 * s && window.last == 48 * s);
+    planner.attempted(48 * s);
+    // A late lookup (service limits) still takes at most eight seconds.
+    assert(planner.due(90 * s, window) && window.last - window.first == 8 * s);
 
-    Sessions interrupted;
-    interrupted.set_controller(true);
-    interrupted.set_network(true, "http://192.168.1.12/");
-    interrupted.set_activity(true);
-    const auto playing_session = interrupted.snapshot();
-    assert(!interrupted.set_activity(audio_activity::State::Unknown));
-    assert(!interrupted.snapshot().ready);
-    assert(interrupted.snapshot().epoch == playing_session.epoch);
-    assert(!interrupted.set_activity(audio_activity::State::Playing));
-    assert(interrupted.snapshot().ready);
-    assert(interrupted.snapshot().epoch == playing_session.epoch);
-    assert(interrupted.set_activity(audio_activity::State::Quiet));
-    assert(interrupted.snapshot().epoch != playing_session.epoch);
-    // A match remains valid throughout sustained playback, even when lookups fail.
-    assert(!expired(100, 300000000, 299000000));
-    assert(!expired(100, 299000000 + kTrackLifetimeUs - 1, 299000000));
-    assert(expired(100, 299000000 + kTrackLifetimeUs, 299000000));
+    // A match with a known length waits for the end of the song.
+    Planner song;
+    song.sound_started(0);
+    assert(song.due(3 * s, window));
+    song.attempted(3 * s);
+    // Clip started 20 s into a 200 s song: it ends 180 s after the clip start.
+    song.matched(window, 3 * s, 20, 200);
+    assert(song.matched() && !song.unidentified() && song.expected_end() == 180 * s);
+    assert(!song.due(183 * s - 1, window));
+    // Three seconds into whatever follows, identify it from its start.
+    assert(song.due(183 * s, window) && window.first == 180 * s && window.last == 183 * s);
+    song.attempted(183 * s);
+    // The next song is found: a new end is set.
+    song.matched(window, 183 * s, 1, 241);
+    assert(song.expected_end() == 420 * s);
+    // Past that end nothing is heard: the old song must go.
+    assert(song.due(423 * s, window));
+    song.attempted(423 * s);
+    assert(song.missed() && !song.matched());
+    // ...and identification carries on for the next one.
+    assert(song.due(425 * s, window) && window.first == 420 * s);
 
-    assert(kIntervalUs == 1000000);
+    // Without a length, check once a minute; two misses clear the song.
+    Planner unknown;
+    unknown.sound_started(0);
+    assert(unknown.due(3 * s, window));
+    unknown.attempted(3 * s);
+    unknown.matched(window, 3 * s, -1, 0);
+    assert(unknown.expected_end() == 0);
+    assert(!unknown.due(63 * s - 1, window));
+    assert(unknown.due(63 * s, window) && window.last - window.first == 8 * s);
+    unknown.attempted(63 * s);
+    assert(!unknown.missed() && unknown.matched());
+    assert(unknown.due(123 * s, window));
+    unknown.attempted(123 * s);
+    assert(unknown.missed() && !unknown.matched());
+    // Implausible lengths or offsets count as unknown.
+    Planner odd;
+    odd.sound_started(0);
+    window = {0, 3 * s};
+    odd.matched(window, 3 * s, 50, 40);
+    assert(odd.expected_end() == 0);
+    odd.matched(window, 3 * s, 0, 7200);
+    assert(odd.expected_end() == 0);
+    // Almost at the end: check again in five seconds.
+    odd.matched(window, 3 * s, 37.5, 40);
+    assert(odd.expected_end() == 0 && !odd.due(8 * s - 1, window) && odd.due(8 * s, window));
+
+    // Silence stops everything and reports whether a song was showing.
+    assert(song.stopped() == false);
+    assert(!song.active() && !song.due(1000 * s, window));
+    Planner showing;
+    showing.sound_started(0);
+    window = {0, 3 * s};
+    showing.matched(window, 3 * s, 10, 200);
+    assert(showing.stopped() && !showing.matched());
+
+    // Failures back off from 60 s to five minutes, or as the service asks.
     Retries retries;
     assert(retries.due(0) && retries.remaining_us(0) == 0);
-    retries.begin(0);
-    assert(retries.remaining_us(0) == kIntervalUs && retries.remaining_us(kIntervalUs) == 0);
-    assert(!retries.due(kIntervalUs - 1) && retries.due(kIntervalUs));
     retries.failed(0);
     assert(!retries.due(60000000 - 1) && retries.due(60000000));
-    // Failure cooldowns survive session changes; normal pauses may be removed.
-    sessions.set_network(false, ""); sessions.set_network(true, "http://192.168.1.11/");
-    assert(!retries.due(1000000));
     retries.failed(0); assert(!retries.due(120000000 - 1));
     retries.failed(0); assert(!retries.due(240000000 - 1));
     retries.failed(0); assert(!retries.due(300000000 - 1) && retries.due(300000000));
     retries.failed(0); assert(retries.due(300000000));
-    retries.succeeded(0, false); assert(!retries.due(4999999) && retries.due(5000000));
-    retries.activity_changed(100); assert(retries.due(100));
-    retries.succeeded(0, true); assert(!retries.due(4999999) && retries.due(5000000));
-    retries.activity_changed(100); assert(retries.due(100));
-    retries.failed(0, 180000000); retries.activity_changed(100);
+    retries.succeeded();
+    retries.failed(0); assert(retries.due(60000000));
+    retries.failed(0, 180000000);
     assert(!retries.due(179999999) && retries.due(180000000));
-    // Reproduce the worker's epoch-change branch on actual session transitions.
-    Sessions playback;
-    playback.set_network(true, "http://192.168.1.12/");
-    playback.set_controller(true); playback.set_activity(true);
-    auto observed_epoch = playback.snapshot().epoch;
-    auto observe_session_change = [&](int64_t now) {
-        const auto current = playback.snapshot();
-        if (observed_epoch != current.epoch) retries.activity_changed(now);
-        observed_epoch = current.epoch;
-    };
-    for (int transition = 0; transition < 3; ++transition) {
-        Retries fresh;
-        retries = fresh;
-        retries.failed(100, 180000000);
-        if (transition == 0) { playback.set_activity(false); playback.set_activity(true); }
-        if (transition == 1) { playback.set_network(false, ""); playback.set_network(true, "http://192.168.1.12/"); }
-        if (transition == 2) { playback.set_controller(false); playback.set_controller(true); }
-        observe_session_change(200);
-        assert(!retries.due(180000099) && retries.due(180000100));
-        // Only after the failure deadline may the worker start and succeed.
-        retries.begin(180000100);
-        retries.succeeded(180000200, true);
-        assert(!retries.due(180000201));
-        playback.set_activity(false); playback.set_activity(true);
-        observe_session_change(180000300);
-        assert(retries.due(180000300));
-    }
+    retries.failed(1000000, std::numeric_limits<int64_t>::max());
+    assert(!retries.due(std::numeric_limits<int64_t>::max() - 1));
+
+    // Budget: a burst of four, then one every 15 s.
+    Budget budget;
+    for (int i = 0; i < 4; ++i) { assert(budget.available(0)); budget.spend(0); }
+    assert(!budget.available(0) && !budget.available(14999999));
+    assert(budget.available(15000000));
+    budget.spend(15000000);
+    assert(!budget.available(29999999) && budget.available(30000000));
+    // Long quiet periods refill only up to the burst.
+    for (int i = 0; i < 4; ++i) { assert(budget.available(3600000000)); budget.spend(3600000000); }
+    assert(!budget.available(3600000000));
+
     assert(retry_after("Sat, 10 Oct 2026 12:03:00 GMT", 1791633600) == 180000000);
     assert(retry_after("Sat, 31 Feb 2026 12:00:00 GMT", 1) == 0);
     assert(retry_after("Sun, 29 Feb 2026 12:00:00 GMT", 1) == 0);
@@ -145,10 +150,4 @@ int main()
     assert(retry_after("180") == 180000000);
     assert(retry_after("0") == 0 && retry_after("invalid") == 0);
     assert(retry_after("9999999999999999999999999999999") == 0);
-    retries.succeeded(0, false);
-    retries.failed(0); assert(retries.due(60000000));
-    retries.failed(1000000, std::numeric_limits<int64_t>::max());
-    assert(!retries.due(std::numeric_limits<int64_t>::max() - 1));
-    assert(!expired(100, 100 + kTrackLifetimeUs - 1));
-    assert(expired(100, 100 + kTrackLifetimeUs));
 }

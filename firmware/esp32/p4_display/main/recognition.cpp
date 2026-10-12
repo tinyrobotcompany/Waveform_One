@@ -2,10 +2,9 @@
 #include "recognition_metadata.h"
 #include "recognition_http.h"
 #include "recognition_policy.h"
-#include "audio_capture.h"
-#include "capture_completion.h"
-#include "capture_quality.h"
+#include "album_resolver.h"
 #include "fingerprint.h"
+#include "listening.h"
 #include "usb_controller.h"
 
 #include <algorithm>
@@ -41,9 +40,6 @@ using recognition_policy::Session;
 std::mutex session_mutex;
 recognition_policy::Sessions sessions;
 RecognitionCallback show = nullptr;
-std::atomic<int64_t> last_activity_us{0};
-
-capture_completion::Mailbox clips(heap_caps_free);
 
 Session session()
 {
@@ -56,11 +52,6 @@ void publish(uint64_t expected_epoch, RecognitionStatus status,
 {
     std::lock_guard<std::mutex> lock(session_mutex);
     if (expected_epoch == sessions.snapshot().epoch && show != nullptr) show(status, track, artwork);
-}
-
-void captured(AudioCaptureStatus status, uint8_t *pcm, size_t, uint64_t capture_id)
-{
-    clips.complete(capture_id, status, pcm);
 }
 
 using recognition_http::Response;
@@ -147,159 +138,196 @@ Image download_artwork(const char *url)
     return image;
 }
 
+// Picks the release the listener expects; keeps the service's on failure.
+void resolve_album(RecognitionTrack &track, album_resolver::Context &context)
+{
+    const int64_t started = esp_timer_get_time();
+    Response response;
+    album_resolver::Choice choice;
+    bool chosen = false;
+    if (fetch(album_resolver::search_url(track).c_str(), nullptr, 256 * 1024, response)) {
+        Json result(cJSON_ParseWithLengthOpts(response.bytes.get(), response.size + 1, nullptr, true));
+        chosen = result && album_resolver::choose(result.get(), track, context, started, choice);
+    }
+    ESP_LOGI(kTag, "Album result=%s service_album=\"%s\" chosen_album=\"%s\" length_s=%.0f duration_ms=%lld",
+        chosen ? "chosen" : "kept", track.album, chosen ? choice.album : track.album, choice.duration_s,
+        static_cast<long long>((esp_timer_get_time() - started) / 1000));
+    if (!chosen) return;
+    std::memcpy(track.album, choice.album, sizeof(track.album));
+    if (choice.artwork_url[0] != '\0') std::memcpy(track.artwork_url, choice.artwork_url, sizeof(track.artwork_url));
+    track.duration_s = choice.duration_s;
+    context = {choice.collection_id, started};
+}
+
+bool same_song(const RecognitionTrack &a, const RecognitionTrack &b)
+{
+    return a.title[0] != '\0' && std::strcmp(a.title, b.title) == 0 && std::strcmp(a.artist, b.artist) == 0;
+}
+
+int64_t ms(uint32_t hops) { return int64_t(hops) * 1000 / listening::kHopsPerSecond; }
+
 void recognition_task(void *)
 {
+    void *memory = heap_caps_aligned_alloc(16, sizeof(fingerprint::Analyzer), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    ESP_ERROR_CHECK(memory != nullptr ? ESP_OK : ESP_ERR_NO_MEM);
+    Heap<fingerprint::Analyzer> analyzer(new (memory) fingerprint::Analyzer);
+    const double fft_error = fingerprint::self_test();
+    ESP_LOGI(kTag, "Fingerprint FFT self-test relative_error=%.2e", fft_error);
+    ESP_ERROR_CHECK(fft_error < 1e-4 ? ESP_OK : ESP_ERR_INVALID_STATE);
+
+    listening::Detector detector;
+    recognition_policy::Planner planner;
+    recognition_policy::Retries retries;
+    recognition_policy::Budget budget;
+    album_resolver::Context album_context;
     RecognitionTrack track{};
     Image image;
-    uint64_t track_epoch = 0;
-    int64_t matched_at = 0;
-    recognition_policy::Retries retries;
-    RecognitionStatus last_status = RecognitionStatus::Waiting;
-    while (true) {
-        const Session start = session();
-        const int64_t now = esp_timer_get_time();
-        if (track_epoch != start.epoch || recognition_policy::expired(matched_at, now, recognition_last_activity_us())) {
-            if (track_epoch != start.epoch) retries.activity_changed(now);
-            track = {}; image = {}; track_epoch = start.epoch;
-        }
-        const bool has_track = track.title[0] != '\0';
+    RecognitionStatus status = RecognitionStatus::Waiting;
+    uint64_t epoch = 0, position = 0;
+    uint32_t segment = UINT32_MAX, sound_hop = 0;
+    int64_t level_logged = 0, analysis_us = 0;
+    uint32_t analysed = 0;
+    unsigned lookups = 0;
+    static int16_t samples[fingerprint::kHopSamples * 32];
+
+    const auto show_now = [&](RecognitionStatus next) {
+        status = next;
         auto picture = image.view();
-        if (!start.ready || std::time(nullptr) < 1704067200) {
-            publish(start.epoch, RecognitionStatus::Waiting, has_track ? &track : nullptr,
-                image.pixels ? &picture : nullptr);
-            vTaskDelay(pdMS_TO_TICKS(1000)); continue;
+        publish(epoch, status, track.title[0] != '\0' ? &track : nullptr, image.pixels ? &picture : nullptr);
+    };
+    const auto clear = [&](const char *reason) {
+        if (track.title[0] != '\0') ESP_LOGI(kTag, "Display cleared reason=%s", reason);
+        track = {}; image = {};
+    };
+
+    while (true) {
+        const Session current = session();
+        if (current.epoch != epoch) {
+            // Network or controller changed: drop anything shown or pending.
+            epoch = current.epoch;
+            planner.stopped(); clear("session_changed");
+            // Music that is still playing is identified afresh from now on.
+            if (detector.sound()) planner.sound_started(analyzer->hops());
+            show_now(RecognitionStatus::Waiting);
         }
-        if (!retries.due(now)) {
-            publish(start.epoch, last_status,
-                has_track ? &track : nullptr, image.pixels ? &picture : nullptr);
-            vTaskDelay(pdMS_TO_TICKS(1000)); continue;
+
+        // 1. Analyse every new hop of audio as it arrives.
+        const auto *audio = usb_controller_audio();
+        uint32_t hops = 0;
+        if (audio != nullptr) {
+            auto read = audio->read(position, samples, std::size(samples));
+            if (read.segment != segment || read.skipped) {
+                ESP_LOGI(kTag, "Audio %s; analysis restarted", segment == UINT32_MAX ? "started"
+                    : read.skipped ? "fell behind" : "interrupted");
+                segment = read.segment;
+                analyzer->reset(); detector.discontinuity();
+                if (planner.stopped()) { clear("audio_interrupted"); show_now(RecognitionStatus::Waiting); }
+            }
+            const int64_t started = esp_timer_get_time();
+            hops = read.count / fingerprint::kHopSamples;
+            for (uint32_t i = 0; i < hops; ++i) {
+                const int16_t *hop = samples + i * fingerprint::kHopSamples;
+                analyzer->push(hop);
+                uint32_t start = 0;
+                const auto event = detector.push(hop, fingerprint::kHopSamples, analyzer->hops() - 1, start);
+                if (event == listening::Event::SoundStarted) {
+                    sound_hop = start;
+                    planner.sound_started(start);
+                    ESP_LOGI(kTag, "Sound started level=%.1fdB background=%.1fdB",
+                        detector.level_db(), detector.background_db());
+                    if (current.ready) show_now(RecognitionStatus::Capturing);
+                } else if (event == listening::Event::SilenceStarted) {
+                    ESP_LOGI(kTag, "Silence level=%.1fdB background=%.1fdB",
+                        detector.level_db(), detector.background_db());
+                    planner.stopped(); clear("silence");
+                    show_now(RecognitionStatus::Waiting);
+                }
+            }
+            position = read.position + uint64_t(hops) * fingerprint::kHopSamples;
+            analysis_us += esp_timer_get_time() - started; analysed += hops;
         }
-        retries.begin(now);
-        const uint64_t capture_id = clips.begin();
-        const int64_t capture_deadline = esp_timer_get_time()
-            + recognition_policy::kCaptureCompletionTimeoutUs;
-        const auto queued = usb_controller_capture(captured, capture_id);
-        if (!retries.capture_requested(queued, esp_timer_get_time())) {
-            clips.cancel(capture_id);
-            last_status = RecognitionStatus::Unavailable;
-            publish(start.epoch, last_status, has_track ? &track : nullptr,
-                image.pixels ? &picture : nullptr);
-            vTaskDelay(pdMS_TO_TICKS(1000)); continue;
+        const int64_t now = esp_timer_get_time();
+        if (now - level_logged >= 10000000) {
+            ESP_LOGI(kTag, "Listening sound=%d level=%.1fdB background=%.1fdB analysis_cpu=%.1f%%",
+                detector.sound(), detector.level_db(), detector.background_db(),
+                analysed ? 100.0 * analysis_us / (ms(analysed) * 1000) : 0.0);
+            level_logged = now; analysis_us = 0; analysed = 0;
         }
-        ESP_LOGI(kTag, "Capture queued id=%llu epoch=%llu",
-            static_cast<unsigned long long>(capture_id), static_cast<unsigned long long>(start.epoch));
-        publish(start.epoch, RecognitionStatus::Capturing, has_track ? &track : nullptr,
-            image.pixels ? &picture : nullptr);
-        capture_completion::Clip clip{};
-        const auto completion = capture_completion::wait(clips, capture_id, start.epoch,
-            capture_deadline, clip, esp_timer_get_time, [] { return session().epoch; },
-            [] { vTaskDelay(pdMS_TO_TICKS(100)); });
-        if (completion == capture_completion::WaitResult::Cancelled) {
-            ESP_LOGI(kTag, "Capture discarded id=%llu reason=session_changed elapsed_ms=%lld",
-                static_cast<unsigned long long>(capture_id),
-                static_cast<long long>((esp_timer_get_time() - (capture_deadline - recognition_policy::kCaptureCompletionTimeoutUs)) / 1000));
-            continue;
-        }
-        if (completion == capture_completion::WaitResult::TimedOut) {
-            ESP_LOGW(kTag, "Audio capture completion timed out");
-            retries.failed(esp_timer_get_time());
-            last_status = RecognitionStatus::Unavailable;
-            publish(start.epoch, last_status, has_track ? &track : nullptr,
-                image.pixels ? &picture : nullptr);
-            continue;
-        }
-        Heap<uint8_t> pcm(clip.pcm);
-        if (session().epoch != start.epoch) {
-            ESP_LOGI(kTag, "Capture discarded id=%llu reason=session_changed_after_completion",
-                static_cast<unsigned long long>(capture_id));
-            continue;
-        }
-        Lookup outcome = Lookup::Failed;
-        int64_t service_delay = 0;
-        RecognitionTrack next{};
-        if (clip.status == AudioCaptureStatus::Complete) {
-            const auto quality = capture_quality::inspect(pcm.get(), audio_capture::kBytes);
-            ESP_LOGI(kTag, "Capture quality id=%llu rms=%.2f peak=%u dc=%.2f clipped=%u samples=%u",
-                static_cast<unsigned long long>(capture_id), quality.rms, quality.peak, quality.dc,
-                static_cast<unsigned>(quality.clipped), static_cast<unsigned>(quality.samples));
-            const int64_t processing_started = esp_timer_get_time();
-            void *memory = heap_caps_malloc(sizeof(fingerprint::Workspace), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-            Heap<fingerprint::Workspace> workspace(memory != nullptr
-                ? new (memory) fingerprint::Workspace : nullptr);
+
+        // 2. Look up the audio the planner asks for, within the service's limits.
+        recognition_policy::Window window;
+        if (current.ready && std::time(nullptr) >= 1704067200 && retries.due(now)
+            && budget.available(now) && planner.due(analyzer->hops(), window)) {
+            planner.attempted(window.last);
+            const unsigned id = ++lookups;
             fingerprint::Signature signature;
-            fingerprint::Profile profile;
-            if (workspace && fingerprint::generate(pcm.get(), audio_capture::kBytes, *workspace, signature,
-                    [] { vTaskDelay(pdMS_TO_TICKS(1)); }, &profile, esp_timer_get_time)) {
-                pcm.reset(); workspace.reset();
-                ESP_LOGI(kTag, "Fingerprint samples=%u peaks=%u duration_ms=%lld",
-                    signature.samples, static_cast<unsigned>(signature.peaks()),
-                    static_cast<long long>((esp_timer_get_time() - processing_started) / 1000));
-                ESP_LOGI(kTag, "Fingerprint profile id=%llu setup_us=%lld fft_us=%lld spread_us=%lld peaks_us=%lld yield_us=%lld",
-                    static_cast<unsigned long long>(capture_id),
-                    static_cast<long long>(profile.setup_us), static_cast<long long>(profile.fft_us),
-                    static_cast<long long>(profile.spread_us), static_cast<long long>(profile.peaks_us),
-                    static_cast<long long>(profile.yield_us));
-                if (session().epoch != start.epoch) {
-                    ESP_LOGI(kTag, "Fingerprint discarded id=%llu reason=session_changed",
-                        static_cast<unsigned long long>(capture_id));
-                    continue;
-                }
-                if (signature.peaks() < 5) outcome = Lookup::NoMatch;
-                else {
-                    publish(start.epoch, RecognitionStatus::Identifying, has_track ? &track : nullptr,
-                        image.pixels ? &picture : nullptr);
-                    const int64_t lookup_started = esp_timer_get_time();
-                    outcome = lookup(signature, next, service_delay);
-                    ESP_LOGI(kTag, "Recognition result=%u duration_ms=%lld",
-                        static_cast<unsigned>(outcome),
-                        static_cast<long long>((esp_timer_get_time() - lookup_started) / 1000));
-                }
+            const bool signed_ok = analyzer->signature(window.first, window.last, signature);
+            ESP_LOGI(kTag, "Lookup id=%u audio_ms=%lld since_sound_ms=%lld peaks=%u%s",
+                id, static_cast<long long>(ms(window.last - window.first)),
+                static_cast<long long>(ms(window.last - sound_hop)),
+                static_cast<unsigned>(signature.peaks()), signed_ok ? "" : " signature_unavailable");
+            Lookup outcome = Lookup::NoMatch;
+            int64_t service_delay = 0;
+            RecognitionTrack next{};
+            if (signed_ok && signature.peaks() >= 5) {
+                budget.spend(now);
+                if (track.title[0] == '\0') show_now(RecognitionStatus::Identifying);
+                const int64_t lookup_started = esp_timer_get_time();
+                outcome = lookup(signature, next, service_delay);
+                ESP_LOGI(kTag, "Lookup id=%u result=%s offset_s=%.1f duration_ms=%lld", id,
+                    outcome == Lookup::Matched ? "matched" : outcome == Lookup::NoMatch ? "no_match" : "failed",
+                    next.offset_s, static_cast<long long>((esp_timer_get_time() - lookup_started) / 1000));
             }
-        }
-        if (session().epoch != start.epoch) {
-            ESP_LOGI(kTag, "Lookup discarded id=%llu reason=session_changed",
-                static_cast<unsigned long long>(capture_id));
+            if (session().epoch != epoch) continue;
+            detector.set_unrecognised(outcome == Lookup::NoMatch && planner.unidentified());
+            if (outcome == Lookup::Matched) {
+                retries.succeeded();
+                if (same_song(track, next)) {
+                    // Still the same song: keep its album, artwork and length.
+                    track.offset_s = next.offset_s;
+                } else {
+                    clear("new_song");
+                    // Title first; the album and cover follow a moment later.
+                    track = next;
+                    track.album[0] = '\0'; track.artwork_url[0] = '\0';
+                    track.matched_at_us = esp_timer_get_time();
+                    show_now(RecognitionStatus::Matched);
+                    resolve_album(next, album_context);
+                    if (session().epoch != epoch) continue;
+                    std::memcpy(track.album, next.album, sizeof(track.album));
+                    std::memcpy(track.artwork_url, next.artwork_url, sizeof(track.artwork_url));
+                    track.duration_s = next.duration_s;
+                    show_now(RecognitionStatus::Matched);
+                    if (track.artwork_url[0] != '\0') {
+                        const int64_t artwork_started = esp_timer_get_time();
+                        image = download_artwork(track.artwork_url);
+                        ESP_LOGI(kTag, "Artwork result=%s duration_ms=%lld", image.pixels ? "ready" : "unavailable",
+                            static_cast<long long>((esp_timer_get_time() - artwork_started) / 1000));
+                        if (session().epoch != epoch) continue;
+                        show_now(RecognitionStatus::Matched);
+                    }
+                }
+                planner.matched(window, analyzer->hops(), track.offset_s, track.duration_s);
+                ESP_LOGI(kTag, "Recognition matched id=%u since_sound_ms=%lld next_song_in_ms=%lld",
+                    id, static_cast<long long>(ms(window.last - sound_hop)),
+                    planner.expected_end() ? static_cast<long long>(ms(planner.expected_end() - analyzer->hops())) : -1LL);
+            } else if (outcome == Lookup::NoMatch) {
+                retries.succeeded();
+                if (planner.missed()) clear("song_no_longer_heard");
+                // Keep "finding your song" up while the first tries continue.
+                show_now(track.title[0] != '\0' ? RecognitionStatus::Matched
+                    : planner.active() && !planner.unidentified() ? RecognitionStatus::Capturing
+                    : RecognitionStatus::NoMatch);
+            } else {
+                retries.failed(esp_timer_get_time(), service_delay);
+                ESP_LOGI(kTag, "Recognition unavailable; retry_ms=%lld",
+                    static_cast<long long>(retries.remaining_us(esp_timer_get_time()) / 1000));
+                show_now(RecognitionStatus::Unavailable);
+            }
             continue;
         }
-        if (outcome == Lookup::Matched) {
-            next.matched_at_us = esp_timer_get_time();
-            const bool same = std::strcmp(track.title, next.title) == 0
-                && std::strcmp(track.artist, next.artist) == 0
-                && std::strcmp(track.artwork_url, next.artwork_url) == 0;
-            if (!same) image = {};
-            track = next; track_epoch = start.epoch; matched_at = next.matched_at_us;
-            last_status = RecognitionStatus::Matched;
-            picture = image.view();
-            // Show metadata immediately; an unavailable cover must not delay it.
-            publish(start.epoch, RecognitionStatus::Matched, &track, image.pixels ? &picture : nullptr);
-            if (!image.pixels && track.artwork_url[0] != '\0') {
-                const int64_t artwork_started = esp_timer_get_time();
-                image = download_artwork(track.artwork_url);
-                ESP_LOGI(kTag, "Artwork result=%s duration_ms=%lld", image.pixels ? "ready" : "unavailable",
-                    static_cast<long long>((esp_timer_get_time() - artwork_started) / 1000));
-                if (session().epoch != start.epoch) continue;
-                picture = image.view();
-                publish(start.epoch, RecognitionStatus::Matched, &track, image.pixels ? &picture : nullptr);
-            }
-            retries.succeeded(esp_timer_get_time(), true);
-            ESP_LOGI(kTag, "Recognition matched id=%llu next_lookup_ms=%lld",
-                static_cast<unsigned long long>(capture_id),
-                static_cast<long long>(retries.remaining_us(esp_timer_get_time()) / 1000));
-        } else {
-            if (recognition_policy::expired(matched_at, esp_timer_get_time(), recognition_last_activity_us())) { track = {}; image = {}; }
-            picture = image.view();
-            if (outcome == Lookup::Failed) {
-                retries.failed(esp_timer_get_time(), service_delay);
-            } else { retries.succeeded(esp_timer_get_time(), false); }
-            last_status = outcome == Lookup::Failed ? RecognitionStatus::Unavailable : RecognitionStatus::NoMatch;
-            publish(start.epoch, last_status,
-                track.title[0] != '\0' ? &track : nullptr, image.pixels ? &picture : nullptr);
-            ESP_LOGI(kTag, "%s id=%llu retry_ms=%lld service_delay_ms=%lld",
-                outcome == Lookup::Failed ? "Recognition unavailable; retry scheduled" : "Recognition: no match",
-                static_cast<unsigned long long>(capture_id),
-                static_cast<long long>(retries.remaining_us(esp_timer_get_time()) / 1000),
-                static_cast<long long>(service_delay / 1000));
-        }
+        // Caught up: wait for more audio. Otherwise yield and keep going.
+        vTaskDelay(pdMS_TO_TICKS(hops == std::size(samples) / fingerprint::kHopSamples ? 1 : 20));
     }
 }
 }
@@ -325,16 +353,5 @@ void recognition_set_controller(bool available)
 {
     std::lock_guard<std::mutex> lock(session_mutex);
     if (!sessions.set_controller(available)) return;
-    if (show != nullptr) show(RecognitionStatus::Waiting, nullptr, nullptr);
-}
-
-int64_t recognition_last_activity_us() { return last_activity_us.load(); }
-
-void recognition_set_activity(audio_activity::State state)
-{
-    std::lock_guard<std::mutex> lock(session_mutex);
-    if (state == audio_activity::State::Playing) last_activity_us.store(esp_timer_get_time());
-    if (!sessions.set_activity(state)) return;
-    // Epoch change invalidates a capture/lookup spanning stopped playback.
     if (show != nullptr) show(RecognitionStatus::Waiting, nullptr, nullptr);
 }

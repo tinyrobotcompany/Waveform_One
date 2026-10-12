@@ -47,6 +47,10 @@ bool update_handle(std::string_view line){
             reply("WFU ROLLING_BACK");vTaskDelay(pdMS_TO_TICKS(100));esp_ota_mark_app_invalid_rollback_and_reboot();
         }else reply("WFU ERR NO_ROLLBACK");
     }else if(line.substr(0,10)=="WFU BEGIN " && capture_active())reply("WFU ERR BUSY");
-    else reply(transfer.handle(line));
+    else{
+        // An update outranks recognition audio; the host restarts its stream.
+        if(line.substr(0,10)=="WFU BEGIN ")capture_stop_stream();
+        reply(transfer.handle(line));
+    }
     return true;
 }

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include "audio_activity.h"
+#include "audio_stream.h"
 
 enum class LedControllerState {
     Waiting,
@@ -29,13 +30,7 @@ using AudioActivityCallback = void (*)(audio_activity::State state);
 void usb_controller_start(LedControllerStatusCallback callback, AudioActivityCallback activity = nullptr);
 StyleRequestResult usb_controller_set_style(LedStyle style);
 
-enum class AudioCaptureStatus {
-    Complete, Busy, AudioLost, Invalid, TimedOut, Disconnected, NoMemory, TransportError,
-};
-enum class AudioCaptureRequestResult { Queued, Busy, Disconnected, Unavailable, QueueFull };
-// Called on the controller task. Do not block or perform HTTP here. On success
-// ownership of the 256,000-byte PCM buffer passes to the callback; release it
-// with heap_caps_free. Failure always supplies nullptr and zero bytes.
-// capture_id is returned unchanged, including on failure and disconnect.
-using AudioCaptureCallback = void (*)(AudioCaptureStatus status, uint8_t *pcm, size_t bytes, uint64_t capture_id);
-AudioCaptureRequestResult usb_controller_capture(AudioCaptureCallback callback, uint64_t capture_id = 0);
+// Continuous recognition audio from the S3: about 16 seconds of history.
+// Owned by the controller; readable from any task once started.
+using RecognitionAudio = audio_stream::Ring<audio_stream::kSampleRate * 16>;
+const RecognitionAudio *usb_controller_audio();

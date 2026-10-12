@@ -9,9 +9,9 @@ idf_component_register(
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif
                   esp_http_server esp_timer nvs_flash esp_driver_sdmmc heap
-                  esp_http_client mbedtls esp_new_jpeg)
+                  esp_http_client mbedtls esp_new_jpeg esp-dsp)
 
-# Optimise the CPU-bound fingerprint only; retain IEEE floating-point semantics.
+# Optimise the continuously running fingerprint only; retain IEEE floating-point semantics.
 set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-O3")
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CJSON_NESTING_LIMIT=32)
