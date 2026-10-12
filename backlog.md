@@ -2,7 +2,7 @@
 
 ## Song recognition within five seconds
 
-Status: Five-second recognition remains unaccepted. At the user's request, the complete audio/capture/recognition implementation is restored to pre-filter commit `f4e6752`; classifier-related optimizations and timing experiments are removed. Keep UI, phone and Unicode improvements, plus the independent Wi-Fi RX ownership safety fix. Validate this baseline before attempting further latency or music-versus-speech changes. See [complete rollback record](docs/commissioning/2026-10-11-complete-filter-rollback.md).
+Status: Five-second recognition remains unaccepted. A silent offline benchmark now covers 75 fingerprint cases and 713 classification windows; short-clip catalogue accuracy and embedded timings are still unverified. See [offline benchmark](docs/commissioning/2026-10-12-silent-music-benchmark.md). At the user's request, the complete audio/capture/recognition implementation is restored to pre-filter commit `f4e6752`; classifier-related optimizations and timing experiments are removed. Keep UI, phone and Unicode improvements, plus the independent Wi-Fi RX ownership safety fix. Validate this baseline before attempting further latency or music-versus-speech changes. See [complete rollback record](docs/commissioning/2026-10-11-complete-filter-rollback.md).
 
 - Measure from audible music starting to the correct song, artist and album appearing on the P4 and paired phone. Target: **five seconds or less**, including music classification, capture, fingerprinting and lookup.
 - Keep a bounded rolling raw-audio buffer so music classification and recognition capture overlap. Start external lookups only after music is confirmed.
