@@ -68,7 +68,7 @@ int main()
     receive(playing); poll_activity(); assert(music_active);
     const unsigned id = begin();
     const std::string prefix = "WF1 " + std::to_string(id);
-    receive(prefix + " AUDIO 16000 128000\n");
+    receive(prefix + " AUDIO 16000 64000\n");
     // Style requests and acknowledgements share the same physical USB owner.
     assert(usb_controller_set_style(LedStyle::Waterfall) == StyleRequestResult::Queued);
     drain();
@@ -76,9 +76,9 @@ int main()
     receive(quiet); receive(quiet); receive(quiet); poll_activity();
     assert(!music_active && capture_reserved.load());
     receive(playing); poll_activity(); assert(music_active);
-    for (unsigned i = 0; i < 1000; ++i)
+    for (unsigned i = 0; i < audio_capture::kPackets; ++i)
         receive(prefix + " PCM " + std::to_string(i) + " " + std::string(512, '0') + " e6a1d1c5\n");
-    receive(prefix + " END 1000\n");
+    receive(prefix + " END 500\n");
     poll_capture();
     assert(completions == 1 && last_status == AudioCaptureStatus::Complete);
     assert(completed_bytes == audio_capture::kBytes && completed_pcm != nullptr);
@@ -89,8 +89,8 @@ int main()
     poll_capture(); failed(AudioCaptureStatus::Busy);
     next = begin(); receive("WF1 " + std::to_string(next) + " ERR AUDIO_LOST\n");
     poll_capture(); failed(AudioCaptureStatus::AudioLost);
-    next = begin(); receive("WF1 " + std::to_string(next) + " AUDIO 16000 128000\n");
-    receive("WF1 " + std::to_string(next) + " END 1000\n");
+    next = begin(); receive("WF1 " + std::to_string(next) + " AUDIO 16000 64000\n");
+    receive("WF1 " + std::to_string(next) + " END 500\n");
     poll_capture(); failed(AudioCaptureStatus::Invalid);
     begin(); test_time_us += audio_capture::kTimeoutMs * 1000LL - 1;
     const unsigned previous = completions; poll_capture(); assert(completions == previous);

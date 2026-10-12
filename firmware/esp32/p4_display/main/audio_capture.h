@@ -9,7 +9,7 @@
 namespace audio_capture {
 
 inline constexpr size_t kPacketBytes = 256;
-inline constexpr size_t kPackets = 1000;
+inline constexpr size_t kPackets = 500;
 inline constexpr size_t kBytes = kPacketBytes * kPackets;
 inline constexpr unsigned kTimeoutMs = 15000;
 
@@ -18,11 +18,11 @@ enum class Result { Idle, Receiving, Complete, Busy, AudioLost, Invalid };
 inline std::string capture_request(unsigned id)
 {
     if (id == 0 || id > 65535) return {};
-    return "WF1 " + std::to_string(id) + " CAPTURE\n";
+    return "WF1 " + std::to_string(id) + " CAPTURE 4\n";
 }
 
 // No allocation in the USB receive callback. The caller owns a fixed PCM buffer;
-// a clip is usable only after the matching END and all 1,000 checked packets.
+// a clip is usable only after the matching END and all 500 checked packets.
 class Decoder {
 public:
     bool begin(unsigned id, uint8_t *buffer, size_t capacity)
@@ -85,7 +85,7 @@ private:
         if (count < 2 || fields[0] != "WF1" || !number(fields[1], id) || id != id_) return;
         if (corrupt || !text.empty()) { result_ = Result::Invalid; return; }
         if (count == 5 && fields[2] == "AUDIO" && fields[3] == "16000"
-            && fields[4] == "128000" && !started_) {
+            && fields[4] == "64000" && !started_) {
             started_ = true;
             return;
         }
@@ -116,7 +116,7 @@ private:
             return;
         }
         result_ = started_ && count == 4 && fields[2] == "END"
-            && fields[3] == "1000" && bytes_ == kBytes ? Result::Complete : Result::Invalid;
+            && fields[3] == "500" && bytes_ == kBytes ? Result::Complete : Result::Invalid;
     }
 
     unsigned id_ = 0;

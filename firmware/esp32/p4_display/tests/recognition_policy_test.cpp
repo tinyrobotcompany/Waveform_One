@@ -86,8 +86,9 @@ int main()
 
     assert(kIntervalUs == 1000000);
     Retries retries;
-    assert(retries.due(0));
+    assert(retries.due(0) && retries.remaining_us(0) == 0);
     retries.begin(0);
+    assert(retries.remaining_us(0) == kIntervalUs && retries.remaining_us(kIntervalUs) == 0);
     assert(!retries.due(kIntervalUs - 1) && retries.due(kIntervalUs));
     retries.failed(0);
     assert(!retries.due(60000000 - 1) && retries.due(60000000));
@@ -98,9 +99,9 @@ int main()
     retries.failed(0); assert(!retries.due(240000000 - 1));
     retries.failed(0); assert(!retries.due(300000000 - 1) && retries.due(300000000));
     retries.failed(0); assert(retries.due(300000000));
-    retries.succeeded(0, false); assert(!retries.due(14999999) && retries.due(15000000));
+    retries.succeeded(0, false); assert(!retries.due(4999999) && retries.due(5000000));
     retries.activity_changed(100); assert(retries.due(100));
-    retries.succeeded(0, true); assert(!retries.due(29999999) && retries.due(30000000));
+    retries.succeeded(0, true); assert(!retries.due(4999999) && retries.due(5000000));
     retries.activity_changed(100); assert(retries.due(100));
     retries.failed(0, 180000000); retries.activity_changed(100);
     assert(!retries.due(179999999) && retries.due(180000000));

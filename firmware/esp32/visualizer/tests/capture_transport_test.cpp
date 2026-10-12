@@ -73,4 +73,25 @@ int main() {
   for(int i=0;i<188;++i) {capture_audio(audio.data(),2048);capture_send();}
   assert(output.size()==1001);
   assert(output.back()=="\nWF1 10 END 1000\n");
+  // Explicit four-second captures retain framing, checksums and abort recovery.
+  output.clear();
+  assert(!capture_start(11, 3));
+  control_handle_line("WF1 11 CAPTURE 4");
+  assert(output.back()=="\nWF1 11 AUDIO 16000 64000\n");
+  for(int i=0;i<94;++i) {capture_audio(audio.data(),2048);capture_send();}
+  assert(output.size()==502); // AUDIO + 500 PCM packets + END.
+  assert(output.at(1).find("\nWF1 11 PCM 0 ")==0);
+  assert(output.back()=="\nWF1 11 END 500\n");
+  assert(!capture_active());
+  output.clear();
+  assert(capture_start(12, 4));
+  capture_audio(audio.data(),14000);
+  capture_send();
+  assert(output.back()=="\nWF1 12 ERR AUDIO_LOST\n");
+  output.clear();
+  assert(capture_start(12, 4));
+  for(int i=0;i<94;++i) {capture_audio(audio.data(),2048);capture_send();}
+  assert(output.size()==501 && output.front().find("\nWF1 12 PCM 0 ")==0);
+  assert(output.back()=="\nWF1 12 END 500\n");
+  assert(!capture_active());
 }

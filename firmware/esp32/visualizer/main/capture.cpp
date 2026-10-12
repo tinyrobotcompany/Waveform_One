@@ -16,8 +16,7 @@ struct Packet {
 };
 QueueHandle_t packets = nullptr;
 std::atomic<unsigned> active{0}, failed{0};
-constexpr unsigned packet_count =
-    1000; // eight seconds of mono 16 kHz signed PCM
+std::atomic<unsigned> packet_count{1000}; // 125 packets per second at 16 kHz
 // Serialize the producer with start/abort so no old frame can refill a reset
 // queue. USB writes never hold this mutex.
 std::mutex producer_mutex;
@@ -29,9 +28,9 @@ void capture_init() {
   packets = xQueueCreate(32, sizeof(Packet));
   ESP_ERROR_CHECK(packets ? ESP_OK : ESP_ERR_NO_MEM);
 }
-bool capture_start(unsigned id) {
+bool capture_start(unsigned id, unsigned seconds) {
   std::lock_guard<std::mutex> lock(producer_mutex);
-  if (!id || active.load())
+  if (!id || active.load() || (seconds != 4 && seconds != 8))
     return false;
   xQueueReset(packets);
   samples = capture::Samples{};
@@ -39,6 +38,7 @@ bool capture_start(unsigned id) {
   building.id = id;
   position = 0;
   failed.store(0);
+  packet_count.store(seconds * 125);
   active.store(id);
   return true;
 }
@@ -58,12 +58,13 @@ void capture_audio(const int32_t *stereo, size_t frames) {
   std::lock_guard<std::mutex> lock(producer_mutex);
   const unsigned id = active.load();
   if (!id || failed.load() == id) return;
+  const unsigned limit = packet_count.load();
   auto& packet = building;
-  if (packet.sequence >= packet_count)
+  if (packet.sequence >= limit)
     return;
   for (size_t i = 0; i < frames; i++) {
     samples.push(stereo[2 * i], [&](int16_t sample) {
-      if (packet.sequence >= packet_count)
+      if (packet.sequence >= limit)
         return;
       const uint16_t value = uint16_t(sample);
       packet.bytes[position++] = uint8_t(value);
@@ -81,6 +82,7 @@ void capture_send() {
   const unsigned id = active.load();
   if (!id)
     return;
+  const unsigned limit = packet_count.load();
   char line[600];
   if (failed.load() == id) {
     const int n = snprintf(line, sizeof(line), "\nWF1 %u ERR AUDIO_LOST\n", id);
@@ -107,8 +109,8 @@ void capture_send() {
       failed.store(id);
       return;
     }
-    if (packet.sequence + 1 == packet_count) {
-      n = snprintf(line, sizeof(line), "\nWF1 %u END %u\n", id, packet_count);
+    if (packet.sequence + 1 == limit) {
+      n = snprintf(line, sizeof(line), "\nWF1 %u END %u\n", id, limit);
       control::write_reply(line, n);
       capture_abort(id);
       return;

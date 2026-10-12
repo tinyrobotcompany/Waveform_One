@@ -86,3 +86,32 @@ Sources: the local manifest records Apple preview URLs and file hashes;
 and [ESC-50 metadata/audio](https://github.com/karolpiczak/ESC-50) provide the
 non-music references. Audio/model data and binaries remain under ignored `build/`,
 not in Git. No private-room audio is used or uploaded.
+
+## Optional, separate catalogue identification check
+
+`benchmark.py` remains entirely network-free. To check whether a signature really
+identifies its source song, invoke `catalogue_check.py` explicitly:
+
+```sh
+python3 tools/music_benchmark/catalogue_check.py \
+  --benchmark-dir "$BENCH_DIR" --seconds 4
+```
+
+This sends only known public-fixture fingerprints to the existing recognition
+service; it never plays audio, records a microphone or uploads WAV/PCM. Requests
+are paced at least sixty seconds apart, at most five per run, and stop on errors
+or any Retry-After. Do not restart a stopped run during a service cooldown.
+Review returned titles/artists/albums against the manifest before labelling a
+result correct. The clip-duration-plus-request budget is calculated, not a
+physical-device timing measurement. See the separate catalogue report.
+
+### Four-second hardware trial
+
+The native P4 now explicitly requests `CAPTURE 4`; the S3 continues to support
+legacy eight-second requests. This is separate from the reference music-only
+classifier, which remains disabled on both boards. Current firmware fingerprint
+outputs are checked against the four-second benchmark signatures. The benchmark
+itself pins its original eight-second source to colour commit `29f8bcd` so later
+firmware changes cannot silently change historical comparisons. See
+[the commissioning record](../../docs/commissioning/2026-10-12-four-second-recognition.md)
+for pre-flash checks and live-test limitations.

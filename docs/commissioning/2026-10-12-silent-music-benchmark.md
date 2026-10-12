@@ -1,5 +1,9 @@
 # Silent benchmark — 12 October 2026
 
+> This first stage was network-free and did not verify song identification. The separate
+> [catalogue check](2026-10-12-catalogue-check.md) now records five four-second song matches;
+> device timing remains unmeasured.
+
 Album-colour prototype committed and pushed as `29f8bcd` on
 `feature/p4-recognition-stability`. Work here is isolated in the stacked
 `feature/music-recognition-benchmark` worktree, based on that commit because main

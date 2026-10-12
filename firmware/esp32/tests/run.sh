@@ -73,6 +73,20 @@ printf '%s\n' 'PASS: ESP32-P4 bounded PCM capture, sequence and checksum validat
 "$build_dir/p4_usb_capture"
 printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disconnects and cleanup'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/capture_quality_test.cpp" -o "$build_dir/p4_capture_quality"
+"$build_dir/p4_capture_quality"
+printf '%s\n' 'PASS: PCM aggregate quality diagnostics, signed samples and bounds'
+
+"${CXX:-c++}" -O3 -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/fingerprint_gain_test.cpp" -o "$build_dir/p4_fingerprint_gain"
+"$build_dir/p4_fingerprint_gain"
+printf '%s\n' 'PASS: exact fingerprint gain across signed PCM, boundaries and workspace reuse'
+
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \

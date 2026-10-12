@@ -12,6 +12,7 @@
 namespace recognition_policy {
 inline constexpr int64_t kCaptureCompletionTimeoutUs = (audio_capture::kTimeoutMs + 2000) * 1000LL;
 inline constexpr int64_t kIntervalUs = 1000000;
+inline constexpr int64_t kNormalLookupPauseUs = 5000000;
 inline constexpr int64_t kTrackLifetimeUs = 90000000;
 struct Session { uint64_t epoch; bool ready; };
 
@@ -102,10 +103,13 @@ public:
         failed(now); return false;
     }
     bool due(int64_t now) const { return now >= next_; }
+    int64_t remaining_us(int64_t now) const { return due(now) ? 0 : next_ - now; }
     void begin(int64_t now) { next_ = now + kIntervalUs; }
     void activity_changed(int64_t now) { if (failures_ == 0) next_ = now; }
-    void succeeded(int64_t now, bool matched) {
-        failures_ = 0; next_ = now + (matched ? 30000000 : 15000000);
+    void succeeded(int64_t now, bool /*matched*/) {
+        // Matches and misses both need prompt follow-up for continuous songs.
+        // Actual failures and service cooldowns use the independent path below.
+        failures_ = 0; next_ = now + kNormalLookupPauseUs;
     }
     void failed(int64_t now, int64_t service_delay = 0)
     {

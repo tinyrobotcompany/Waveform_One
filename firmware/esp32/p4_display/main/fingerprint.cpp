@@ -57,9 +57,12 @@ uint32_t crc32(const uint8_t *bytes, size_t size)
 }
 }
 
-bool generate(const uint8_t *pcm, size_t bytes, Workspace &w, Signature &output, void (*yield)())
+bool generate(const uint8_t *pcm, size_t bytes, Workspace &w, Signature &output, void (*yield)(), Profile *profile, int64_t (*clock)())
 {
     output = {};
+    if (profile) *profile = {};
+    const auto stamp = [&] { return profile && clock ? clock() : int64_t(0); };
+    const int64_t setup_started = stamp();
     if (pcm == nullptr || bytes != audio_capture::kBytes) return false;
     std::memset(w.powers, 0, sizeof(w.powers));
     std::memset(w.spread, 0, sizeof(w.spread));
@@ -69,14 +72,22 @@ bool generate(const uint8_t *pcm, size_t bytes, Workspace &w, Signature &output,
         float(std::cos(-2 * kPi * i / 2048)), float(std::sin(-2 * kPi * i / 2048))};
     int peak_sample = 0;
     for (size_t i = 0; i < bytes / 2; ++i) peak_sample = std::max(peak_sample, std::abs(sample(pcm, i)));
-    if (peak_sample == 0) return true;
-    const double gain = std::max(1.0, std::min(32.0, 26000.0 / peak_sample));
+    if (peak_sample == 0) {
+        if (profile) profile->setup_us = stamp() - setup_started;
+        return true;
+    }
+    if (!w.normalisation.prepare(unsigned(peak_sample))) return false;
     unsigned position = 0, pass = 0;
+    if (profile) profile->setup_us = stamp() - setup_started;
     for (size_t offset = 0; offset < bytes / 2; offset += 128) {
-        for (unsigned i = 0; i < 128; ++i) w.samples[position + i] = float(int(sample(pcm, offset + i) * gain));
+        int64_t stage_started = stamp();
+        for (unsigned i = 0; i < 128; ++i) w.samples[position + i] = float(w.normalisation.apply(sample(pcm, offset + i)));
         position = (position + 128) % 2048;
         for (unsigned i = 0; i < 2048; ++i) w.fft[i] = {w.samples[(position + i) % 2048] * w.window[i], 0};
         fft(w);
+        int64_t stage_finished = stamp();
+        if (profile) profile->fft_us += stage_finished - stage_started;
+        stage_started = stage_finished;
         float *powers = w.powers[pass % 256];
         float *spread = w.spread[pass % 256];
         for (unsigned bin = 0; bin < 1025; ++bin) powers[bin] = std::max(1e-10f, std::norm(w.fft[bin]) / 131072.0f);
@@ -90,6 +101,9 @@ bool generate(const uint8_t *pcm, size_t bytes, Workspace &w, Signature &output,
             }
             spread[bin] = value;
         }
+        stage_finished = stamp();
+        if (profile) profile->spread_us += stage_finished - stage_started;
+        stage_started = stage_finished;
         ++pass;
         output.samples += 128;
         if (pass >= 46) {
@@ -121,7 +135,13 @@ bool generate(const uint8_t *pcm, size_t bytes, Workspace &w, Signature &output,
                 output.bands[band].push_back({pass - 46, uint16_t(magnitude), uint16_t(frequency)});
             }
         }
-        if (yield != nullptr && pass % 8 == 0) yield();
+        stage_finished = stamp();
+        if (profile) profile->peaks_us += stage_finished - stage_started;
+        if (yield != nullptr && pass % 8 == 0) {
+            stage_started = stamp();
+            yield();
+            if (profile) profile->yield_us += stamp() - stage_started;
+        }
         if (output.samples >= 49600 && output.peaks() >= 255) break;
     }
     return true;

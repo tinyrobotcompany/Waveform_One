@@ -84,12 +84,19 @@ class MusicDecision:
 
 
 def build_fingerprints(root, output):
-    main = root / 'firmware/esp32/p4_display/main'
+    # Freeze the eight-second reference so later firmware changes cannot rewrite
+    # the benchmark baseline or shrink its accepted input lengths.
+    baseline_commit = '29f8bcd35256b6f07f382117c8ca9d689243ca40'
+    main = output / 'generated' / 'baseline-source'
+    main.mkdir(parents=True, exist_ok=True)
+    for name in ('fingerprint.cpp', 'fingerprint.h', 'audio_capture.h'):
+        source = subprocess.check_output(['git', 'show', baseline_commit + ':firmware/esp32/p4_display/main/' + name], cwd=root)
+        (main / name).write_bytes(source)
     original = (main / 'fingerprint.cpp').read_text()
     guard = 'if (pcm == nullptr || bytes != audio_capture::kBytes) return false;'
     if original.count(guard) != 1:
         raise ValueError('Baseline input guard changed; review the experimental adapter')
-    experiment = original.replace(guard, 'if (pcm == nullptr || bytes < 64000 || bytes > audio_capture::kBytes || bytes % 256 != 0) return false;')
+    experiment = original.replace(guard, 'if (pcm == nullptr || bytes < 64000 || bytes > 256000 || bytes % 256 != 0) return false;')
     generated = output / 'generated'
     generated.mkdir(exist_ok=True)
     adapted = generated / 'fingerprint-short.cpp'
@@ -101,9 +108,9 @@ def build_fingerprints(root, output):
                    str(root / 'tools/music_benchmark/fingerprint_cli.cpp'), str(source), '-o', str(executable)]
         subprocess.run(command, check=True, capture_output=True)
         executables[name] = executable
-    return executables, {'baseline_source_sha256': digest(main / 'fingerprint.cpp'),
+    return executables, {'baseline_commit': baseline_commit, 'baseline_source_sha256': digest(main / 'fingerprint.cpp'),
                          'adapter_source_sha256': digest(adapted),
-                         'adapter_change': 'Input-length guard only, in generated source; firmware unchanged'}
+                         'adapter_change': 'Input-length guard only, in generated source; historical eight-second baseline'}
 
 
 def fingerprints(root, output, cases):
@@ -135,7 +142,7 @@ def fingerprints(root, output, cases):
                         baseline = json.loads(subprocess.check_output([str(executables['baseline']), str(clip)], text=True))
                         row['baseline_equal'] = baseline['uri'] == value['uri'] and baseline['samples'] == value['samples']
                         if not row['baseline_equal']:
-                            raise AssertionError('Eight-second adapter differs from production')
+                            raise AssertionError('Eight-second adapter differs from historical eight-second baseline')
                 rows.append(row)
         print('Fingerprint cases complete:', case['id'], flush=True)
     return {'provenance': provenance, 'rows': rows}

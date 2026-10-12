@@ -34,6 +34,15 @@ int main()
         assert(std::abs(int(peak.magnitude) - int(expected.magnitude)) <= 1);
         assert(std::abs(int(peak.frequency) - int(expected.frequency)) <= 1);
     }
+    // Profiling must leave the recognisable signature byte-for-byte unchanged.
+    const auto unprofiled = fingerprint::uri(signature);
+    static int64_t ticks = 0;
+    fingerprint::Profile profile;
+    assert(fingerprint::generate(pcm.data(), pcm.size(), *workspace, signature,
+        [] {}, &profile, [] { return ++ticks; }));
+    assert(fingerprint::uri(signature) == unprofiled);
+    assert(profile.setup_us > 0 && profile.fft_us > 0 && profile.spread_us > 0);
+    assert(profile.peaks_us > 0 && profile.yield_us > 0);
     signature = {};
     signature.samples = 49664;
     signature.bands[0] = {{1, 12000, 2600}, {300, 14000, 3000}};

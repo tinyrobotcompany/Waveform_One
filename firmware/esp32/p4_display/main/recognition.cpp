@@ -4,6 +4,7 @@
 #include "recognition_policy.h"
 #include "audio_capture.h"
 #include "capture_completion.h"
+#include "capture_quality.h"
 #include "fingerprint.h"
 #include "usb_controller.h"
 
@@ -185,13 +186,20 @@ void recognition_task(void *)
                 image.pixels ? &picture : nullptr);
             vTaskDelay(pdMS_TO_TICKS(1000)); continue;
         }
+        ESP_LOGI(kTag, "Capture queued id=%llu epoch=%llu",
+            static_cast<unsigned long long>(capture_id), static_cast<unsigned long long>(start.epoch));
         publish(start.epoch, RecognitionStatus::Capturing, has_track ? &track : nullptr,
             image.pixels ? &picture : nullptr);
         capture_completion::Clip clip{};
         const auto completion = capture_completion::wait(clips, capture_id, start.epoch,
             capture_deadline, clip, esp_timer_get_time, [] { return session().epoch; },
             [] { vTaskDelay(pdMS_TO_TICKS(100)); });
-        if (completion == capture_completion::WaitResult::Cancelled) continue;
+        if (completion == capture_completion::WaitResult::Cancelled) {
+            ESP_LOGI(kTag, "Capture discarded id=%llu reason=session_changed elapsed_ms=%lld",
+                static_cast<unsigned long long>(capture_id),
+                static_cast<long long>((esp_timer_get_time() - (capture_deadline - recognition_policy::kCaptureCompletionTimeoutUs)) / 1000));
+            continue;
+        }
         if (completion == capture_completion::WaitResult::TimedOut) {
             ESP_LOGW(kTag, "Audio capture completion timed out");
             retries.failed(esp_timer_get_time());
@@ -201,23 +209,41 @@ void recognition_task(void *)
             continue;
         }
         Heap<uint8_t> pcm(clip.pcm);
-        if (session().epoch != start.epoch) continue;
+        if (session().epoch != start.epoch) {
+            ESP_LOGI(kTag, "Capture discarded id=%llu reason=session_changed_after_completion",
+                static_cast<unsigned long long>(capture_id));
+            continue;
+        }
         Lookup outcome = Lookup::Failed;
         int64_t service_delay = 0;
         RecognitionTrack next{};
         if (clip.status == AudioCaptureStatus::Complete) {
+            const auto quality = capture_quality::inspect(pcm.get(), audio_capture::kBytes);
+            ESP_LOGI(kTag, "Capture quality id=%llu rms=%.2f peak=%u dc=%.2f clipped=%u samples=%u",
+                static_cast<unsigned long long>(capture_id), quality.rms, quality.peak, quality.dc,
+                static_cast<unsigned>(quality.clipped), static_cast<unsigned>(quality.samples));
             const int64_t processing_started = esp_timer_get_time();
             void *memory = heap_caps_malloc(sizeof(fingerprint::Workspace), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
             Heap<fingerprint::Workspace> workspace(memory != nullptr
                 ? new (memory) fingerprint::Workspace : nullptr);
             fingerprint::Signature signature;
+            fingerprint::Profile profile;
             if (workspace && fingerprint::generate(pcm.get(), audio_capture::kBytes, *workspace, signature,
-                    [] { vTaskDelay(pdMS_TO_TICKS(1)); })) {
+                    [] { vTaskDelay(pdMS_TO_TICKS(1)); }, &profile, esp_timer_get_time)) {
                 pcm.reset(); workspace.reset();
                 ESP_LOGI(kTag, "Fingerprint samples=%u peaks=%u duration_ms=%lld",
                     signature.samples, static_cast<unsigned>(signature.peaks()),
                     static_cast<long long>((esp_timer_get_time() - processing_started) / 1000));
-                if (session().epoch != start.epoch) continue;
+                ESP_LOGI(kTag, "Fingerprint profile id=%llu setup_us=%lld fft_us=%lld spread_us=%lld peaks_us=%lld yield_us=%lld",
+                    static_cast<unsigned long long>(capture_id),
+                    static_cast<long long>(profile.setup_us), static_cast<long long>(profile.fft_us),
+                    static_cast<long long>(profile.spread_us), static_cast<long long>(profile.peaks_us),
+                    static_cast<long long>(profile.yield_us));
+                if (session().epoch != start.epoch) {
+                    ESP_LOGI(kTag, "Fingerprint discarded id=%llu reason=session_changed",
+                        static_cast<unsigned long long>(capture_id));
+                    continue;
+                }
                 if (signature.peaks() < 5) outcome = Lookup::NoMatch;
                 else {
                     publish(start.epoch, RecognitionStatus::Identifying, has_track ? &track : nullptr,
@@ -230,7 +256,11 @@ void recognition_task(void *)
                 }
             }
         }
-        if (session().epoch != start.epoch) continue;
+        if (session().epoch != start.epoch) {
+            ESP_LOGI(kTag, "Lookup discarded id=%llu reason=session_changed",
+                static_cast<unsigned long long>(capture_id));
+            continue;
+        }
         if (outcome == Lookup::Matched) {
             next.matched_at_us = esp_timer_get_time();
             const bool same = std::strcmp(track.title, next.title) == 0
@@ -252,7 +282,9 @@ void recognition_task(void *)
                 publish(start.epoch, RecognitionStatus::Matched, &track, image.pixels ? &picture : nullptr);
             }
             retries.succeeded(esp_timer_get_time(), true);
-            ESP_LOGI(kTag, "Recognition matched");
+            ESP_LOGI(kTag, "Recognition matched id=%llu next_lookup_ms=%lld",
+                static_cast<unsigned long long>(capture_id),
+                static_cast<long long>(retries.remaining_us(esp_timer_get_time()) / 1000));
         } else {
             if (recognition_policy::expired(matched_at, esp_timer_get_time(), recognition_last_activity_us())) { track = {}; image = {}; }
             picture = image.view();
@@ -262,7 +294,11 @@ void recognition_task(void *)
             last_status = outcome == Lookup::Failed ? RecognitionStatus::Unavailable : RecognitionStatus::NoMatch;
             publish(start.epoch, last_status,
                 track.title[0] != '\0' ? &track : nullptr, image.pixels ? &picture : nullptr);
-            ESP_LOGI(kTag, "%s", outcome == Lookup::Failed ? "Recognition unavailable; retry scheduled" : "Recognition: no match");
+            ESP_LOGI(kTag, "%s id=%llu retry_ms=%lld service_delay_ms=%lld",
+                outcome == Lookup::Failed ? "Recognition unavailable; retry scheduled" : "Recognition: no match",
+                static_cast<unsigned long long>(capture_id),
+                static_cast<long long>(retries.remaining_us(esp_timer_get_time()) / 1000),
+                static_cast<long long>(service_delay / 1000));
         }
     }
 }

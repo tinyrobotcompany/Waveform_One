@@ -11,6 +11,9 @@ idf_component_register(
                   esp_http_server esp_timer nvs_flash esp_driver_sdmmc heap
                   esp_http_client mbedtls esp_new_jpeg)
 
+# Optimise the CPU-bound fingerprint only; retain IEEE floating-point semantics.
+set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-O3")
+
 target_compile_definitions(${COMPONENT_LIB} PRIVATE CJSON_NESTING_LIMIT=32)
 
 if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
