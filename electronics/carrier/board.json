@@ -26,7 +26,8 @@
       "x": 24.0,
       "y": 0.0,
       "rotation": 270,
-      "edge": "rear"
+      "edge": "rear",
+      "height": 11.0
     },
     {
       "ref": "J2",
@@ -35,7 +36,8 @@
       "x": 46.0,
       "y": 0.0,
       "rotation": 0,
-      "edge": "rear"
+      "edge": "rear",
+      "height": 3.3
     },
     {
       "ref": "J3",
@@ -44,7 +46,8 @@
       "x": 0.0,
       "y": 24.0,
       "rotation": 90,
-      "edge": "left"
+      "edge": "left",
+      "height": 3.3
     },
     {
       "ref": "J4",
@@ -53,7 +56,8 @@
       "x": 0.0,
       "y": 48.0,
       "rotation": 90,
-      "edge": "left"
+      "edge": "left",
+      "height": 7.2
     },
     {
       "ref": "J5",
@@ -62,7 +66,8 @@
       "x": 38.0,
       "y": 52.0,
       "rotation": 90,
-      "edge": null
+      "edge": null,
+      "height": 9.0
     },
     {
       "ref": "J6",
@@ -71,7 +76,8 @@
       "x": 76.0,
       "y": 70.0,
       "rotation": 180,
-      "edge": "front"
+      "edge": "front",
+      "height": 10.0
     },
     {
       "ref": "J7",
@@ -80,7 +86,8 @@
       "x": 78.0,
       "y": 10.0,
       "rotation": 0,
-      "edge": null
+      "edge": null,
+      "height": 6.0
     },
     {
       "ref": "J8",
@@ -89,7 +96,8 @@
       "x": 14.0,
       "y": 62.0,
       "rotation": 0,
-      "edge": null
+      "edge": null,
+      "height": 6.0
     },
     {
       "ref": "U1",
@@ -98,7 +106,8 @@
       "x": 86.0,
       "y": 38.0,
       "rotation": 270,
-      "edge": "right"
+      "edge": "right",
+      "height": 3.2
     },
     {
       "ref": "SW1",
@@ -107,7 +116,8 @@
       "x": 58.0,
       "y": 14.0,
       "rotation": 0,
-      "edge": null
+      "edge": null,
+      "height": 1.6
     },
     {
       "ref": "SW2",
@@ -116,7 +126,9 @@
       "x": 58.0,
       "y": 26.0,
       "rotation": 0,
-      "edge": null
+      "edge": null,
+      "height": 1.6
     }
-  ]
+  ],
+  "_comment_height": "height: body height above the board's top face in mm, from each part's drawing (provisional until measured on the real parts). The casing uses it for clearances and rear-panel openings."
 }

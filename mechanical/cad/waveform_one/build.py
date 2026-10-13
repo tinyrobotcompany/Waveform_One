@@ -15,7 +15,7 @@ from waveform_one import layout
 from waveform_one import parameters as p
 from waveform_one.calibration.coupon import build_coupon
 from waveform_one.components import build_all
-from waveform_one.enclosure import clips, pi_tray, rear_panel, record_holder, shell
+from waveform_one.enclosure import clips, rear_panel, record_holder, shell
 from waveform_one.export import EXPORT_ROOT, export_model, export_print_job, export_printed_parts
 from waveform_one.geometry import Placeholder, PrintedPart, box
 from waveform_one.validation import require_printable, require_valid_layout, require_valid_parameters
@@ -42,7 +42,7 @@ PRINT_JOBS = (
     ("1_calibration_coupon", ("calibration_coupon",)),
     ("2_shell_left", ("shell_left",)),
     ("3_shell_right", ("shell_right",)),
-    ("4_small_parts_a", ("rear_panel_left", "pi_tray") + _clip_names("screen")),
+    ("4_small_parts_a", ("rear_panel_left",) + _clip_names("screen")),
     ("5_small_parts_b", ("rear_panel_right", "record_holder_left", "record_holder_right") + _clip_names("led")),
 )
 
@@ -71,7 +71,6 @@ def build_enclosure_parts() -> list[PrintedPart]:
     return (
         shell.build_halves()
         + clips.build_clips()
-        + [pi_tray.build_tray()]
         + rear_panel.build_panels()
         + record_holder.build_holders()
     )

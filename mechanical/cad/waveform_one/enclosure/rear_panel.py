@@ -1,4 +1,5 @@
-"""Removable rear panel: vents, a cable notch and the microphone mount.
+"""Removable rear panel: vents, a cable notch, the carrier board's power
+sockets and the microphone mount.
 
 The panel fills the rear opening flush with the back edge and screws into
 bosses on the top and bottom walls. It splits at REAR_SEAM_X, offset from the
@@ -6,7 +7,7 @@ shell seam so each panel half bridges the two shell halves and ties them.
 Printed outer face down; the microphone frame grows up from the inner face.
 """
 
-from waveform_one import layout
+from waveform_one import carrier, layout
 from waveform_one import parameters as p
 from waveform_one.enclosure import REAR_FACE_DOWN
 from waveform_one.geometry import CUT_OVERSHOOT, PrintedPart, box_between, rounded_prism, y_cylinder
@@ -63,6 +64,10 @@ def build_full_panel():
         (p.CABLE_PORT_X.v - port_half, y0, z_lo - CUT_OVERSHOOT),
         (p.CABLE_PORT_X.v + port_half, y1, z_lo + p.CABLE_PORT_H.v),
     )
+
+    # Openings for the carrier board's rear sockets (power input).
+    for _, x_min, x_max, z_min, z_max in carrier.rear_openings():
+        panel -= box_between((x_min, y0, z_min), (x_max, y1, z_max))
 
     mx, mz = p.MIC_CENTRE_X.v, p.MIC_CENTRE_Z.v
     panel -= y_cylinder(mx, y0, y1, mz, p.MIC_PORT_DIAMETER.v)
