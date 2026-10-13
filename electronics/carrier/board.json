@@ -1,0 +1,122 @@
+{
+  "_comment": "Single source for the carrier board's outline, holes and connector positions. Read by tools/build_board.py (KiCad) and by the casing CAD. Board coordinates: millimetres, origin at the rear-left corner, x to the right (case +X), y towards the front of the case (case -Y).",
+  "board": {
+    "width": 100.0,
+    "depth": 70.0,
+    "thickness": 1.6,
+    "corner_radius": 3.0,
+    "case_left_x": 60.0,
+    "case_rear_y": 145.0,
+    "standoff_height": 5.0
+  },
+  "mounting_holes": {
+    "footprint": "MountingHole:MountingHole_3.2mm_M3",
+    "positions": [
+      [4.0, 4.0],
+      [96.0, 4.0],
+      [4.0, 66.0],
+      [96.0, 66.0]
+    ]
+  },
+  "parts": [
+    {
+      "ref": "J1",
+      "role": "5 V barrel input (fitted in revision 1)",
+      "footprint": "Connector_BarrelJack:BarrelJack_CUI_PJ-063AH_Horizontal",
+      "x": 24.0,
+      "y": 0.0,
+      "rotation": 270,
+      "edge": "rear"
+    },
+    {
+      "ref": "J2",
+      "role": "USB-C power input, PD (laid out, fitted later)",
+      "footprint": "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+      "x": 46.0,
+      "y": 0.0,
+      "rotation": 0,
+      "edge": "rear"
+    },
+    {
+      "ref": "J3",
+      "role": "S3 USB: link to the P4 and flashing",
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
+      "x": 0.0,
+      "y": 24.0,
+      "rotation": 90,
+      "edge": "left"
+    },
+    {
+      "ref": "J4",
+      "role": "5 V out to the P4 board's USB-C",
+      "footprint": "Connector_USB:USB_A_Molex_67643_Horizontal",
+      "x": 0.0,
+      "y": 48.0,
+      "rotation": 90,
+      "edge": "left"
+    },
+    {
+      "ref": "J5",
+      "role": "HUB75 ribbon to the LED panel",
+      "footprint": "Connector_IDC:IDC-Header_2x08_P2.54mm_Vertical",
+      "x": 38.0,
+      "y": 52.0,
+      "rotation": 90,
+      "edge": null
+    },
+    {
+      "ref": "J6",
+      "role": "5 V power to the LED panel",
+      "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal",
+      "x": 76.0,
+      "y": 70.0,
+      "rotation": 180,
+      "edge": "front"
+    },
+    {
+      "ref": "J7",
+      "role": "INMP441 microphone cable",
+      "footprint": "Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical",
+      "x": 78.0,
+      "y": 10.0,
+      "rotation": 0,
+      "edge": null
+    },
+    {
+      "ref": "J8",
+      "role": "Future serial link to the P4's UART socket (not fitted)",
+      "footprint": "Connector_JST:JST_PH_B4B-PH-K_1x04_P2.00mm_Vertical",
+      "x": 14.0,
+      "y": 62.0,
+      "rotation": 0,
+      "edge": null
+    },
+    {
+      "ref": "U1",
+      "role": "ESP32-S3-WROOM-1-N16R8",
+      "footprint": "RF_Module:ESP32-S3-WROOM-1",
+      "x": 86.0,
+      "y": 38.0,
+      "rotation": 270,
+      "edge": "right"
+    },
+    {
+      "ref": "SW1",
+      "role": "S3 reset",
+      "footprint": "Button_Switch_SMD:SW_SPST_TL3342",
+      "x": 58.0,
+      "y": 14.0,
+      "rotation": 0,
+      "edge": null
+    },
+    {
+      "ref": "SW2",
+      "role": "S3 boot",
+      "footprint": "Button_Switch_SMD:SW_SPST_TL3342",
+      "x": 58.0,
+      "y": 26.0,
+      "rotation": 0,
+      "edge": null
+    }
+  ]
+}
