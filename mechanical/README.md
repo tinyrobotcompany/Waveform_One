@@ -11,8 +11,11 @@ master copy. See [docs/decisions/0001-code-first-cad.md](docs/decisions/0001-cod
 
 **Revision B — wide display concept** ([decision 0003](docs/decisions/0003-wide-display-revision-b.md)):
 screen and LED panel side by side in a rounded cabinet, with a vinyl-sleeve
-holder on top. Designed, validated in code and slicer-checked; **not yet
-printed or fit-tested**. Revision A (stacked layout, M0–M3) is in Git history.
+holder on top. Designed, validated in code and slicer-checked. The test coupon
+set the hole sizes (4.1 mm heat-set inserts, 3.2 mm M3 clearance). The left
+shell is printed and the screen fits its pocket; the right shell, clips and
+other small parts are not yet printed. Revision A (stacked layout, M0–M3) is
+in Git history.
 
 ## Coordinate system
 
