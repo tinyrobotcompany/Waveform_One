@@ -113,8 +113,8 @@
       "ref": "SW1",
       "role": "S3 reset",
       "footprint": "Button_Switch_SMD:SW_SPST_TL3342",
-      "x": 58.0,
-      "y": 14.0,
+      "x": 63.0,
+      "y": 63.0,
       "rotation": 0,
       "edge": null,
       "height": 1.6
@@ -123,11 +123,511 @@
       "ref": "SW2",
       "role": "S3 boot",
       "footprint": "Button_Switch_SMD:SW_SPST_TL3342",
-      "x": 58.0,
-      "y": 26.0,
+      "x": 28.0,
+      "y": 64.0,
       "rotation": 0,
       "edge": null,
       "height": 1.6
+    },
+    {
+      "ref": "F1",
+      "role": "6A hold",
+      "footprint": "Fuse:Fuse_2920_7451Metric",
+      "x": 22.0,
+      "y": 16.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 1.5
+    },
+    {
+      "ref": "JP1",
+      "role": "Barrel input",
+      "footprint": "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm",
+      "x": 29.0,
+      "y": 16.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "D1",
+      "role": "SMAJ5.0A",
+      "footprint": "Diode_SMD:D_SMA",
+      "x": 22.0,
+      "y": 21.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.5
+    },
+    {
+      "ref": "C2",
+      "role": "22uF 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 28.5,
+      "y": 21.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C3",
+      "role": "100nF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 25.5,
+      "y": 24.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C1",
+      "role": "1000uF 10V",
+      "footprint": "Capacitor_SMD:CP_Elec_10x10.5",
+      "x": 34.0,
+      "y": 30.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 10.5
+    },
+    {
+      "ref": "U4",
+      "role": "USBLC6-2SC6",
+      "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+      "x": 14.0,
+      "y": 24.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R3",
+      "role": "5.1k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 12.0,
+      "y": 19.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R4",
+      "role": "5.1k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 12.0,
+      "y": 29.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "F2",
+      "role": "2.5A hold",
+      "footprint": "Fuse:Fuse_1812_4532Metric",
+      "x": 20.0,
+      "y": 44.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 1.5
+    },
+    {
+      "ref": "U2",
+      "role": "CH224A",
+      "footprint": "Package_SO:SSOP-10-1EP_3.9x4.9mm_P1mm_EP2.1x3.3mm",
+      "x": 46.0,
+      "y": 14.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R10",
+      "role": "56k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 41.5,
+      "y": 18.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C10",
+      "role": "1uF 25V",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "x": 51.5,
+      "y": 15.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "U3",
+      "role": "TPS568215",
+      "footprint": "Package_DFN_QFN:Texas_RNN0018A",
+      "x": 57.5,
+      "y": 18.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C11",
+      "role": "100nF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 57.5,
+      "y": 13.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C13",
+      "role": "4.7uF",
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "x": 61.5,
+      "y": 21.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R11",
+      "role": "73.2k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 54.0,
+      "y": 22.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R12",
+      "role": "10k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 52.5,
+      "y": 22.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C12",
+      "role": "150pF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 55.5,
+      "y": 22.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R13",
+      "role": "100k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 61.0,
+      "y": 12.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R14",
+      "role": "10k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 62.5,
+      "y": 12.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R15",
+      "role": "120k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 61.0,
+      "y": 16.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R16",
+      "role": "20k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 62.5,
+      "y": 16.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C14",
+      "role": "10uF 25V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 46.0,
+      "y": 22.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C15",
+      "role": "10uF 25V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 46.0,
+      "y": 25.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C16",
+      "role": "10uF 25V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 46.0,
+      "y": 27.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C17",
+      "role": "10uF 25V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 41.0,
+      "y": 22.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C18",
+      "role": "100nF 25V",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 50.5,
+      "y": 22.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "L1",
+      "role": "2.2uH 10A",
+      "footprint": "Inductor_SMD:L_Coilcraft_XAL7070-XXX",
+      "x": 68.5,
+      "y": 14.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 7.0
+    },
+    {
+      "ref": "C19",
+      "role": "22uF 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 58.0,
+      "y": 25.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C20",
+      "role": "22uF 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 58.0,
+      "y": 28.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C21",
+      "role": "22uF 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 63.0,
+      "y": 25.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C22",
+      "role": "22uF 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 63.0,
+      "y": 28.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C23",
+      "role": "22uF 10V",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 68.0,
+      "y": 25.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "JP2",
+      "role": "USB-C input",
+      "footprint": "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm",
+      "x": 68.5,
+      "y": 29.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "U5",
+      "role": "AP2112K-3.3",
+      "footprint": "Package_TO_SOT_SMD:SOT-23-5",
+      "x": 67.0,
+      "y": 33.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C7",
+      "role": "1uF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 63.5,
+      "y": 33.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C8",
+      "role": "1uF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 70.5,
+      "y": 33.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C5",
+      "role": "22uF",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 67.0,
+      "y": 38.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C6",
+      "role": "100nF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 67.0,
+      "y": 41.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "U6",
+      "role": "74AHCT245",
+      "footprint": "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
+      "x": 44.0,
+      "y": 39.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "U7",
+      "role": "74AHCT245",
+      "footprint": "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
+      "x": 56.0,
+      "y": 39.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C24",
+      "role": "100nF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 44.0,
+      "y": 33.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C25",
+      "role": "100nF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 56.0,
+      "y": 33.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R6",
+      "role": "10k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 61.0,
+      "y": 39.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R1",
+      "role": "10k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 57.5,
+      "y": 61.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C4",
+      "role": "1uF",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 56.0,
+      "y": 64.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R2",
+      "role": "10k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 33.5,
+      "y": 62.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "D2",
+      "role": "Green",
+      "footprint": "LED_SMD:LED_0603_1608Metric",
+      "x": 46.0,
+      "y": 63.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R5",
+      "role": "1k",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 42.0,
+      "y": 63.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
     }
   ],
   "_comment_height": "height: body height above the board's top face in mm, from each part's drawing (provisional until measured on the real parts). The casing uses it for clearances and rear-panel openings."
