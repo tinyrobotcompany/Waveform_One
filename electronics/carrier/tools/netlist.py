@@ -51,9 +51,8 @@ add = PARTS.append
 # --- Power input: 5 V barrel (fitted) -------------------------------------------
 add(Part("J1", "Connector:Barrel_Jack", "PJ-063AH", "Connector_BarrelJack:BarrelJack_CUI_PJ-063AH_Horizontal",
          {"1": "VIN_BARREL", "2": "GND"}, "power", note="Pin 1 centre (+5 V). 2.0 mm pin for 5.5 x 2.1 mm plugs; 8 A."))
-add(Part("F1", "Device:Polyfuse", "6A hold", "Fuse:Fuse_2920_7451Metric", {"1": "VIN_BARREL", "2": "VIN_FUSED"}, "power"))
-add(Part("JP1", "Jumper:SolderJumper_2_Bridged", "Barrel input", "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm",
-         {"1": "VIN_FUSED", "2": "+5V"}, "power", note="Cut to disconnect the barrel input when USB-C power is fitted."))
+add(Part("F1", "Device:Polyfuse", "6A hold", "Fuse:Fuse_2920_7451Metric", {"1": "VIN_BARREL", "2": "+5V"}, "power",
+         note="Also selects the barrel input: fit F1 or the USB-C power section, never both."))
 add(Part("D1", "Device:D_Zener", "SMAJ5.0A", "Diode_SMD:D_SMA", {"1": "+5V", "2": "GND"}, "power",
          note="Unidirectional TVS: cathode (pad 1) to +5 V."))
 add(Part("C1", "Device:C_Polarized", "1000uF 10V", "Capacitor_SMD:CP_Elec_10x10.5", {"1": "+5V", "2": "GND"}, "power"))
@@ -77,11 +76,11 @@ add(Part("U3", "Regulator_Switching:TPS568215RNN", "TPS568215", "Package_DFN_QFN
           "17": "BUCK_VREG5", "18": "BUCK_MODE"}, "usbc_power", dnp=True,
          note="15 V to 5 V, 8 A limit, 800 kHz FCCM. SS open: 1 ms soft start."))
 add(C("C11", "100nF", "BUCK_BOOT", "BUCK_SW", "usbc_power", dnp=True))
-add(Part("L1", "Device:L", "2.2uH 10A", "Inductor_SMD:L_Coilcraft_XAL7070-XXX", {"1": "BUCK_SW", "2": "BUCK_OUT"},
+add(Part("L1", "Device:L", "2.2uH 10A", "Inductor_SMD:L_Coilcraft_XAL7070-XXX", {"1": "BUCK_SW", "2": "+5V"},
          "usbc_power", dnp=True, note="Saturation current above 10 A."))
-add(R("R11", "73.2k", "BUCK_OUT", "BUCK_FB", "usbc_power", dnp=True, note="5.0 V = 0.6 V x (1 + 73.2k/10k)."))
+add(R("R11", "73.2k", "+5V", "BUCK_FB", "usbc_power", dnp=True, note="5.0 V = 0.6 V x (1 + 73.2k/10k)."))
 add(R("R12", "10k", "BUCK_FB", "GND", "usbc_power", dnp=True))
-add(C("C12", "150pF", "BUCK_OUT", "BUCK_FB", "usbc_power", dnp=True, note="Feed-forward, 100-220 pF per TI."))
+add(C("C12", "150pF", "+5V", "BUCK_FB", "usbc_power", dnp=True, note="Feed-forward, 100-220 pF per TI."))
 add(R("R13", "100k", "VBUS_PD", "BUCK_EN", "usbc_power", dnp=True, note="Starts above about 13.5 V: runs only on a 15 V contract."))
 add(R("R14", "10k", "BUCK_EN", "GND", "usbc_power", dnp=True))
 add(C("C13", "4.7uF", "BUCK_VREG5", "GND", "usbc_power", C0805, dnp=True))
@@ -91,9 +90,7 @@ for index, ref in enumerate(("C14", "C15", "C16", "C17")):
     add(C(ref, "10uF 25V", "VBUS_PD", "GND", "usbc_power", C1206, dnp=True))
 add(C("C18", "100nF 25V", "VBUS_PD", "GND", "usbc_power", dnp=True))
 for ref in ("C19", "C20", "C21", "C22", "C23"):
-    add(C(ref, "22uF 10V", "BUCK_OUT", "GND", "usbc_power", C1206, dnp=True))
-add(Part("JP2", "Jumper:SolderJumper_2_Open", "USB-C input", "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm",
-         {"1": "BUCK_OUT", "2": "+5V"}, "usbc_power", note="Bridge (and cut JP1) when USB-C power is fitted."))
+    add(C(ref, "22uF 10V", "+5V", "GND", "usbc_power", C1206, dnp=True))
 
 # --- 3.3 V for the S3 and microphone ---------------------------------------------
 add(Part("U5", "Regulator_Linear:AP2112K-3.3", "AP2112K-3.3", "Package_TO_SOT_SMD:SOT-23-5",
@@ -118,10 +115,10 @@ add(Part("SW2", "Switch:SW_Push", "Boot", "Button_Switch_SMD:SW_SPST_TL3342", {"
 add(C("C5", "22uF", "+3V3", "GND", "s3", C1206))
 add(C("C6", "100nF", "+3V3", "GND", "s3"))
 add(Part("J3", "Connector:USB_C_Receptacle_USB2.0_16P", "S3 USB (P4 link, flashing)", "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
-         {"A1": "GND", "B1": "GND", "A12": "GND", "B12": "GND", "A4": "S3_VBUS", "B4": "S3_VBUS", "A9": "S3_VBUS", "B9": "S3_VBUS",
+         {"A1": "GND", "B1": "GND", "A12": "GND", "B12": "GND", "A4": None, "B4": None, "A9": None, "B9": None,
           "A5": "S3_CC1", "B5": "S3_CC2", "A6": "USB_DP", "B6": "USB_DP", "A7": "USB_DM", "B7": "USB_DM",
           "A8": None, "B8": None, "SH": "GND"}, "s3",
-         note="VBUS from the P4 is not connected to the board's 5 V rail."))
+         note="VBUS pins unconnected: the P4's 5 V never feeds the board's rail."))
 add(R("R3", "5.1k", "S3_CC1", "GND", "s3", note="USB-C device identification."))
 add(R("R4", "5.1k", "S3_CC2", "GND", "s3"))
 add(Part("U4", "Power_Protection:USBLC6-2SC6", "USBLC6-2SC6", "Package_TO_SOT_SMD:SOT-23-6",

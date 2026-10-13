@@ -37,7 +37,8 @@
       "y": 0.0,
       "rotation": 0,
       "edge": "rear",
-      "height": 3.3
+      "height": 3.3,
+      "ref_at": [54.0, 4.0]
     },
     {
       "ref": "J3",
@@ -135,19 +136,10 @@
       "footprint": "Fuse:Fuse_2920_7451Metric",
       "x": 22.0,
       "y": 16.0,
-      "rotation": 0,
+      "rotation": 180,
       "edge": null,
-      "height": 1.5
-    },
-    {
-      "ref": "JP1",
-      "role": "Barrel input",
-      "footprint": "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm",
-      "x": 29.0,
-      "y": 16.0,
-      "rotation": 0,
-      "edge": null,
-      "height": 2.0
+      "height": 1.5,
+      "ref_at": [16.3, 16.0]
     },
     {
       "ref": "D1",
@@ -157,7 +149,8 @@
       "y": 21.5,
       "rotation": 0,
       "edge": null,
-      "height": 2.5
+      "height": 2.5,
+      "ref_at": [20.5, 24.0]
     },
     {
       "ref": "C2",
@@ -204,7 +197,7 @@
       "role": "5.1k",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
       "x": 12.0,
-      "y": 19.5,
+      "y": 29.0,
       "rotation": 0,
       "edge": null,
       "height": 2.0
@@ -214,7 +207,7 @@
       "role": "5.1k",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
       "x": 12.0,
-      "y": 29.0,
+      "y": 19.5,
       "rotation": 0,
       "edge": null,
       "height": 2.0
@@ -265,7 +258,7 @@
       "footprint": "Package_DFN_QFN:Texas_RNN0018A",
       "x": 57.5,
       "y": 18.0,
-      "rotation": 0,
+      "rotation": 90,
       "edge": null,
       "height": 2.0
     },
@@ -273,8 +266,8 @@
       "ref": "C11",
       "role": "100nF",
       "footprint": "Capacitor_SMD:C_0603_1608Metric",
-      "x": 57.5,
-      "y": 13.5,
+      "x": 58.4,
+      "y": 21.8,
       "rotation": 0,
       "edge": null,
       "height": 2.0
@@ -324,7 +317,7 @@
       "role": "100k",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
       "x": 61.0,
-      "y": 12.5,
+      "y": 10.4,
       "rotation": 90,
       "edge": null,
       "height": 2.0
@@ -334,7 +327,7 @@
       "role": "10k",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
       "x": 62.5,
-      "y": 12.5,
+      "y": 10.4,
       "rotation": 90,
       "edge": null,
       "height": 2.0
@@ -344,7 +337,7 @@
       "role": "120k",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
       "x": 61.0,
-      "y": 16.5,
+      "y": 13.6,
       "rotation": 90,
       "edge": null,
       "height": 2.0
@@ -354,7 +347,7 @@
       "role": "20k",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
       "x": 62.5,
-      "y": 16.5,
+      "y": 13.6,
       "rotation": 90,
       "edge": null,
       "height": 2.0
@@ -465,16 +458,6 @@
       "footprint": "Capacitor_SMD:C_1206_3216Metric",
       "x": 68.0,
       "y": 25.5,
-      "rotation": 0,
-      "edge": null,
-      "height": 2.0
-    },
-    {
-      "ref": "JP2",
-      "role": "USB-C input",
-      "footprint": "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm",
-      "x": 68.5,
-      "y": 29.5,
       "rotation": 0,
       "edge": null,
       "height": 2.0

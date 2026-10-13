@@ -8,6 +8,7 @@ the casing can be designed around them.
 """
 import json
 import math
+import re
 import os
 from pathlib import Path
 
@@ -93,8 +94,13 @@ def resolve_pads(part):
         for number in ([key] if key in numbers else by_name.get(key, [])):
             if name:
                 resolved[number] = name
-    names = {number: name for number, name, *_ in pins}
-    return resolved, names
+    # Unconnected pins stacked at one symbol point share one net, named (as
+    # KiCad does) after the first pin of the stack.
+    first_at, labels = {}, {}
+    for number, name, _, x, y, angle in pins:
+        first = first_at.setdefault((round(x, 3), round(y, 3), angle), (number, name))
+        labels[number] = f"{part.ref}-{first[1]}-Pad{first[0]}" if first[1] else f"{part.ref}-Pad{first[0]}"
+    return resolved, labels
 
 
 def place(board, reference, footprint, x, y, rotation, value=""):
@@ -122,6 +128,8 @@ def main():
     settings.m_MinThroughDrill = pcbnew.FromMM(0.2)
     settings.m_HoleClearance = pcbnew.FromMM(0.15)
     settings.m_CopperEdgeClearance = pcbnew.FromMM(0.5)
+    # Tracks neck down to 0.15 mm into fine-pitch pins (fab minimum 0.127 mm).
+    settings.m_TrackMinWidth = pcbnew.FromMM(0.15)
     outline(board, geometry["width"], geometry["depth"], geometry["corner_radius"])
     holes = spec["mounting_holes"]
     positioned = {part["ref"]: part for part in spec["parts"]}
@@ -157,8 +165,12 @@ def main():
             row = staging.get(part.group, 0)
             staging[part.group] = row + 1
             placed = place(board, part.ref, part.footprint, geometry["width"] + 45 + 22 * column, 5 + 9 * row, 0, part.value)
-        if part.ref.startswith("H"):
+        # Silkscreen references: none on holes, nor on chip resistors and
+        # capacitors (too dense to label; the fab layer keeps them).
+        if part.ref.startswith("H") or re.match(r"[CR]_\d{4}_", part.footprint.split(":", 1)[1]):
             placed.Reference().SetVisible(False)
+        elif part.ref in positioned and "ref_at" in positioned[part.ref]:
+            placed.Reference().SetPosition(mm(*positioned[part.ref]["ref_at"]))
         placed.SetExcludedFromBOM(part.ref.startswith(("H", "JP")))
         if part.dnp:
             placed.SetDNP(True)
@@ -167,16 +179,15 @@ def main():
         if part.note:
             placed.SetField("Note", part.note)
             placed.GetField("Note").SetVisible(False)
-        pin_nets, pin_names = resolve_pads(part)
+        pin_nets, pin_labels = resolve_pads(part)
         for pad in placed.Pads():
             number = pad.GetNumber()
             name = pin_nets.get(number)
             if name:
                 pad.SetNet(net(name))
-            elif number in pin_names:
+            elif number in pin_labels:
                 # Same name KiCad gives an unconnected pin when updating from the schematic.
-                label = f"{part.ref}-{pin_names[number]}-Pad{number}" if pin_names[number] else f"{part.ref}-Pad{number}"
-                pad.SetNet(raw_net(f"unconnected-({label})"))
+                pad.SetNet(raw_net(f"unconnected-({pin_labels[number]})"))
     output = ROOT / "carrier.kicad_pcb"
     board.Save(str(output))
     print(f"Wrote {output.relative_to(ROOT.parents[1])}")

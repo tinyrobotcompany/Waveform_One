@@ -53,9 +53,17 @@ The 5 V rail feeds everything. Two inputs can supply it:
     current limit, a 2.2 µH inductor rated above 10 A, 40 µF in and 110 µF out.
     An enable divider starts it only above about 13.5 V, i.e. on a 15 V
     contract.
-  - The input is chosen with solder jumpers rather than automatic OR-ing: JP1
-    (barrel) is closed in revision 1, and JP2 (USB-C) is open. The product
-    fits only USB-C, so OR-ing would add parts for no benefit.
+  - The input is chosen by what is fitted, not by OR-ing. Revision 1 fits the
+    barrel fuse F1, which alone connects the barrel input. The USB-C build
+    fits the USB-C section and leaves F1 out. Never fit both. (Solder jumpers
+    were considered and rejected: a solder bridge cannot carry 6 A.)
+
+Layout notes for the USB-C build, to review before fitting it:
+  - J2's two VBUS pads are joined by a 0.25 mm track that passes between the
+    socket's locating holes; it carries 15 V at up to 2 A. Widen it (or pour
+    it) before fitting, or confirm its temperature rise.
+  - The buck converter's switch node runs 1.5 mm wide, straight from U3 to L1.
+    Compare the whole section with TI's layout example before fitting.
 
 The USB cable from the P4 also carries 5 V. The S3's USB socket must not feed
 that into the board's rail; only the data lines and detection are connected.
