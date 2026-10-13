@@ -87,5 +87,10 @@ line (`kicad-cli`).
 - The P4 board's real current draw. The budget above is conservative; a USB
   power meter reading would let the supply shrink.
 - The exact PD controller and buck parts (availability at the assembler).
+- Microphone for production. TDK lists the INMP441 as "Production (NRND)", not
+  recommended for new designs. Prototype breakout boards remain easy to buy.
+  Before production, choose between a small microphone board with a
+  current-production part (e.g. ICS-43434, same I2S format) and the P4's
+  onboard microphones. J7 serves either way.
 - Whether the P4's onboard microphones can replace the INMP441. That would
   remove the microphone cable, and perhaps later the S3.
