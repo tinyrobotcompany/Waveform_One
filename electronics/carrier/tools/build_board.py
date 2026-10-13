@@ -11,7 +11,14 @@ import math
 import os
 from pathlib import Path
 
+import uuid
+
 import pcbnew
+
+import netlist
+
+# Must match gen_schematic.py so each footprint links to its schematic symbol.
+NAMESPACE = uuid.UUID("6f1e2d3c-4b5a-4987-a6b5-c4d3e2f1a0b9")
 
 ROOT = Path(__file__).resolve().parents[1]
 LIBRARIES = Path(os.environ.get("KICAD_FOOTPRINTS",
@@ -73,11 +80,29 @@ def keep_pads_inside(part, edge, width, depth):
         part.Move(pcbnew.VECTOR2I_MM(dx, dy))
 
 
+def resolve_pads(part):
+    """Pad number to net, resolving pin names (e.g. the ESP32's IO4) from the symbol."""
+    import kicad_lib
+    pins = kicad_lib.pins(kicad_lib.symbol(part.symbol))
+    numbers = {number for number, *_ in pins}
+    by_name = {}
+    for number, name, *_ in pins:
+        by_name.setdefault(name, []).append(number)
+    resolved = {}
+    for key, name in part.pins.items():
+        for number in ([key] if key in numbers else by_name.get(key, [])):
+            if name:
+                resolved[number] = name
+    names = {number: name for number, name, *_ in pins}
+    return resolved, names
+
+
 def place(board, reference, footprint, x, y, rotation, value=""):
     library, name = footprint.split(":", 1)
     part = pcbnew.FootprintLoad(str(LIBRARIES / f"{library}.pretty"), name)
     if part is None:
         raise SystemExit(f"Footprint not found: {footprint}")
+    part.SetFPID(pcbnew.LIB_ID(library, name))
     part.SetReference(reference)
     part.SetValue(value or name)
     part.SetPosition(mm(x, y))
@@ -99,12 +124,59 @@ def main():
     settings.m_CopperEdgeClearance = pcbnew.FromMM(0.5)
     outline(board, geometry["width"], geometry["depth"], geometry["corner_radius"])
     holes = spec["mounting_holes"]
+    positioned = {part["ref"]: part for part in spec["parts"]}
     for index, (x, y) in enumerate(holes["positions"], start=1):
-        hole = place(board, f"H{index}", holes["footprint"], x, y, 0, "M3 to heat-set insert")
-        hole.Reference().SetVisible(False)
-    for part in spec["parts"]:
-        placed = place(board, part["ref"], part["footprint"], part["x"], part["y"], part["rotation"], part["role"])
-        keep_pads_inside(placed, part.get("edge"), geometry["width"], geometry["depth"])
+        positioned[f"H{index}"] = {"ref": f"H{index}", "footprint": holes["footprint"], "x": x, "y": y, "rotation": 0, "edge": None}
+    nets = {}
+
+    def net(name):
+        # Labels on the schematic's root sheet name nets "/NAME".
+        name = "/" + name
+        if name not in nets:
+            nets[name] = pcbnew.NETINFO_ITEM(board, name)
+            board.Add(nets[name])
+        return nets[name]
+
+    def raw_net(name):
+        if name not in nets:
+            nets[name] = pcbnew.NETINFO_ITEM(board, name)
+            board.Add(nets[name])
+        return nets[name]
+
+    staging = {}
+    for part in netlist.PARTS:
+        if part.ref in positioned:
+            where = positioned[part.ref]
+            if where["footprint"] != part.footprint:
+                raise SystemExit(f"{part.ref}: board.json footprint {where['footprint']} != netlist {part.footprint}")
+            placed = place(board, part.ref, part.footprint, where["x"], where["y"], where["rotation"], part.value)
+            keep_pads_inside(placed, where.get("edge"), geometry["width"], geometry["depth"])
+        else:
+            # Not yet laid out: wait beside the board, grouped by function.
+            column = list(netlist.GROUP_TITLES).index(part.group)
+            row = staging.get(part.group, 0)
+            staging[part.group] = row + 1
+            placed = place(board, part.ref, part.footprint, geometry["width"] + 45 + 22 * column, 5 + 9 * row, 0, part.value)
+        if part.ref.startswith("H"):
+            placed.Reference().SetVisible(False)
+        placed.SetExcludedFromBOM(part.ref.startswith(("H", "JP")))
+        if part.dnp:
+            placed.SetDNP(True)
+        symbol = uuid.uuid5(NAMESPACE, "/".join(("symbol", part.ref)))
+        placed.SetPath(pcbnew.KIID_PATH(f"/{symbol}"))
+        if part.note:
+            placed.SetField("Note", part.note)
+            placed.GetField("Note").SetVisible(False)
+        pin_nets, pin_names = resolve_pads(part)
+        for pad in placed.Pads():
+            number = pad.GetNumber()
+            name = pin_nets.get(number)
+            if name:
+                pad.SetNet(net(name))
+            elif number in pin_names:
+                # Same name KiCad gives an unconnected pin when updating from the schematic.
+                label = f"{part.ref}-{pin_names[number]}-Pad{number}" if pin_names[number] else f"{part.ref}-Pad{number}"
+                pad.SetNet(raw_net(f"unconnected-({label})"))
     output = ROOT / "carrier.kicad_pcb"
     board.Save(str(output))
     print(f"Wrote {output.relative_to(ROOT.parents[1])}")

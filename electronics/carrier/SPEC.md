@@ -39,19 +39,23 @@ stays as bought: it is not modified, only cabled to.
 
 The 5 V rail feeds everything. Two inputs can supply it:
 
-- **Revision 1 (fitted): 5.5 × 2.1 mm barrel socket**, 5 V / 6 A from a certified
-  supply (MEAN WELL GST60A05). It goes through a polyfuse or eFuse, a TVS diode
-  (SMAJ5.0A) and 1000 µF of bulk capacitance.
+- **Revision 1 (fitted): barrel socket (CUI PJ-063AH)**, rated 8 A, with a
+  2.0 mm pin that takes 5.5 × 2.1 mm plugs, for 5 V / 6 A from a certified
+  supply (MEAN WELL GST60A05). It goes through a 6 A-hold polyfuse, a
+  unidirectional SMAJ5.0A TVS and 1000 µF of bulk capacitance.
 - **USB-C power (target, laid out in revision 1, fitted when proven).**
-  - At 5 V, USB-C provides at most 3 A, which is too little. The board must
-    instead request a higher voltage with USB Power Delivery: 15 V at 2–3 A
-    from a 30–45 W charger.
-  - A step-down converter then turns that into 5 V at 6 A.
-  - Parts: a USB-C receptacle, a PD sink controller and a 6 A synchronous buck
-    converter. They are chosen when the schematic is drawn; candidates are
-    checked against current availability.
-  - Both inputs join through ideal-diode OR-ing, so either may be used and
-    neither back-feeds the other.
+  - At 5 V, USB-C provides at most 3 A, which is too little. The board instead
+    requests 15 V with USB Power Delivery: a **CH224A** with 56 kΩ on CFG1. The
+    CH224A is WCH's pin-compatible successor to the CH224K, recommended for new
+    designs.
+  - A **TPS568215** then steps 15 V down to 5 V, using the values in TI's
+    datasheet: 73.2 kΩ over 10 kΩ feedback (5.0 V), 800 kHz FCCM with the 8 A
+    current limit, a 2.2 µH inductor rated above 10 A, 40 µF in and 110 µF out.
+    An enable divider starts it only above about 13.5 V, i.e. on a 15 V
+    contract.
+  - The input is chosen with solder jumpers rather than automatic OR-ing: JP1
+    (barrel) is closed in revision 1, and JP2 (USB-C) is open. The product
+    fits only USB-C, so OR-ing would add parts for no benefit.
 
 The USB cable from the P4 also carries 5 V. The S3's USB socket must not feed
 that into the board's rail; only the data lines and detection are connected.
