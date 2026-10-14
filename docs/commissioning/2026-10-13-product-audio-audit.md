@@ -206,3 +206,26 @@ No hardware was used for this correction. Validation includes ASan/UBSan ring
 and replay tests; full hook and native firmware build results accompany its
 commit. The source coverage is the old worker comparison, current P4 request
 loop, production ring implementation and deterministic scheduler replay.
+
+### 2026-10-14 — response admission across stream resets
+
+Verified source/test defect: USB changes the PCM ring generation immediately,
+but the independent presence task can observe that discontinuity later. The
+previous response checks only validated stream identity after a session epoch
+change. A match from the old stream could therefore pass in that interval.
+The regression failed with the previous policy and passes with unconditional
+transport and stream-generation checks. The worker now reads the ring generation
+directly at response completion and uses the same policy as the host tests.
+
+Tests cover current matches, provider misses/failures, gapless results, stop
+during a request, restart with old versus resumed audio coverage, and stream or
+controller changes. A ring test verifies the zero-length generation snapshot
+without consuming PCM. These tests verify response admission, not the complete
+GUI or acoustic classifier. The generation check is a snapshot, not an atomic
+transaction extending through GUI publication.
+
+Source coverage: production worker, session/evidence policy and PCM ring. No
+new external dependency or acoustic algorithm was introduced. False silence,
+noise keeping an old album visible and end-to-end recognition latency remain
+unverified without labelled microphone trials. This correction has not been
+flashed; validation results are recorded with its commit.

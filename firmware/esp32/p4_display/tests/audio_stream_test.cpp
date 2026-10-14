@@ -107,10 +107,15 @@ int main()
     assert(read.remaining == 0);
     const auto before = read.segment;
     ring->discontinuity();
+    // Recognition snapshots the generation without consuming or copying PCM.
+    const auto snapshot = ring->read(700, nullptr, 0);
+    assert(snapshot.segment != before && snapshot.count == 0 && snapshot.position == 768);
     read = ring->read(700, out, 1024);
     assert(read.segment != before && read.skipped && read.position == 768 && read.count == 0);
     assert(read.remaining == 0);
     ring->write(block, 128);
+    const auto available = ring->read(768, nullptr, 0);
+    assert(available.segment == snapshot.segment && available.count == 0 && available.remaining == 128);
     read = ring->read(768, out, 1024);
     assert(!read.skipped && read.count == 128 && ring->written() == 896);
 }

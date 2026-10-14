@@ -3,6 +3,7 @@
 #include "recognition_http.h"
 #include "recognition_policy.h"
 #include "recognition_evidence.h"
+#include "recognition_state.h"
 #include "recognition_delivery.h"
 #include "acrcloud.h"
 #include "acrcloud_config.h"
@@ -108,7 +109,7 @@ std::string uuid()
     return output;
 }
 
-enum class Lookup { Matched, NoMatch, Failed };
+using Lookup = recognition_state::Outcome;
 Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track, int64_t &service_delay)
 {
     Json root(cJSON_CreateObject());
@@ -544,39 +545,25 @@ void recognition_task(void *)
                 retries.succeeded();
             }
             const auto completed = sound_session();
-            if (!completed.session.ready) {
-                // Preserve the logged provider result for comparison with the
-                // local level decision, but never resurrect a stopped album.
-                ESP_LOGI(kTag, "Lookup not displayed id=%u: transport_ready=%d level_sound=%d",
-                    id, completed.session.transport_ready, completed.audio.sound);
+            // USB advances the ring generation before the presence task has
+            // necessarily observed a discontinuity. Check the stream itself
+            // as well as the presentation session before accepting a result.
+            const uint32_t current_segment = audio ? audio->read(position, nullptr, 0).segment : UINT32_MAX;
+            const uint64_t clip_first = analysis_base + uint64_t(window.first) * fingerprint::kHopSamples;
+            const auto region = recognition_evidence::coverage(next, clip_first,
+                analysis_base + uint64_t(window.last) * fingerprint::kHopSamples);
+            const recognition_state::Context context{paid, completed.session.ready,
+                epoch, completed.session.epoch, transport_epoch, completed.transport_epoch,
+                segment, current_segment, completed.audio.segment, clip_first, completed.audio.start_sample};
+            const auto reason = recognition_state::evaluate(outcome, region, context);
+            if (reason != recognition_state::Reason::Current) {
+                ESP_LOGI(kTag, "Lookup not displayed id=%u reason=%s transport_ready=%d level_sound=%d",
+                    id, recognition_state::name(reason), completed.session.transport_ready, completed.audio.sound);
                 continue;
             }
             if (completed.session.epoch != epoch) {
-                const auto region = recognition_evidence::coverage(next,
-                    analysis_base + uint64_t(window.first) * fingerprint::kHopSamples,
-                    analysis_base + uint64_t(window.last) * fingerprint::kHopSamples);
-                // A real disconnect/PCM break still invalidates the result.
-                // Across level chatter, require evidence in the resumed audio;
-                // an old match cannot revive the album while currently quiet.
-                if (!paid || outcome != Lookup::Matched ||
-                    !recognition_evidence::retained_after_activity_change(region, completed.session.ready,
-                        completed.transport_epoch == transport_epoch, completed.audio.segment == segment,
-                        completed.audio.start_sample)) {
-                    ESP_LOGI(kTag, "Lookup discarded id=%u: no current-session audio evidence", id);
-                    continue;
-                }
                 epoch = completed.session.epoch;
                 ESP_LOGI(kTag, "Lookup retained id=%u: verified resumed audio", id);
-            }
-            if (paid && outcome == Lookup::Matched) {
-                const uint64_t clip_first = analysis_base + uint64_t(window.first) * fingerprint::kHopSamples;
-                const auto region = recognition_evidence::coverage(next, clip_first,
-                    analysis_base + uint64_t(window.last) * fingerprint::kHopSamples);
-                if (clip_first < completed.audio.start_sample &&
-                    (!region.valid || region.last <= completed.audio.start_sample)) {
-                    ESP_LOGI(kTag, "Lookup discarded id=%u: matched only before current sound", id);
-                    continue;
-                }
             }
             if (outcome == Lookup::Matched) {
                 if (same_song(track, next)) {
