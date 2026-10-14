@@ -179,3 +179,30 @@ GROUP_TITLES = {
     "hub75": "LED panel: level shifting and HUB75",
     "connectors": "Microphone, P4 power, P4 UART",
 }
+
+# LCSC part numbers for JLCPCB assembly, fitted parts only. All in stock at
+# JLCPCB on 2026-10-14; recheck stock when ordering.
+LCSC = {
+    "U1": "C2913202",                      # ESP32-S3-WROOM-1-N16R8
+    "U4": "C7519",                         # USBLC6-2SC6 (ST)
+    "U5": "C51118",                        # AP2112K-3.3TRG1 (Diodes)
+    "U6": "C173388", "U7": "C173388",      # 74AHCT245PW,118 (Nexperia)
+    "D1": "C78401",                        # SMAJ5.0A
+    "D2": "C12624",                        # KT-0603G green
+    "F1": "C49318508",                     # 2920L600/16V, 6 A hold
+    "F2": "C19078727",                     # 1812L250/16GR, 2.5 A hold
+    "C1": "C165632",                       # 1000 µF 10 V, 10x10 mm
+    "C2": "C12891", "C5": "C12891",        # 22 µF 25 V X5R 1206
+    "C4": "C15849", "C7": "C15849", "C8": "C15849",                    # 1 µF 0603
+    "C3": "C14663", "C6": "C14663", "C24": "C14663", "C25": "C14663",  # 100 nF 0603
+    "R1": "C25804", "R2": "C25804", "R6": "C25804",                    # 10k 0603
+    "R3": "C23186", "R4": "C23186",        # 5.1k 0603
+    "R5": "C21190",                        # 1k 0603
+    "SW1": "C2886898", "SW2": "C2886898",  # TL3342F160QG
+    "J1": "C22434582",                     # CUI PJ-063AH barrel socket
+    "J3": "C5184243",                      # GCT USB4105-GF-A-120 (16-pin)
+    "J4": "C2798029",                      # Molex 67643-0910 USB-A
+    "J5": "C492443",                       # BH254V-16P box header
+    "J6": "C480516",                       # Phoenix 1715721 (MKDS 1,5/2-5,08)
+    "J7": "C225122",                       # CJT A1257WV-S-6P: JST GH land pattern
+}

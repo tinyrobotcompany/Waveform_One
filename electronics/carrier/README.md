@@ -26,6 +26,29 @@ it draws the fixed tracks in `route_board.py`, autoroutes the rest, pours
 ground and stitches it, and reports what is left unconnected. Rerun it after
 every `build_board.py`.
 
+## Order from JLCPCB
+
+```sh
+python3 electronics/carrier/tools/export_jlc.py
+```
+
+This writes `fab/`: `carrier-gerbers.zip` (the board), `carrier-bom.csv`
+(parts with LCSC numbers, from `LCSC` in `netlist.py`) and `carrier-cpl.csv`
+(part positions). Not-fitted parts are left out. On jlcpcb.com:
+
+1. Upload `carrier-gerbers.zip`. Keep the defaults: 2 layers, 1.6 mm,
+   1 oz copper, HASL lead-free (or ENIG), quantity 5.
+2. Turn on PCB Assembly: top side, assemble 5 boards. The through-hole
+   connectors (J1, J4, J5, J6) need Standard assembly with through-hole
+   soldering, not Economic.
+3. Upload `carrier-bom.csv` and `carrier-cpl.csv`. Check every part is
+   matched and in stock.
+4. In the placement preview, check each polarised part sits the right way
+   round: pin 1 of U1, U4, U5, U6, U7 and J7; the stripe of D1; the green LED
+   D2; the + of C1; and that each connector faces the board edge it should.
+   JLCPCB's part models can be rotated from KiCad's; rotate any that are
+   wrong there.
+
 ## Check and preview
 
 ```sh
