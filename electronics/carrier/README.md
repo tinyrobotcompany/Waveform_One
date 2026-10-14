@@ -88,7 +88,10 @@ Revision 1 is placed and routed.
 - Board: matches the schematic exactly, and passes the design-rule check with
   no errors and nothing unconnected. Four warnings remain: the silkscreen
   outlines of the USB-A socket (J4) and the LED power terminal (J6) overhang
-  the board edge, as those connectors do by design.
+  the board edge, as those connectors do by design. A fifth flags that the
+  S3 module's footprint differs from KiCad's library: its ground-pad holes
+  are drilled 0.3 mm instead of 0.2 mm, so every hole on the board is a
+  standard drill size at JLCPCB.
 - Chip resistor and capacitor references are left off the silkscreen (too
   dense); they remain on the fabrication layer.
 - The USB-C power parts are marked do-not-populate. Their layout is complete

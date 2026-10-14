@@ -86,8 +86,9 @@ J2_TRACKS = [("VBUS_PD", "F", 0.25, [(43.75, 1.33), (43.75, 4.2), (48.25, 4.2), 
 SMALL_TRACKS = [
     # The CH224A's VBUS sense divider (R13) to the VBUS feed.
     ("VBUS_PD", "F", 0.5, [(57.15, 14.0), (58.22, 14.0), (61.0, 11.225)]),
-    # C3's +5V pad to the 5 V trunk just below it.
+    # C3's +5V pad to the 5 V trunk just below it, and on up to C2.
     ("+5V", "F", 0.5, [(24.72, 24.5), (24.72, 26.0)]),
+    ("+5V", "F", 0.5, [(24.72, 24.5), (27.025, 22.2), (27.025, 21.0)]),
     # U6: DIR (pin 1) to VCC (pin 20), straight under the package.
     ("+5V", "F", 0.3, [(41.08, 42.36), (41.08, 36.64)]),
     # U3 (rotated so its SW pins face L1): its two VIN pins, joined between
@@ -128,10 +129,11 @@ SMALL_TRACKS = [
     ("GND", "F", 0.25, [(56.58, 16.35), (56.3, 15.3)]),
 ]
 SMALL_VIAS = [("+5V", 40.4, 35.0), ("+5V", 29.8, 35.0), ("GND", 56.3, 15.3), ("GND", 58.35, 20.6),
-              ("+5V", 14.0, 21.5), ("+5V", 18.61, 17.0), ("USB_DM", 13.05, 21.3), ("USB_DM", 66.8, 27.3)]
+              ("+5V", 14.0, 21.5), ("+5V", 18.61, 17.0), ("USB_DM", 13.05, 21.3), ("USB_DM", 66.8, 27.3),
+              ("GND", 50.05, 38.2)]  # U7's grounded OE pin: its pour patch can be cut off
 # U4's GND pin sits between its two flow-through links: a small via (0.5 mm
-# pad, 0.25 mm drill) between the pin rows takes it to the bottom pour.
-TIGHT_VIAS = [("GND", 14.0, 24.0, 0.5, 0.25)]
+# pad, 0.3 mm drill) between the pin rows takes it to the bottom pour.
+TIGHT_VIAS = [("GND", 14.0, 24.0, 0.5, 0.3)]  # 0.3 mm: JLCPCB's standard drill
 
 
 def mm(x, y):
@@ -267,6 +269,11 @@ def stitch():
     empty spaces, then refill the pours."""
     sites = stitching_sites()
     board = pcbnew.LoadBoard(str(BOARD))
+    # Freerouting can pick the 0.5 mm via for a supply net, which KiCad then
+    # drills at the net class's 0.4 mm: too thin a ring. Drill those 0.3 mm.
+    for item in board.GetTracks():
+        if item.Type() == pcbnew.PCB_VIA_T and item.GetWidth(pcbnew.F_Cu) - item.GetDrillValue() < pcbnew.FromMM(0.2):
+            item.SetDrill(pcbnew.FromMM(0.3))
     vias = stitching_vias(board, sites)
     pcbnew.ZONE_FILLER(board).Fill(board.Zones())
     # A site can land on a pour island the tracks have cut off; drop those.

@@ -179,6 +179,12 @@ def main():
         if part.note:
             placed.SetField("Note", part.note)
             placed.GetField("Note").SetVisible(False)
+        if part.ref == "U1":
+            # The module's ground-pad vias: 0.3 mm, the board maker's standard
+            # drill (the library's 0.2 mm costs extra).
+            for pad in placed.Pads():
+                if pad.GetDrillSize().x and pad.GetDrillSize().x < pcbnew.FromMM(0.3):
+                    pad.SetDrillSize(pcbnew.VECTOR2I_MM(0.3, 0.3))
         pin_nets, pin_labels = resolve_pads(part)
         for pad in placed.Pads():
             number = pad.GetNumber()
