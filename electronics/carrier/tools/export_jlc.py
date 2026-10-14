@@ -9,6 +9,7 @@ Not-fitted parts (the USB-C power section, J8) are left out of both lists.
 """
 import csv
 import json
+import math
 import shutil
 import subprocess
 import tempfile
@@ -26,10 +27,12 @@ LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge
 # JLCPCB's part models sit at a different rotation from KiCad's footprints for
 # some packages: degrees to add, by footprint name prefix (checked against
 # JLCPCB's placement preview, 2026-10-14).
-ROTATION_FIX = {"TSSOP-": -90, "IDC-Header_": -90}
-# Parts whose courtyard is not centred on the body (the S3 module's includes
-# its antenna keep-out); JLCPCB gets KiCad's origin, the body centre, instead.
-CENTRE_AT_ORIGIN = ("ESP32-S3-WROOM-1",)
+ROTATION_FIX = {"TSSOP-": -90, "SOT-23-": -90, "IDC-Header_": -90}
+# Parts placed from KiCad's origin rather than their courtyard (the S3
+# module's courtyard includes its antenna keep-out), plus an offset in the
+# footprint's own frame (mm, Y up, before rotation): JLCPCB centres the module
+# on its pads, 3.77 mm from the body centre towards the pins.
+ORIGIN_OFFSET = {"ESP32-S3-WROOM-1": (0.0, -3.77)}
 
 
 def fitted():
@@ -85,8 +88,11 @@ def cpl(parts):
             x0, y0, x1, y1 = courtyards[part.ref]
             # KiCad's position files count Y upwards, as the Gerbers do.
             x, y = ORIGIN[0] + (x0 + x1) / 2, -(ORIGIN[1] + (y0 + y1) / 2)
-            if name.startswith(CENTRE_AT_ORIGIN):
-                x, y = float(row["PosX"]), float(row["PosY"])
+            for prefix, (dx, dy) in ORIGIN_OFFSET.items():
+                if name.startswith(prefix):
+                    turn = math.radians(float(row["Rot"]))
+                    x = float(row["PosX"]) + dx * math.cos(turn) - dy * math.sin(turn)
+                    y = float(row["PosY"]) + dx * math.sin(turn) + dy * math.cos(turn)
             rotation = float(row["Rot"]) + sum(fix for prefix, fix in ROTATION_FIX.items() if name.startswith(prefix))
             layer = "Top" if row["Side"] == "top" else "Bottom"
             writer.writerow([part.ref, f"{x:.3f}mm", f"{y:.3f}mm", layer, f"{rotation % 360:.0f}"])
