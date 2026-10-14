@@ -23,6 +23,13 @@ OUT = ROOT / "fab"
 KICAD_CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
 ORIGIN = (50.0, 50.0)  # board corner on the KiCad page, as in build_board.py
 LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge.Cuts"
+# JLCPCB's part models sit at a different rotation from KiCad's footprints for
+# some packages: degrees to add, by footprint name prefix (checked against
+# JLCPCB's placement preview, 2026-10-14).
+ROTATION_FIX = {"TSSOP-": -90, "IDC-Header_": -90}
+# Parts whose courtyard is not centred on the body (the S3 module's includes
+# its antenna keep-out); JLCPCB gets KiCad's origin, the body centre, instead.
+CENTRE_AT_ORIGIN = ("ESP32-S3-WROOM-1",)
 
 
 def fitted():
@@ -74,11 +81,15 @@ def cpl(parts):
         writer.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
         for part in parts:
             row = rows[part.ref]
+            name = part.footprint.split(":", 1)[1]
             x0, y0, x1, y1 = courtyards[part.ref]
             # KiCad's position files count Y upwards, as the Gerbers do.
             x, y = ORIGIN[0] + (x0 + x1) / 2, -(ORIGIN[1] + (y0 + y1) / 2)
+            if name.startswith(CENTRE_AT_ORIGIN):
+                x, y = float(row["PosX"]), float(row["PosY"])
+            rotation = float(row["Rot"]) + sum(fix for prefix, fix in ROTATION_FIX.items() if name.startswith(prefix))
             layer = "Top" if row["Side"] == "top" else "Bottom"
-            writer.writerow([part.ref, f"{x:.3f}mm", f"{y:.3f}mm", layer, f"{float(row['Rot']):.0f}"])
+            writer.writerow([part.ref, f"{x:.3f}mm", f"{y:.3f}mm", layer, f"{rotation % 360:.0f}"])
     return len(parts)
 
 
