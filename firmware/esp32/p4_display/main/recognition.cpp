@@ -80,16 +80,17 @@ void clear_display_locked(RecognitionStatus status)
     flush_clear_locked();
 }
 
-void publish(uint64_t expected_epoch, RecognitionStatus status,
+bool publish(uint64_t expected_epoch, RecognitionStatus status,
              const RecognitionTrack *track = nullptr, const RecognitionArtwork *artwork = nullptr)
 {
     std::lock_guard<std::mutex> lock(session_mutex);
     if (expected_epoch == sessions.snapshot().epoch && show != nullptr) {
-        if (track == nullptr) { clear_display_locked(status); return; }
+        if (track == nullptr) { clear_display_locked(status); return true; }
         pending_clear.cancel(); // a newer track supersedes an older clear
+        if (!show(status, track, artwork)) return false;
         track_visible.store(track->title[0] != '\0');
-        show(status, track, artwork);
     }
+    return true; // stale epochs are intentionally discarded, never retried
 }
 
 using recognition_http::Response;
@@ -434,11 +435,19 @@ void recognition_task(void *)
     unsigned lookups = 0;
     int64_t recent_at = 0;
     int64_t last_request_at = -2500000;
-    const auto show_now = [&](RecognitionStatus status) {
+    recognition_delivery::StatusUpdate pending_display;
+    const auto flush_display = [&] {
         auto picture = image.view();
-        publish(epoch, status, track.title[0] ? &track : nullptr, image.pixels ? &picture : nullptr);
+        pending_display.flush(epoch, [&](RecognitionStatus status) {
+            return publish(epoch, status, track.title[0] ? &track : nullptr, image.pixels ? &picture : nullptr);
+        });
+    };
+    const auto show_now = [&](RecognitionStatus status) {
+        pending_display.request(epoch, status);
+        flush_display();
     };
     const auto clear = [&] {
+        pending_display.cancel();
         if (track.title[0]) { recent = track; recent_image = std::move(image); recent_at = esp_timer_get_time(); }
         track = {}; image = {};
     };
@@ -474,6 +483,9 @@ void recognition_task(void *)
             show_now(current.audio.sound ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
         }
         if (paid && !current.audio.sound) planner.observe_quiet(heard, quiet_hop);
+        // Retry a busy display using still-owned track/artwork. A session
+        // change above cancels/replaces this before any retry can publish.
+        flush_display();
         const int64_t now = esp_timer_get_time();
         recognition_policy::Window window;
         if (recognition_policy::request_allowed(paid, current.session, planner.acquiring())

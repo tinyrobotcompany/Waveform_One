@@ -2,9 +2,10 @@
 #include "recognition.h"
 
 namespace recognition_delivery {
-// Owned under the session mutex. Payload is empty, so retries never retain
-// borrowed track strings or artwork pixels past their lifetime.
-class EmptyUpdate {
+// Queues a status/epoch, never borrowed track strings or artwork pixels.
+// The caller supplies its currently owned payload when applying the update.
+// Access must be confined to one task or protected by the session mutex.
+class StatusUpdate {
 public:
     void request(uint64_t epoch, RecognitionStatus status) { epoch_ = epoch; status_ = status; pending_ = true; }
     void cancel() { pending_ = false; }
@@ -22,4 +23,5 @@ private:
     RecognitionStatus status_ = RecognitionStatus::Waiting;
     bool pending_ = false;
 };
+using EmptyUpdate = StatusUpdate;
 }

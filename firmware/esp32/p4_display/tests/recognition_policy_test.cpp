@@ -335,6 +335,23 @@ int main()
     assert(!delivery.flush(8, [&](RecognitionStatus) { ++calls; return true; }));
     assert(calls == 2);
 
+    // Retry a busy track update with the worker-owned payload. New updates
+    // replace old status, and a stop invalidates the pending matched epoch.
+    recognition_delivery::StatusUpdate track_delivery;
+    track_delivery.request(20, RecognitionStatus::Matched);
+    assert(!track_delivery.flush(20, [](RecognitionStatus) { return false; }));
+    assert(track_delivery.pending());
+    track_delivery.request(20, RecognitionStatus::NoMatch);
+    assert(track_delivery.flush(20, [](RecognitionStatus status) {
+        assert(status == RecognitionStatus::NoMatch); return true;
+    }));
+    track_delivery.request(20, RecognitionStatus::Matched);
+    assert(!track_delivery.flush(21, [](RecognitionStatus) { assert(false); return true; }));
+    assert(!track_delivery.pending());
+    track_delivery.request(21, RecognitionStatus::Matched);
+    track_delivery.cancel(); // worker cleared/replaced the owned payload
+    assert(!track_delivery.flush(21, [](RecognitionStatus) { assert(false); return true; }));
+
     // ACRCloud needs verified PCM, never a successful Shazam signature.
     assert(lookup_ready(true, true, false, 0));
     assert(!lookup_ready(true, false, true, 100));
