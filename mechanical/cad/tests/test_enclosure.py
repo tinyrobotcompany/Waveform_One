@@ -8,7 +8,8 @@ from waveform_one import parameters as p
 from waveform_one.build import build_enclosure_parts
 from waveform_one.calibration.coupon import build_coupon
 from waveform_one.components import build_all, lcd
-from waveform_one.enclosure import clips, pi_tray, rear_panel, record_holder, shell
+from waveform_one import carrier
+from waveform_one.enclosure import clips, rear_panel, record_holder, shell
 from waveform_one.export import export_printed_parts, printed_part_stem
 from waveform_one.geometry import Placeholder
 from waveform_one.validation import collision_errors, print_envelope_violations
@@ -25,7 +26,7 @@ def test_expected_parts(parts):
     names = list(parts)
     assert names[:2] == ["shell_left", "shell_right"]
     assert sum(n.startswith("clip_") for n in names) == 8
-    assert names[-5:] == ["pi_tray", "rear_panel_left", "rear_panel_right", "record_holder_left", "record_holder_right"]
+    assert names[-4:] == ["rear_panel_left", "rear_panel_right", "record_holder_left", "record_holder_right"]
 
 
 def test_every_part_fits_the_printer_lying_on_the_bed(parts):
@@ -106,10 +107,43 @@ def test_rear_panel_screws_line_up_with_wall_bosses():
         assert abs(x - p.REAR_SEAM_X.v) > p.REAR_BOSS_WIDTH.v / 2
 
 
-def test_pi_tray_stays_on_the_flat_floor():
-    (x0, _), _ = pi_tray.tray_bounds()
-    (x_min, _, _), _ = layout.interior_bounds()
-    assert x0 >= x_min + p.CORNER_RADIUS.v - p.SHELL_WALL.v - TOL
+def test_carrier_board_sits_on_the_flat_floor_of_one_shell_half():
+    (x0, x1), (y0, y1) = carrier.bounds()
+    (x_min, y_min, _), (x_max, y_max, _) = layout.interior_bounds()
+    flat = p.CORNER_RADIUS.v - p.SHELL_WALL.v
+    assert x_min + flat <= x0 and x1 <= x_max - flat
+    assert y_min < y0 and y1 < y_max
+    assert x0 > layout.seam_x() + p.TONGUE_DEPTH.v  # entirely in the right half
+    assert carrier.bottom_z() - layout.interior_bounds()[0][2] >= p.CARRIER_MIN_STANDOFF.v
+
+
+def test_carrier_posts_line_up_with_the_board_holes(parts):
+    board = carrier.board()
+    for x, y in carrier.hole_centres():
+        assert carrier.bounds()[0][0] < x < carrier.bounds()[0][1]
+        assert carrier.bounds()[1][0] < y < carrier.bounds()[1][1]
+    # Each post's insert hole is in the shell under its board hole.
+    shell_right = parts["shell_right"].body
+    (_, _, z_floor), _ = layout.interior_bounds()
+    top = z_floor + board["standoff_height"]
+    from build123d import Pos, Box
+    for x, y in carrier.hole_centres():
+        probe = Pos(x, y, top - 1.0) * Box(0.5, 0.5, 0.5)
+        assert (shell_right & probe).volume == pytest.approx(0, abs=1e-6)  # hole is open
+        ring = Pos(x + p.M3_INSERT_HOLE.v / 2 + 1.0, y, top - 1.0) * Box(0.5, 0.5, 0.5)
+        assert (shell_right & ring).volume > 0  # post material around it
+
+
+def test_rear_panel_has_an_opening_at_each_rear_socket(parts):
+    panel = parts["rear_panel_left"].body + parts["rear_panel_right"].body
+    (_, _, _), (_, y_inner, _) = layout.interior_bounds()
+    from build123d import Pos, Box
+    openings = carrier.rear_openings()
+    assert {ref for ref, *_ in openings} == {"J1", "J2"}
+    for _, x0, x1, z0, z1 in openings:
+        probe = Pos((x0 + x1) / 2, y_inner + p.REAR_PANEL_THICKNESS.v / 2, (z0 + z1) / 2) * Box(1, 1, 1)
+        assert (panel & probe).volume == pytest.approx(0, abs=1e-6)
+        assert carrier.board()["case_rear_y"] < y_inner  # socket faces sit inside the panel
 
 
 def test_holders_lean_the_sleeve_back_from_their_slots(parts):

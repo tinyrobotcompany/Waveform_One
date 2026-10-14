@@ -4,10 +4,11 @@ import pytest
 
 from waveform_one import layout
 from waveform_one import parameters as p
-from waveform_one.components import build_all, raspberry_pi
+from waveform_one import carrier
+from waveform_one.components import build_all
 from waveform_one.validation import ValidationError, collision_errors, outside_bounds_errors, require_valid_layout
 
-EXPECTED = ["Screen", "Diffuser", "LedPanel", "RaspberryPi", "ESP32", "Microphone"]
+EXPECTED = ["Screen", "Diffuser", "LedPanel", "CarrierBoard", "Microphone"]
 
 
 @pytest.fixture(scope="module")
@@ -65,12 +66,14 @@ def test_components_use_the_owner_measurements(parts):
     assert (led.X, led.Z) == pytest.approx((195.0, 95.0))
 
 
-def test_pi_has_four_mounting_holes_on_the_datasheet_pattern():
-    holes = raspberry_pi.mounting_hole_centres()
+def test_carrier_board_follows_the_kicad_placement():
+    holes = carrier.hole_centres()
     xs, ys = sorted({x for x, _ in holes}), sorted({y for _, y in holes})
+    board = carrier.board()
     assert len(holes) == 4
-    assert xs[1] - xs[0] == pytest.approx(p.PI_HOLE_PITCH_L.v)
-    assert ys[1] - ys[0] == pytest.approx(p.PI_HOLE_PITCH_W.v)
+    assert xs[0] == pytest.approx(board["case_left_x"] + 4.0)
+    assert ys[1] == pytest.approx(board["case_rear_y"] - 4.0)
+    assert {item["ref"] for item in carrier.parts()} >= {"J1", "J3", "J4", "J5", "J6", "J7", "U1"}
 
 
 def test_microphone_sits_on_the_rear_panel(parts):
@@ -78,9 +81,9 @@ def test_microphone_sits_on_the_rear_panel(parts):
     assert box(parts, "Microphone").max.Y == pytest.approx(hi[1])
 
 
-def test_pi_pushed_into_the_screen_cables_is_caught(monkeypatch):
-    monkeypatch.setattr(p, "PI_REAR_PLUG_KEEPOUT", replace(p.PI_REAR_PLUG_KEEPOUT, value=70.0))
-    with pytest.raises(ValidationError, match="RaspberryPi body overlaps Screen keep-out"):
+def test_carrier_cables_pushed_into_the_led_panel_are_caught(monkeypatch):
+    monkeypatch.setattr(p, "CARRIER_WIRE_KEEPOUT", replace(p.CARRIER_WIRE_KEEPOUT, value=60.0))
+    with pytest.raises(ValidationError, match="CarrierBoard keep-out LedPowerWires"):
         require_valid_layout(build_all(), layout.interior_bounds())
 
 

@@ -69,36 +69,6 @@ def screen_rear_y() -> float:
     return screen_origin()[1] + p.SCREEN_D.v
 
 
-def tray_top_z() -> float:
-    return p.SHELL_WALL.v + p.TRAY_PAD_HEIGHT.v + p.TRAY_THICKNESS.v
-
-
-def pi_body_size() -> Vec3:
-    return (
-        p.PI_BOARD_L.v + p.PI_PORT_OVERHANG.v,
-        p.PI_BOARD_W.v,
-        p.PI_BOARD_T.v + p.PI_HEIGHT_ABOVE_BOARD.v,
-    )
-
-
-def pi_origin() -> Vec3:
-    """Board's left (non-USB) end, front edge, underside."""
-    (x_min, _, _), (_, y_max, _) = interior_bounds()
-    y = y_max - p.PI_REAR_PLUG_KEEPOUT.v - p.PI_BOARD_W.v
-    return (x_min + p.PI_SIDE_GAP.v, y, tray_top_z() + p.PI_STANDOFF_HEIGHT.v)
-
-
-def pi_usb_keepout_end_x() -> float:
-    return pi_origin()[0] + pi_body_size()[0] + p.PI_USB_PLUG_KEEPOUT.v
-
-
-def esp_origin() -> Vec3:
-    (_, _, z_min), _ = interior_bounds()
-    x = pi_usb_keepout_end_x() + p.ESP_GAP_FROM_PI.v + p.ESP_USB_PLUG_KEEPOUT.v
-    y = led_rear_y() + p.LED_REAR_KEEPOUT.v + p.ESP_REAR_OFFSET.v
-    return (x, y, z_min + p.ESP_UNDERSIDE_KEEPOUT.v)
-
-
 def mic_origin() -> Vec3:
     _, (_, y_max, _) = interior_bounds()
     return (

@@ -5,7 +5,7 @@ plate with the screen and LED windows. It splits into two halves at the middle
 of the divider between the windows, where the concept already shows a line.
 A tongue on the left half (front plate, top and bottom walls) slots into a
 groove in the right half for alignment; the halves are glued, and the rear
-panel and Pi tray screw across the joint.
+panel screws across the joint.
 
 Both halves print front face down: the front gets the bed's finish, every wall
 grows straight up, and wall-mounted bosses have 45-degree undersides.
@@ -19,7 +19,8 @@ from build123d import Axis, Part, Text, FontStyle, chamfer, extrude
 from waveform_one import layout
 from waveform_one import parameters as p
 from waveform_one.components import lcd
-from waveform_one.enclosure import FRONT_FACE_DOWN, clips, pi_tray, record_holder, rear_panel
+from waveform_one import carrier
+from waveform_one.enclosure import FRONT_FACE_DOWN, clips, record_holder, rear_panel
 from waveform_one.geometry import (
     CUT_OVERSHOOT,
     PrintedPart,
@@ -114,21 +115,23 @@ def _rear_bosses():
     return bosses, holes
 
 
-def _tray_pads():
+def _carrier_posts():
+    """Floor posts with heat-set inserts under the carrier board's four holes."""
     _, _, z_floor = layout.interior_bounds()[0]
-    size, height = p.TRAY_PAD_SIZE.v, p.TRAY_PAD_HEIGHT.v
-    pads, holes = [], []
-    for x, y in pi_tray.pad_centres():
-        pads.append(sloped_pad(x, size, y - size / 2, y + size / 2, z_floor, height, up=True))
+    size, height = p.CARRIER_POST_SIZE.v, carrier.board()["standoff_height"]
+    posts, holes = [], []
+    for x, y in carrier.hole_centres():
+        posts.append(sloped_pad(x, size, y - size / 2, y + size / 2, z_floor, height, up=True))
         holes.append(z_cylinder(x, y, z_floor + height - p.M3_INSERT_DEPTH.v, z_floor + height + CUT_OVERSHOOT, p.M3_INSERT_HOLE.v))
-    return pads, holes
+    return posts, holes
 
 
 def floor_vent_region() -> tuple[tuple[float, float], tuple[float, float]]:
-    """((x_min, x_max), (y_min, y_max)): between the Pi tray and the shell seam."""
-    (_, tray_x1), (ty0, ty1) = pi_tray.tray_bounds()
+    """((x_min, x_max), (y_min, y_max)): under the P4 board, left of the shell seam."""
+    (x_min, _, _), _ = layout.interior_bounds()
     clear = p.VENT_PITCH.v
-    return (tray_x1 + clear, layout.seam_x() - clear), (ty0, ty1)
+    flat_floor_x = x_min + p.CORNER_RADIUS.v - p.SHELL_WALL.v
+    return (flat_floor_x + clear, layout.seam_x() - clear), (p.FLOOR_VENT_Y_MIN.v, p.FLOOR_VENT_Y_MAX.v)
 
 
 def _floor_vents() -> list[Part]:
@@ -160,7 +163,7 @@ def build_full_shell() -> Part:
     shell = _cut_windows(_outer_shell())
     shell -= _front_engraving()
     shell += _pockets()
-    for features, cuts in (clips.build_bosses(), _rear_bosses(), _tray_pads()):
+    for features, cuts in (clips.build_bosses(), _rear_bosses(), _carrier_posts()):
         for feature in features:
             shell += feature
         for cut in cuts:
