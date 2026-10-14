@@ -11,7 +11,15 @@ int main() {
             "WF1 1 MODE unknown", "WF1 1 MODE classic extra", "WF1 2 STATUS extra"})
         assert(!control::parse(bad, command));
     assert(control::parse("WF1 12 CAPTURE", command) && command.capture && !command.changeMode);
-    assert(!control::parse("WF1 12 CAPTURE extra", command));
+    assert(command.capture_seconds == 8);
+    assert(control::parse("WF1 12 CAPTURE 4", command) && command.capture_seconds == 4);
+    assert(control::parse("WF1 12 CAPTURE 8", command) && command.capture_seconds == 8);
+    for (const char* bad : {"WF1 12 CAPTURE extra", "WF1 12 CAPTURE 0", "WF1 12 CAPTURE 3",
+            "WF1 12 CAPTURE 04", "WF1 12 CAPTURE 4 extra", "WF1 12 CAPTURE 4 "})
+        assert(!control::parse(bad, command));
+    assert(control::parse("WF1 13 STREAM", command) && command.stream && !command.capture);
+    for (const char* bad : {"WF1 13 STREAM 4", "WF1 13 STREAM ", "WF1 13 STREAMS"})
+        assert(!control::parse(bad, command));
     control::Lines lines;
     std::vector<std::string> received;
     auto feed = [&](const std::string& input) {

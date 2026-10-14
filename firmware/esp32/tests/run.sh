@@ -42,7 +42,7 @@ done
     -I "$esp_dir/visualizer/main" -I "$esp_dir/mic_test/main" \
     "$esp_dir/visualizer/tests/capture_transport_test.cpp" -o "$build_dir/capture_transport"
 "$build_dir/capture_transport"
-printf '%s\n' 'PASS: production capture/control transport, overflow recovery and failed headers'
+printf '%s\n' 'PASS: production capture/stream/control transport, overflow recovery and failed headers'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -61,17 +61,31 @@ printf '%s\n' 'PASS: ESP32-P4 WF1 client protocol'
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/audio_capture_test.cpp" -o "$build_dir/p4_audio_capture"
-"$build_dir/p4_audio_capture"
-printf '%s\n' 'PASS: ESP32-P4 bounded PCM capture, sequence and checksum validation'
+    "$esp_dir/p4_display/tests/audio_stream_test.cpp" -o "$build_dir/p4_audio_stream"
+"$build_dir/p4_audio_stream"
+printf '%s\n' 'PASS: ESP32-P4 continuous PCM stream, sequence/checksum validation and sample ring'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/visualizer/tests/stubs" \
     -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/usb_capture_transport_test.cpp" -o "$build_dir/p4_usb_capture"
-"$build_dir/p4_usb_capture"
-printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disconnects and cleanup'
+    "$esp_dir/p4_display/tests/usb_stream_transport_test.cpp" -o "$build_dir/p4_usb_stream"
+"$build_dir/p4_usb_stream"
+printf '%s\n' 'PASS: production P4 USB audio stream, restarts, shared controls and disconnects'
+
+"${CXX:-c++}" -O1 -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/listening_test.cpp" -o "$build_dir/p4_listening"
+"$build_dir/p4_listening"
+printf '%s\n' 'PASS: sound start and silence detection against the learnt room background'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/audio_presence_test.cpp" -o "$build_dir/p4_presence"
+"$build_dir/p4_presence"
+printf '%s\n' 'PASS: audio presence independent of lookup, absolute positions and stale-result invalidation'
 
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -79,14 +93,7 @@ printf '%s\n' 'PASS: production P4 USB capture, shared controls, deadlines, disc
     "$esp_dir/p4_display/tests/fingerprint_test.cpp" \
     "$esp_dir/p4_display/main/fingerprint.cpp" -o "$build_dir/p4_fingerprint"
 "$build_dir/p4_fingerprint"
-printf '%s\n' 'PASS: native fingerprints against upstream reference and binary encoding'
-
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
-    -fsanitize=address,undefined -fno-omit-frame-pointer \
-    -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/capture_completion_test.cpp" -o "$build_dir/p4_completion"
-"$build_dir/p4_completion"
-printf '%s\n' 'PASS: recognition completion deadlines, cancellation, stale callbacks and PCM ownership'
+printf '%s\n' 'PASS: streaming fingerprints against upstream reference, recordings and binary encoding'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -110,10 +117,54 @@ printf '%s\n' 'PASS: recognition metadata, UTF-8 and artwork origin validation'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/album_resolver_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_album"
+"$build_dir/p4_album"
+printf '%s\n' 'PASS: album choice from catalogue releases, current-album preference and fallbacks'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/album_sequence_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_album_sequence"
+"$build_dir/p4_album_sequence"
+printf '%s\n' 'PASS: album track order, gaps, silences, gapless tracks and returning to live listening'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/acrcloud_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_acrcloud"
+"$build_dir/p4_acrcloud"
+printf '%s\n' 'PASS: ACRCloud signing, 8 kHz audio, multipart body and best-match parsing'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/remote_state_test.cpp" \
+    "$build_dir/cJSON.o" -o "$build_dir/p4_remote_state"
+"$build_dir/p4_remote_state"
+printf '%s\n' 'PASS: phone recognition snapshot ownership, expiry, JSON and concurrent updates'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/recognition_policy_test.cpp" -o "$build_dir/p4_recognition_policy"
 "$build_dir/p4_recognition_policy"
-printf '%s\n' 'PASS: recognition session invalidation, pairing rotation, backoff and expiry'
+printf '%s\n' 'PASS: recognition sessions, lookup planning, request budget and backoff'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/recognition_replay_test.cpp" -o "$build_dir/p4_recognition_replay"
+"$build_dir/p4_recognition_replay"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/recognition_state_test.cpp" -o "$build_dir/p4_recognition_state"
+"$build_dir/p4_recognition_state"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
@@ -128,3 +179,33 @@ printf '%s\n' 'PASS: ESP32-P4 remote, Wi-Fi and UI control policies'
     "$esp_dir/p4_display/tests/remote_auth_test.cpp" -o "$build_dir/p4_remote_auth"
 "$build_dir/p4_remote_auth"
 printf '%s\n' 'PASS: ESP32-P4 phone remote pairing and session lifecycle'
+
+"${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/search_waveform_test.cpp" -o "$build_dir/p4_search_waveform"
+"$build_dir/p4_search_waveform"
+printf '%s\n' 'PASS: fixed search waveform buffer bounds, gutters and animation cycle'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/display_feedback_test.cpp" -o "$build_dir/p4_feedback"
+"$build_dir/p4_feedback"
+printf '%s\n' 'PASS: native recognition feedback and UTF-8 display fallback'
+
+for remote_version in 0x010300 0x010302; do
+    "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+        -fsanitize=address,undefined -fno-omit-frame-pointer \
+        -DTEST_REMOTE_VERSION="$remote_version" \
+        -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/p4_display/main" \
+        "$esp_dir/p4_display/tests/hosted_rx_ownership_test.cpp" -o "$build_dir/p4_rx_ownership"
+    "$build_dir/p4_rx_ownership"
+done
+printf '%s\n' 'PASS: hosted Wi-Fi RX buffer ownership on old and consuming callback contracts'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/album_palette_test.cpp" -o "$build_dir/p4_palette"
+"$build_dir/p4_palette"
+printf '%s\n' 'PASS: artwork palette bounds, neutral fallbacks, deterministic extraction and readable contrast'

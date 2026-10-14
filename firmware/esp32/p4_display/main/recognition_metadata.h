@@ -75,6 +75,12 @@ inline bool parse(const cJSON *root, RecognitionTrack &output)
                 || std::strcmp(label->valuestring, "album") == 0)) text(field(item, "text"), output.album);
         }
     }
+    // Where in the song the clip starts, for timing the next lookup.
+    const cJSON *match = cJSON_GetArrayItem(field(root, "matches"), 0);
+    const cJSON *offset = field(match, "offset");
+    if (cJSON_IsNumber(offset) && offset->valuedouble >= 0 && offset->valuedouble < 36000) {
+        output.offset_s = offset->valuedouble;
+    }
     char url[2049]{};
     if (text(field(field(track, "images"), "coverart"), url) && artwork_url(url)) {
         std::memcpy(output.artwork_url, url, std::strlen(url) + 1);

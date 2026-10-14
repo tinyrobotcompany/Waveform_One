@@ -13,7 +13,7 @@ struct esp_http_client_config_t {
 struct TestHttp {
     int64_t declared = 0;
     int status = 200, reads = 0, closed = 0, cleaned = 0, eagain = 0;
-    int open_result = ESP_OK;
+    int open_result = ESP_OK, open_failures = 0;
     bool complete = true, read_error = false;
     std::string body, retry_after;
     size_t offset = 0, fragment = 3;
@@ -21,16 +21,24 @@ struct TestHttp {
     esp_http_client_config_t config{};
 };
 inline TestHttp test_http;
+inline int test_http_inits = 0;
+inline std::string test_http_url;
 using esp_http_client_handle_t = TestHttp *;
 inline auto esp_http_client_init(const esp_http_client_config_t *config) {
-    test_http.config = *config;
+    test_http.config = *config; ++test_http_inits; test_http_url = config->url;
     assert(config->crt_bundle_attach != nullptr && config->disable_auto_redirect);
     return &test_http;
 }
 inline int esp_http_client_close(esp_http_client_handle_t client) { ++client->closed; return ESP_OK; }
 inline int esp_http_client_cleanup(esp_http_client_handle_t client) { ++client->cleaned; return ESP_OK; }
 inline int esp_http_client_set_header(esp_http_client_handle_t, const char *, const char *) { return ESP_OK; }
-inline int esp_http_client_open(esp_http_client_handle_t client, int) { return client->open_result; }
+inline int esp_http_client_set_url(esp_http_client_handle_t, const char *url) { test_http_url = url; return ESP_OK; }
+inline int esp_http_client_set_method(esp_http_client_handle_t client, int method) { client->config.method = method; return ESP_OK; }
+inline int esp_http_client_open(esp_http_client_handle_t client, int) {
+    const int result = client->open_result;
+    if (client->open_failures > 0) { --client->open_failures; return -1; }
+    return result;
+}
 inline int esp_http_client_write(esp_http_client_handle_t, const char *, int length) { return length; }
 inline int64_t esp_http_client_fetch_headers(esp_http_client_handle_t client) {
     if (!client->retry_after.empty()) {
