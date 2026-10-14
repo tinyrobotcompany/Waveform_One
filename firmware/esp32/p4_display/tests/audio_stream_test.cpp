@@ -92,18 +92,24 @@ int main()
     }
     auto read = ring->read(0, out, 1024);
     assert(!read.skipped && read.position == 0 && read.count == 384 && out[383] == 383);
+    assert(read.remaining == 0);
     read = ring->read(100, out, 10);
     assert(read.count == 10 && out[0] == 100);
+    assert(read.remaining == 274);
+    read = ring->read(384, out, 128);
+    assert(read.count == 0 && read.remaining == 0);
     for (int round = 3; round < 6; ++round) {
         for (int i = 0; i < 128; ++i) block[i] = int16_t(round * 128 + i);
         ring->write(block, 128);
     }
     read = ring->read(0, out, 1024);  // 768 written, 512 kept
     assert(read.skipped && read.position == 256 && read.count == 512 && out[0] == 256 && out[511] == 767);
+    assert(read.remaining == 0);
     const auto before = read.segment;
     ring->discontinuity();
     read = ring->read(700, out, 1024);
     assert(read.segment != before && read.skipped && read.position == 768 && read.count == 0);
+    assert(read.remaining == 0);
     ring->write(block, 128);
     read = ring->read(768, out, 1024);
     assert(!read.skipped && read.count == 128 && ring->written() == 896);

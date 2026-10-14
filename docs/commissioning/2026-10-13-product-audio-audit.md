@@ -165,3 +165,44 @@ Verified source defect: `publish()` discarded the GUI callback's failure for upd
 The worker now retains pending update status/epoch and retries with its own still-owned track and image. Clearing/replacing that payload cancels pending work; a newer status replaces it, and stale epochs are discarded. No borrowed pixel pointer is stored in the retry object. The visible-track flag is set after the callback successfully applies the update. Empty updates retain their existing independent retry path.
 
 Validation: ASan/UBSan policy tests cover busy callback, newer-status replacement, stale epoch and cancellation. The album-cache test also passed. Native P4 build and image-size checks passed (`build/audio-investigation-20261014/display-retry-build.log`). No hardware was connected or flashed for this change; optical update timing remains unmeasured. This corrects update delivery, not the acoustic stop classifier.
+
+### 2026-10-14 — runtime branch review and stale audio after slow lookups
+
+Reviewed the separate `fix/runtime-stability` commit `6fa75a8`. Its recognition
+changes target the previous Raspberry Pi Python worker, optional short USB
+captures and Pi/browser artwork handling; it also contains historical incident,
+latency and PCB documentation. It is not a drop-in fix for the current P4 worker.
+No merge, cherry-pick or deletion was performed. Its newest-clip policy is useful
+as a design comparison; this review does not declare the branch safe to delete.
+
+Verified current-source defect: the P4 worker processes at most 4096 samples
+(256 ms) per loop, then evaluates the lookup schedule. HTTPS, album resolution
+and artwork run synchronously on that worker. When they take longer than the
+request interval, another request can become due partway through processing
+the accumulated audio. Repeated slow requests can therefore follow old samples
+instead of reaching the newest audio. The independent presence task does not
+prevent this worker backlog.
+
+The ring read now reports remaining samples from the same mutex-protected
+snapshot as the returned audio. Production request admission waits until that
+reader catches up. It still processes all samples, preserves discontinuity
+handling, yields while draining and honours existing budget/backoff. No capture
+format, acoustic threshold or display-state rule changed.
+
+`recognition_replay_test.cpp` exercises the production ring, planner and request
+admission with constant sample labels representing successive songs. After an
+initial match, each simulated service operation accumulates six seconds of
+audio. The previous admission rule failed the fresh-window assertion: its first
+eligible window ended 55,040 samples (3.440 seconds) behind the available tail.
+With the correction, five successive cycles select the latest five seconds,
+all belonging to the replacement sample label, including across buffer wrap.
+This is verified scheduling evidence, not microphone data, a service benchmark
+or a measured end-user latency improvement. Disconnect admission remains tested.
+
+Residual risks: a slow network still adds its own response latency; the first
+acquisition still depends on the sound-start detector. False silence and prompt
+real-stop detection remain open until labelled microphone evidence is available.
+No hardware was used for this correction. Validation includes ASan/UBSan ring
+and replay tests; full hook and native firmware build results accompany its
+commit. The source coverage is the old worker comparison, current P4 request
+loop, production ring implementation and deterministic scheduler replay.

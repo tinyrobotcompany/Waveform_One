@@ -157,6 +157,12 @@ printf '%s\n' 'PASS: recognition sessions, lookup planning, request budget and b
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/recognition_replay_test.cpp" -o "$build_dir/p4_recognition_replay"
+"$build_dir/p4_recognition_replay"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/control_policy_test.cpp" -o "$build_dir/p4_control_policy"
 "$build_dir/p4_control_policy"
 printf '%s\n' 'PASS: ESP32-P4 remote, Wi-Fi and UI control policies'

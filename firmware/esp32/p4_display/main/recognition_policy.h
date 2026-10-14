@@ -13,8 +13,8 @@ struct Session { uint64_t epoch; bool ready; bool transport_ready = false; };
 
 // A level vote is not a transport failure. Finish a started ACR acquisition
 // even if that vote becomes quiet; the planner bounds its attempts/lifetime.
-inline bool request_allowed(bool acr, Session session, bool acquiring) {
-    return session.transport_ready && (session.ready || (acr && acquiring));
+inline bool request_allowed(bool acr, Session session, bool acquiring, bool caught_up = true) {
+    return caught_up && session.transport_ready && (session.ready || (acr && acquiring));
 }
 
 // Network and controller availability. Any change invalidates in-flight

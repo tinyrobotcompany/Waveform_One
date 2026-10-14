@@ -148,7 +148,13 @@ public:
         segment_start_ = written_;
     }
 
-    struct Read { size_t count = 0; uint64_t position = 0; uint32_t segment = 0; bool skipped = false; };
+    struct Read {
+        size_t count = 0;
+        uint64_t position = 0;
+        uint32_t segment = 0;
+        bool skipped = false;
+        uint64_t remaining = 0; // unread samples at this same locked snapshot
+    };
 
     // Copies samples from position onward, never older than the current
     // segment and never older than the buffer still holds.
@@ -163,6 +169,7 @@ public:
         if (position > written_) position = written_;
         const uint64_t available = written_ - position;
         result.count = available < capacity ? static_cast<size_t>(available) : capacity;
+        result.remaining = available - result.count;
         for (size_t i = 0; i < result.count; ++i) output[i] = buffer_[(position + i) % Capacity];
         result.position = position;
         return result;

@@ -455,8 +455,10 @@ void recognition_task(void *)
         const auto current = sound_session();
         const auto *audio = usb_controller_audio();
         size_t count = 0;
+        bool caught_up = false;
         if (audio) {
             const auto read = audio->read(position, buffer.get(), capacity);
+            caught_up = read.remaining == 0;
             if (read.segment != segment || read.skipped) {
                 segment = read.segment; analysis_base = read.position; heard = 0;
                 if (analyzer) analyzer->reset();
@@ -488,7 +490,10 @@ void recognition_task(void *)
         flush_display();
         const int64_t now = esp_timer_get_time();
         recognition_policy::Window window;
-        if (recognition_policy::request_allowed(paid, current.session, planner.acquiring())
+        // HTTPS/catalogue work may leave seconds of queued audio. Drain it
+        // before choosing the next window; otherwise each slow lookup can
+        // trigger another lookup on old samples before reaching current audio.
+        if (recognition_policy::request_allowed(paid, current.session, planner.acquiring(), caught_up)
             && std::time(nullptr) >= 1704067200 && retries.due(now)
             && (!paid || now - last_request_at >= 2500000)
             && budget.available(now) && planner.due(heard, window)) {
