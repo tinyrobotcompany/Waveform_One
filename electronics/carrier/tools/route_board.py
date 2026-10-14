@@ -84,6 +84,8 @@ J2_TRACKS = [("VBUS_PD", "F", 0.25, [(43.75, 1.33), (43.75, 4.2), (48.25, 4.2), 
               # U2's other VBUS pin (8) to the input capacitor C10.
               ("VBUS_PD", "F", 0.5, [(48.64, 14.5), (49.66, 14.5), (51.1, 15.95), (51.5, 15.95)])]
 SMALL_TRACKS = [
+    # The CH224A's VBUS sense divider (R13) to the VBUS feed.
+    ("VBUS_PD", "F", 0.5, [(57.15, 14.0), (58.22, 14.0), (61.0, 11.225)]),
     # C3's +5V pad to the 5 V trunk just below it.
     ("+5V", "F", 0.5, [(24.72, 24.5), (24.72, 26.0)]),
     # U6: DIR (pin 1) to VCC (pin 20), straight under the package.
@@ -265,14 +267,23 @@ def stitch():
     empty spaces, then refill the pours."""
     sites = stitching_sites()
     board = pcbnew.LoadBoard(str(BOARD))
-    stitching_vias(board, sites)
+    vias = stitching_vias(board, sites)
     pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+    # A site can land on a pour island the tracks have cut off; drop those.
+    zones = [zone for zone in board.Zones() if zone.GetNetname() == "/GND"]
+    stranded = [via for via in vias if not all(
+        any(zone.HitTestFilledArea(layer, via.GetPosition()) for zone in zones) for layer in (pcbnew.F_Cu, pcbnew.B_Cu))]
+    for via in stranded:
+        board.Remove(via)
+    if stranded:
+        pcbnew.ZONE_FILLER(board).Fill(board.Zones())
     board.Save(str(BOARD))
-    print(f"{len(sites)} stitching vias")
+    print(f"{len(vias) - len(stranded)} stitching vias")
 
 
 def stitching_vias(board, sites):
     net = board.FindNet("/GND")
+    vias = []
     for x, y in sites:
         via = pcbnew.PCB_VIA(board)
         via.SetPosition(mm(x, y))
@@ -281,6 +292,8 @@ def stitching_vias(board, sites):
         via.SetNet(net)
         via.SetLocked(True)
         board.Add(via)
+        vias.append(via)
+    return vias
 
 
 def autoroute(board, work):

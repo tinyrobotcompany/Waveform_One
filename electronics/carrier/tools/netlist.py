@@ -153,7 +153,7 @@ add(Part("J6", "Connector:Screw_Terminal_01x02", "LED panel 5V", "TerminalBlock_
          {"1": "+5V", "2": "GND"}, "hub75", note="Up to 4 A."))
 
 # --- Other connectors -------------------------------------------------------------
-add(Part("J7", "Connector_Generic:Conn_01x06", "INMP441", "Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical",
+add(Part("J7", "Connector_Generic:Conn_01x06", "INMP441", "Connector_JST:JST_GH_BM06B-GHS-TBT_1x06-1MP_P1.25mm_Vertical",
          {"1": "+3V3", "2": "GND", "3": "MIC_SCK", "4": "MIC_WS", "5": "MIC_SD", "6": "GND"}, "connectors",
          note="Pin 6 sets L/R low: left channel, as the firmware reads."))
 add(Part("F2", "Device:Polyfuse", "2.5A hold", "Fuse:Fuse_1812_4532Metric", {"1": "+5V", "2": "P4_5V"}, "connectors"))

@@ -12,8 +12,9 @@ stays as bought: it is not modified, only cabled to.
 2. **Drives the LED panel.**
    - Two 74AHCT245 buffers convert the S3's 3.3 V signals to the panel's 5 V.
    - A keyed 2×8 HUB75 socket takes the panel's own ribbon cable.
-3. **Connects the microphone.** A locking 6-pin connector and a short cable go to
-   the INMP441 on the rear panel.
+3. **Connects the microphone.** A latching 6-pin JST GH socket (J7, 1.25 mm
+   pitch) and a short cable go to the INMP441 on the rear panel. GH latches
+   positively, so the cable cannot shake loose in shipping.
 4. **Takes one power input and shares it out**, with a fuse, surge protection
    and bulk capacitance:
    - LED panel: screw terminal, 4 A.

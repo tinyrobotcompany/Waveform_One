@@ -83,12 +83,12 @@
     {
       "ref": "J7",
       "role": "INMP441 microphone cable",
-      "footprint": "Connector_JST:JST_PH_B6B-PH-K_1x06_P2.00mm_Vertical",
-      "x": 78.0,
+      "footprint": "Connector_JST:JST_GH_BM06B-GHS-TBT_1x06-1MP_P1.25mm_Vertical",
+      "x": 83.0,
       "y": 10.0,
       "rotation": 0,
       "edge": null,
-      "height": 6.0
+      "height": 4.3
     },
     {
       "ref": "J8",
