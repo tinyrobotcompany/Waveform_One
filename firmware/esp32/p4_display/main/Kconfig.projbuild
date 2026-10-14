@@ -1,0 +1,22 @@
+menu "Waveform recognition audio"
+    config WAVEFORM_CONTINUOUS_RECOGNITION
+        bool "Run recognition independently of acoustic loudness"
+        default n
+        help
+            Feed the normal rate-limited recognition schedule whenever audio
+            arrives. Loudness votes do not start, stop or hide matches. Albums
+            can remain visible after music stops; stop detection is separate.
+    config WAVEFORM_P4_MIC
+        bool "Use onboard P4 microphones instead of S3 USB audio"
+        default n
+    config WAVEFORM_P4_MIC_CHANNEL
+        int "Onboard stereo input channel (0 or 1)"
+        depends on WAVEFORM_P4_MIC
+        range 0 1
+        default 0
+    config WAVEFORM_P4_MIC_GAIN_DB
+        int "Onboard microphone gain in dB"
+        depends on WAVEFORM_P4_MIC
+        range 0 36
+        default 24
+endmenu

@@ -1,4 +1,7 @@
 #include "recognition.h"
+#include "recognition_input.h"
+#include "recognition_activity.h"
+#include "sdkconfig.h"
 #include "recognition_metadata.h"
 #include "recognition_http.h"
 #include "recognition_policy.h"
@@ -38,6 +41,11 @@
 
 namespace {
 constexpr char kTag[] = "waveform_recognition";
+#if CONFIG_WAVEFORM_CONTINUOUS_RECOGNITION
+constexpr bool kContinuousRecognition = true;
+#else
+constexpr bool kContinuousRecognition = false;
+#endif
 
 struct HeapFree { void operator()(void *pointer) const { heap_caps_free(pointer); } };
 template<class T> using Heap = std::unique_ptr<T, HeapFree>;
@@ -195,9 +203,13 @@ struct Image {
 Image download_artwork(const char *url)
 {
     Image image;
-    if (!recognition_metadata::artwork_url(url)) return image;
+    if (!recognition_metadata::artwork_url(url)) {
+        ESP_LOGW(kTag, "Artwork rejected: unsupported URL"); return image;
+    }
     Response response;
-    if (!fetch(url, nullptr, 512 * 1024, response)) return image;
+    if (!fetch(url, nullptr, 512 * 1024, response)) {
+        ESP_LOGW(kTag, "Artwork download failed"); return image;
+    }
     jpeg_dec_config_t config = DEFAULT_JPEG_DEC_CONFIG();
     config.output_type = JPEG_PIXEL_FORMAT_RGB565_LE;
     jpeg_dec_handle_t decoder = nullptr;
@@ -216,6 +228,8 @@ Image download_artwork(const char *url)
     if (!image.pixels) return {};
     io.outbuf = image.pixels.get(); io.out_size = bytes;
     if (jpeg_dec_process(decoder, &io) != JPEG_ERR_OK) return {};
+    ESP_LOGI(kTag, "Artwork decoded width=%u height=%u bytes=%u", image.width, image.height,
+        static_cast<unsigned>(response.size));
     return image;
 }
 
@@ -354,6 +368,7 @@ void presence_task(void *)
     bool missing = false;
     int64_t last_diagnostic = 0;
     const auto changed = [&](const audio_presence::Snapshot &state, listening::Event event) {
+        if (kContinuousRecognition) return; // level detector is diagnostic only
         {
             std::lock_guard<std::mutex> lock(session_mutex);
             sound_state = state;
@@ -368,12 +383,17 @@ void presence_task(void *)
             log_levels(state.sound ? "Sound started" : "Silence", tracker.detector());
     };
     while (true) {
-        const auto *audio = usb_controller_audio();
+        const auto *audio = recognition_input_audio();
         size_t count = 0;
         if (audio) {
             const auto read = audio->read(position, buffer.get(), capacity);
             count = read.count;
             if (count) {
+                if (kContinuousRecognition) {
+                    std::lock_guard<std::mutex> lock(session_mutex);
+                    if (recognition_activity::received(sessions, sound_state, read.position, read.segment, read.skipped))
+                        clear_display_locked(RecognitionStatus::Capturing);
+                }
                 tracker.set_patient(track_visible.load());
                 tracker.feed(buffer.get(), count, read.position, read.segment, changed);
                 position = read.position + count;
@@ -382,6 +402,11 @@ void presence_task(void *)
         }
         if (!missing && esp_timer_get_time() - last_audio >= 3000000) {
             tracker.reset(changed); missing = true;
+            if (kContinuousRecognition) {
+                std::lock_guard<std::mutex> lock(session_mutex);
+                recognition_activity::missing(sessions, sound_state);
+                clear_display_locked(RecognitionStatus::Unavailable);
+            }
             ESP_LOGW(kTag, "Audio presence unavailable: no new samples");
         }
         {
@@ -391,6 +416,11 @@ void presence_task(void *)
         const int64_t diagnostic_now = esp_timer_get_time();
         if (diagnostic_now - last_diagnostic >= 5000000) {
             last_diagnostic = diagnostic_now;
+            ESP_LOGI(kTag, "Memory internal_free=%u internal_largest=%u dma_largest=%u psram_free=%u",
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
             ESP_LOGI(kTag, "Audio presence sound=%d patient=%d level_db=%.1f background_db=%.1f position=%llu",
                 tracker.snapshot().sound, track_visible.load(), tracker.detector().level_db(),
                 tracker.detector().background_db(), static_cast<unsigned long long>(position));
@@ -435,6 +465,7 @@ void recognition_task(void *)
     uint32_t segment = UINT32_MAX, heard = 0, sound_hop = 0;
     unsigned lookups = 0;
     int64_t recent_at = 0;
+    int64_t next_artwork_retry = 0;
     int64_t last_request_at = -2500000;
     recognition_delivery::StatusUpdate pending_display;
     const auto flush_display = [&] {
@@ -449,12 +480,13 @@ void recognition_task(void *)
     };
     const auto clear = [&] {
         pending_display.cancel();
+        next_artwork_retry = 0;
         if (track.title[0]) { recent = track; recent_image = std::move(image); recent_at = esp_timer_get_time(); }
         track = {}; image = {};
     };
     while (true) {
         const auto current = sound_session();
-        const auto *audio = usb_controller_audio();
+        const auto *audio = recognition_input_audio();
         size_t count = 0;
         bool caught_up = false;
         if (audio) {
@@ -566,6 +598,7 @@ void recognition_task(void *)
                 ESP_LOGI(kTag, "Lookup retained id=%u: verified resumed audio", id);
             }
             if (outcome == Lookup::Matched) {
+                bool lookup_album = false;
                 if (same_song(track, next)) {
                     track.offset_s = next.offset_s; track.matched_at_us = esp_timer_get_time();
                 } else if (!track.title[0] && same_song(recent, next) && now - recent_at < 300000000) {
@@ -576,18 +609,30 @@ void recognition_task(void *)
                     image = std::move(cached_image);
                 } else {
                     clear(); track = next; track.matched_at_us = esp_timer_get_time();
+                    lookup_album = true;
                     show_now(RecognitionStatus::Matched);
-                    const uint64_t collection = resolve_album(next, album_context);
+                }
+                // A transient catalogue/TLS failure must not leave a recognised
+                // song permanently without its cover. Retry only on a fresh
+                // verified match, at most once every 30 seconds after failure.
+                if (!image.pixels && esp_timer_get_time() >= next_artwork_retry) {
+                    uint64_t collection = 0;
+                    if (lookup_album || !track.artwork_url[0]) {
+                        RecognitionTrack enriched = track;
+                        collection = resolve_album(enriched, album_context);
+                        if (session().epoch != epoch) continue;
+                        std::memcpy(track.album, enriched.album, sizeof(track.album));
+                        std::memcpy(track.artwork_url, enriched.artwork_url, sizeof(track.artwork_url));
+                        track.duration_s = enriched.duration_s;
+                    }
                     if (session().epoch != epoch) continue;
-                    std::memcpy(track.album, next.album, sizeof(track.album));
-                    std::memcpy(track.artwork_url, next.artwork_url, sizeof(track.artwork_url));
-                    track.duration_s = next.duration_s;
                     show_now(RecognitionStatus::Matched);
                     if (track.artwork_url[0]) {
                         image = download_artwork(track.artwork_url);
                         if (session().epoch != epoch) continue;
                     }
                     prefetch_album(collection, track, image);
+                    next_artwork_retry = esp_timer_get_time() + 30000000;
                 }
                 planner.matched(window, heard, track.offset_s, track.duration_s);
                 show_now(RecognitionStatus::Matched);
@@ -607,6 +652,7 @@ void recognition_task(void *)
 
 void recognition_start(RecognitionCallback callback)
 {
+    ESP_LOGI(kTag, "Recognition activity mode=%s", kContinuousRecognition ? "continuous_pcm" : "acoustic_gate");
     // Catalogue responses parse into hundreds of small nodes; keep them out of
     // the internal RAM that TLS and DMA depend on.
     static cJSON_Hooks hooks{
@@ -617,6 +663,10 @@ void recognition_start(RecognitionCallback callback)
         std::lock_guard<std::mutex> lock(session_mutex);
         show = callback;
     }
+    recognition_input_start([](bool available) {
+        std::lock_guard<std::mutex> lock(session_mutex);
+        if (sessions.set_controller(available)) clear_display_locked(RecognitionStatus::Waiting);
+    });
     ESP_ERROR_CHECK(xTaskCreatePinnedToCore(presence_task, "audio_presence", 8192,
         nullptr, 5, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xTaskCreatePinnedToCore(album_cache_task, "album_cache", 16384,
@@ -634,6 +684,8 @@ void recognition_set_network(bool available, const char *address)
 
 void recognition_set_controller(bool available)
 {
+    // LED-controller USB connectivity must not gate the onboard microphone.
+    if (recognition_input_is_local()) return;
     std::lock_guard<std::mutex> lock(session_mutex);
     if (!sessions.set_controller(available)) return;
     clear_display_locked(RecognitionStatus::Waiting);
