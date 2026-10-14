@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include "album_sequence.h"
+#include "album_cache.h"
 
 namespace {
 std::string song(int disc, int number, const char *title, long ms)
@@ -34,6 +35,35 @@ int main()
     assert(album->tracks[2].duration_s > 328 && album->tracks[2].duration_s < 329);
     assert(album->load(root, "Not On This Album") == -1 && album->count == 0);
     cJSON_Delete(root);
+
+    // Verified matches can reuse an album in any order, never by time alone.
+    auto cache = std::make_unique<album_cache::Album>();
+    cache->context = {123, 100};
+    std::strcpy(cache->name, "Time Out");
+    cache->sequence.count = 2;
+    std::strcpy(cache->sequence.tracks[0].title, "Take Five");
+    std::strcpy(cache->sequence.tracks[1].title, "Strange Meadow Lark");
+    for (unsigned i = 0; i < 2; ++i) {
+        std::strcpy(cache->sequence.tracks[i].artist, "The Dave Brubeck Quartet");
+        cache->sequence.tracks[i].duration_s = 300 + i;
+    }
+    RecognitionTrack match{};
+    std::strcpy(match.title, "Strange Meadow Lark");
+    std::strcpy(match.artist, "The Dave Brubeck Quartet");
+    match.offset_s = 12;
+    assert(cache->apply(match, 123, 200));
+    assert(std::strcmp(match.album, "Time Out") == 0 && match.duration_s == 301 && match.offset_s == 12);
+    assert(!cache->apply(match, 456, 200));
+    assert(!cache->apply(match, 123, 100 + album_resolver::kContextLifetimeUs));
+    std::strcpy(match.artist, "Another Artist");
+    assert(!cache->apply(match, 123, 200));
+    std::strcpy(match.artist, "The Dave Brubeck Quartet");
+    std::strcpy(match.title, "Take Five (Live)");
+    assert(!cache->apply(match, 123, 200));
+    std::strcpy(match.title, "Take Five");
+    assert(cache->apply(match, 123, 200)); // skipping backwards is supported
+    cache->sequence.tracks[1] = cache->sequence.tracks[0];
+    assert(!cache->apply(match, 123, 200)); // ambiguous duplicate
 
     // A synthetic side: four 200 s tracks.
     album->count = 4;
