@@ -102,6 +102,14 @@ lines, then `WF1 <id> END 1000`. Sequences start at zero; decoded bytes are
 little-endian signed 16-bit mono. The checksum covers each 256-byte payload.
 Diagnostic lines can occur between packets. Another CAPTURE command while capturing
 returns `ERR BUSY`; dropped samples/queue overflow return `ERR AUDIO_LOST`.
+`CAPTURE 4` requests a four-second clip (`AUDIO 16000 64000`, 500 packets).
+
+`WF1 <id> STREAM` starts continuous audio for the P4: reply
+`WF1 <id> AUDIO 16000 STREAM`, then the same PCM lines without end. A new
+STREAM replaces the current one and restarts its sequence. Lost audio or a
+failed USB write ends it with `ERR AUDIO_LOST`; the host starts another. A
+bounded capture refuses a stream (`ERR BUSY`) and vice versa; a firmware update
+(`WFU BEGIN`) stops a stream.
 
 A separate low-pass/downsample path converts the 48 kHz left microphone channel
 to 16 kHz. A bounded FreeRTOS queue keeps USB sending out of the audio-analysis

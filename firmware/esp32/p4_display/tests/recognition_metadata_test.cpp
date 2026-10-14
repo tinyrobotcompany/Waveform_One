@@ -16,6 +16,13 @@ int main()
     assert(check(R"({"track":{"title":"Seconds","subtitle":"U2","sections":[{"metadata":[{"title":"Album","text":"War"}]}],"images":{"coverart":"https://is1-ssl.mzstatic.com/image/thumb/cover/400x400bb.jpg"}}})", track));
     assert(std::strcmp(track.title, "Seconds") == 0 && std::strcmp(track.artist, "U2") == 0);
     assert(std::strcmp(track.album, "War") == 0 && track.artwork_url[0] != '\0');
+    assert(track.offset_s < 0 && track.duration_s == 0);
+    // The match offset says where in the song the clip began.
+    assert(check(R"({"matches":[{"id":"1","offset":37.25}],"track":{"title":"Seconds"}})", track));
+    assert(track.offset_s == 37.25);
+    assert(check(R"({"matches":[{"offset":-3}],"track":{"title":"Seconds"}})", track) && track.offset_s < 0);
+    assert(check(R"({"matches":[{"offset":"12"}],"track":{"title":"Seconds"}})", track) && track.offset_s < 0);
+    assert(check(R"({"matches":{"offset":12},"track":{"title":"Seconds"}})", track) && track.offset_s < 0);
     assert(!check(R"({"matches":[]})", track) && track.title[0] == '\0');
     assert(!check(R"({"track":{"title":"   "}})", track));
     assert(!check(R"({"track":{"title":"bad\ntext"}})", track));

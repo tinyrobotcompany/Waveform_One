@@ -6,6 +6,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <mutex>
 namespace {
@@ -16,36 +17,57 @@ struct Packet {
 };
 QueueHandle_t packets = nullptr;
 std::atomic<unsigned> active{0}, failed{0};
-constexpr unsigned packet_count =
-    1000; // eight seconds of mono 16 kHz signed PCM
+std::atomic<bool> streaming{false};
+std::atomic<unsigned> packet_count{1000}; // 125 packets per second at 16 kHz
 // Serialize the producer with start/abort so no old frame can refill a reset
 // queue. USB writes never hold this mutex.
 std::mutex producer_mutex;
 capture::Samples samples;
 Packet building{};
 unsigned position = 0;
-} // namespace
-void capture_init() {
-  packets = xQueueCreate(32, sizeof(Packet));
-  ESP_ERROR_CHECK(packets ? ESP_OK : ESP_ERR_NO_MEM);
-}
-bool capture_start(unsigned id) {
-  std::lock_guard<std::mutex> lock(producer_mutex);
-  if (!id || active.load())
-    return false;
+// Caller holds producer_mutex.
+void begin(unsigned id, unsigned packets_limit, bool stream) {
   xQueueReset(packets);
   samples = capture::Samples{};
   building = {};
   building.id = id;
   position = 0;
   failed.store(0);
+  packet_count.store(packets_limit);
+  streaming.store(stream);
   active.store(id);
+}
+} // namespace
+void capture_init() {
+  packets = xQueueCreate(32, sizeof(Packet));
+  ESP_ERROR_CHECK(packets ? ESP_OK : ESP_ERR_NO_MEM);
+}
+bool capture_start(unsigned id, unsigned seconds) {
+  std::lock_guard<std::mutex> lock(producer_mutex);
+  if (!id || active.load() || (seconds != 4 && seconds != 8))
+    return false;
+  begin(id, seconds * 125, false);
+  return true;
+}
+bool capture_start_stream(unsigned id) {
+  std::lock_guard<std::mutex> lock(producer_mutex);
+  if (!id || (active.load() && !streaming.load()))
+    return false;
+  begin(id, UINT32_MAX, true);
   return true;
 }
 void capture_abort(unsigned id) {
   std::lock_guard<std::mutex> lock(producer_mutex);
   if (active.load() != id) return;
   active.store(0);
+  streaming.store(false);
+  xQueueReset(packets);
+}
+void capture_stop_stream() {
+  std::lock_guard<std::mutex> lock(producer_mutex);
+  if (!streaming.load()) return;
+  active.store(0);
+  streaming.store(false);
   xQueueReset(packets);
 }
 void capture_discontinuity() {
@@ -58,12 +80,13 @@ void capture_audio(const int32_t *stereo, size_t frames) {
   std::lock_guard<std::mutex> lock(producer_mutex);
   const unsigned id = active.load();
   if (!id || failed.load() == id) return;
+  const unsigned limit = packet_count.load();
   auto& packet = building;
-  if (packet.sequence >= packet_count)
+  if (packet.sequence >= limit)
     return;
   for (size_t i = 0; i < frames; i++) {
     samples.push(stereo[2 * i], [&](int16_t sample) {
-      if (packet.sequence >= packet_count)
+      if (packet.sequence >= limit)
         return;
       const uint16_t value = uint16_t(sample);
       packet.bytes[position++] = uint8_t(value);
@@ -81,6 +104,7 @@ void capture_send() {
   const unsigned id = active.load();
   if (!id)
     return;
+  const unsigned limit = packet_count.load();
   char line[600];
   if (failed.load() == id) {
     const int n = snprintf(line, sizeof(line), "\nWF1 %u ERR AUDIO_LOST\n", id);
@@ -107,8 +131,8 @@ void capture_send() {
       failed.store(id);
       return;
     }
-    if (packet.sequence + 1 == packet_count) {
-      n = snprintf(line, sizeof(line), "\nWF1 %u END %u\n", id, packet_count);
+    if (!streaming.load() && packet.sequence + 1 == limit) {
+      n = snprintf(line, sizeof(line), "\nWF1 %u END %u\n", id, limit);
       control::write_reply(line, n);
       capture_abort(id);
       return;
@@ -116,4 +140,4 @@ void capture_send() {
   }
 }
 
-bool capture_active() { return active.load() != 0; }
+bool capture_active() { return active.load() != 0 && !streaming.load(); }

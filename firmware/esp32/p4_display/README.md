@@ -13,29 +13,59 @@ protocol.
 
 ## Native music recognition
 
-After Wi-Fi, clock synchronization, the S3 USB connection and calibrated audio activity are ready, a
-background task captures an eight-second microphone clip over the existing WF1
-protocol. The worker bounds the completion wait to 17 seconds and cancels it
-on session changes; capture IDs prevent late callbacks completing a newer clip.
-It validates packet order and checksums, generates a Shazam fingerprint
-locally and sends only the fingerprint over verified HTTPS. Track, artist, album
-and downloaded artwork replace the listening screen when a match is returned.
-No Python or Raspberry Pi is involved, and microphone recordings are not saved.
+The S3 streams microphone audio to the P4 continuously (`WF1 <id> STREAM`). The
+P4 keeps the last 16 seconds in PSRAM, validates packet order and checksums, and
+fingerprints every 8 ms hop as it arrives with the ESP-DSP FFT, so a signature
+for any recent stretch of audio is ready the moment that audio has been heard.
+Only the compact fingerprint leaves the device, over verified HTTPS; no Python
+or Raspberry Pi is involved, and microphone audio is never saved. A gap in the
+stream is a new recording: audio is never spliced across it.
 
-Matched attempts wait 30 seconds; misses wait 15 seconds. A playback stop/start
-removes that normal wait, so a new song can be captured promptly. Failures use
-capped backoff and honor service Retry-After; playback changes cannot bypass it.
-Capture enqueue failures also back off. Busy retries have a 17-second grace
-window for an outstanding capture, then back off if the controller stays busy. Three consecutive quiet S3 reports (about 1.5 seconds) clear the
-track and invalidate in-flight lookups. Missing reports for three seconds also
-clear it. Artwork survives temporary misses during active playback for up to
-90 seconds. Wi-Fi
+The P4 decides for itself when sound starts and stops, against the room's own
+background level learnt while quiet: sound is 6 dB above it for 0.6 s; silence
+is within 4 dB of it for 2 s. Silence immediately clears the song and returns to
+the standard screen. Sound that three lookups cannot identify joins the
+background quickly, so a fan or dishwasher stops being treated as music.
+
+When sound starts, the first 3, 5 and 8 seconds are looked up, then the latest
+8 seconds every 30 seconds while it stays unidentified. After a match, the
+service's position in the song and the catalogue's song length say when it
+ends; the next lookup is 3 seconds into whatever follows. Without a length, the
+song is checked once a minute and cleared after two misses. Lookups are capped
+at a burst of four and one per 15 seconds; failures back off from 60 seconds to
+five minutes and honour Retry-After.
+
+Audio identifies a recording, not a release. After a match the P4 asks Apple's
+public catalogue search for every release of the song and keeps the service's
+album unless it is a single, EP, compilation, soundtrack or another recording;
+otherwise it picks the catalogue's most relevant regular album. The album already
+playing wins when it contains the next song. Title and artist appear at once;
+album and artwork follow. Capturing and
+identifying gently pulse the lavender artwork frame and show “Finding your song...”.
+Once a track is known, the frame stays green, including during routine checks.
+The native NOW PLAYING heading uses the 48-pixel font.
+Song titles use 40 pixels, artists 32, albums 24 and feedback 20. A small green
+dot accompanies “Enjoy the music”; initial searches and routine checks use a
+lavender dot with “Finding your song…” and “Checking what’s playing…”. Feedback
+matches the phone app. The [display fonts](main/fonts/README.md) preserve the
+original valid UTF-8 text and extend the existing typeface with a shared 77,872-glyph
+Unicode fallback at every label size. Missing primary-font characters are never
+rewritten as `?`. The fallback adds CJK, international scripts and monochrome
+musical/emoji symbols; bidi layout and LVGL's Arabic/Persian shaping are enabled.
+This is **not complete Unicode rendering**: rare CJK extensions, advanced Indic
+shaping and joined/colour emoji still need a larger font/shaping stack and acceptance.
+When the WAVEFORM ONE placeholder is visible, a lavender waveform flows beneath
+it in one fixed-size image. The animation stops when the lookup ends and never
+overlays an album cover. An existing cover remains visible during the lookup,
+labelled “Checking what’s playing...”. Wi-Fi
 and S3 connection changes discard in-flight results and clear previous metadata;
 phone QR rotation does not. LED controls continue on the shared USB connection.
 
 The upstream reference-song check succeeded on a Mac using the native
 fingerprint implementation. Initial P4 microphone-to-screen matches and artwork were verified; stop/start
 and prolonged playback acceptance are being completed; see [development evidence and hardware checklist](../../../docs/commissioning/2026-10-10-p4-recognition.md).
+The search animation and retention correction are documented in the
+[stability validation note](../../../docs/commissioning/2026-10-10-p4-recognition-stability.md).
 Shazam remains an unofficial no-subscription dependency, as in the Pi prototype.
 
 ## Phone remote and Wi-Fi setup
@@ -73,7 +103,34 @@ on screen is updated to match. Sessions expire after one hour, at most four
 phones stay paired, and the oldest is evicted first. Mutating requests require
 the session cookie, a session-specific CSRF token, and the device `Host` and
 `Origin` together. The page is served with a Content Security Policy that
-forbids framing and third-party resources.
+forbids framing and external scripts. Artwork alone is allowed from HTTPS
+subdomains of `mzstatic.com`; URLs are validated before being published.
+
+The paired phone opens on the current album artwork, song, artist and album,
+with settings behind a separate button. An authenticated, uncached GET to
+`/api/state` publishes a mutex-protected copy of the worker's metadata and the
+current name, brightness and acknowledged LED style. It uses the same track
+expiry policy as the native display, without taking the GUI or worker session
+lock. The phone polls every two seconds while visible, retains the album during
+routine checks and temporary network failures, and disables controls on session
+expiry. Missing or failed artwork falls back to the Waveform One visual while
+retaining song details. Artwork is loaded directly by the phone; the P4 does not
+proxy an additional image download. Settings preserve the existing paired/CSRF
+control routes.
+
+Run `sh firmware/esp32/tests/run.sh` from the repository root for snapshot,
+retention, JSON escaping and concurrent-update coverage. For browser acceptance:
+
+```sh
+PLAYWRIGHT_MODULE=/path/to/playwright CHROME_BIN=/path/to/chrome \
+  node firmware/esp32/p4_display/tests/remote_browser_check.cjs
+```
+
+The browser fixture serves the actual embedded page, checks mobile/tablet and
+landscape layouts, search/check states, safe metadata rendering, artwork failure,
+pairing/session loss and settings requests, and saves screenshots under
+`/tmp/waveform-phone-preview`. Its album image and recognition responses are
+fixtures; real paired-phone acceptance is a separate hardware check.
 
 Sessions are bound to the address they were paired on. Losing Wi-Fi, losing or
 changing the IP address, choosing another network, or rebooting revokes every
