@@ -60,15 +60,15 @@ Status: In progress — broad glyph fallback added; full Unicode acceptance rema
 
 ## Album artwork colours for the native screen and phone
 
-Status: Prototype implemented on `feature/p4-recognition-stability`; MacBook/browser and native LVGL previews, firmware host tests and the P4 build passed. Physical P4/phone acceptance and flashing await the user’s instructions.
+Status: Apple Music–style colours implemented on `feature/album-colours`. Host tests, the phone browser check, native LVGL renders of 30 covers and the P4 build pass. Physical P4/phone acceptance and flashing await the user's instructions.
 
-- Use a dark album-derived background for Album colours mode; retain the near-black background and green/lavender accents for Classic black, missing artwork and idle/search states.
-- Extract representative colours from the recognized album cover; select readable accent roles for the identified-track border/status and the searching/checking indicator.
-- Adjust brightness and saturation for readable contrast against black; keep song, artist and album text readable rather than colouring all text.
-- Use the same palette on the P4 and paired phone, including the search animation. Initial search without artwork stays lavender.
-- Hold the palette steady during rechecks of the same track and transition gently when a new album is identified; do not pulse or recolour every recognition attempt.
-- Fall back to the standard palette for missing artwork, monochrome covers, extraction failures or unsuitable colours. Offer a standard/album-colours preference.
-- Validate warm, cool, very dark, mostly white and monochrome covers alongside recognition performance and animation stability.
+- Modelled on Apple Music's artwork colours: the background is the cover's own dominant colour, favouring its edges, light or dark as the cover is. Dark text on light covers, light text on dark ones.
+- Four text roles from the cover's other prominent colours: title, artist, album (softened) and status (softened). The heading, artwork border and status dot use the cover's most vivid colour, even a small one; the search animation uses the next.
+- A soft colour field (8 × 5 cells of the cover's colours, pulled towards the background) fills the screen, like Apple Music's Now Playing. The P4 draws it with ordered dithering, so RGB565 shows no bands.
+- Every text colour is checked against every field cell, as RGB565 shows it: 4.5:1 for text, 3:1 for the heading and border.
+- The same palette and field on the P4 and the phone. Classic black keeps the original colours. Missing artwork and idle keep Classic.
+- Hold the palette steady during rechecks of the same track; cross-fade over 700 ms when a new album is identified.
+- On hardware, check: full-screen field redraw cost during the cross-fade and while the search animation runs; colour on the real panel; light backgrounds at night (a brightness cap may be wanted).
 
 ## LED visualization EQ in settings
 

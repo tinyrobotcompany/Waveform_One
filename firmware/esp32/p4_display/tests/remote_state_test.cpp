@@ -27,9 +27,19 @@ int main()
     assert(cJSON_GetObjectItemCaseSensitive(saved, "title")->valuestring[0] == 'I');
     cJSON_Delete(root);
     album_palette::Palette palette{}; palette.background=0x302010;
+    palette.text=0x101010; palette.quaternary=0x404040; palette.light=true; palette.field[39]=0xabcdef;
     state.palette(palette);
     root=read();
-    assert(std::strcmp(cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(root,"palette"),"background")->valuestring,"#302010")==0);
+    cJSON *colours=cJSON_GetObjectItemCaseSensitive(root,"palette");
+    assert(std::strcmp(cJSON_GetObjectItemCaseSensitive(colours,"background")->valuestring,"#302010")==0);
+    // The phone gets every text role, light/dark and the whole colour field.
+    assert(std::strcmp(cJSON_GetObjectItemCaseSensitive(colours,"text")->valuestring,"#101010")==0);
+    assert(std::strcmp(cJSON_GetObjectItemCaseSensitive(colours,"quaternary")->valuestring,"#404040")==0);
+    assert(cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(colours,"light")));
+    cJSON *field=cJSON_GetObjectItemCaseSensitive(colours,"field");
+    assert(cJSON_GetArraySize(field)==40);
+    assert(std::strcmp(cJSON_GetArrayItem(field,0)->valuestring,"#080d0a")==0);
+    assert(std::strcmp(cJSON_GetArrayItem(field,39)->valuestring,"#abcdef")==0);
     cJSON_Delete(root);
     track.title[0] = 'I';
     state.recognition(RecognitionStatus::Identifying,&track);

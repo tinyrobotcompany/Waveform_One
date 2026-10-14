@@ -9,8 +9,10 @@ const pageHtml = source.match(/R"HTML\(([\s\S]*)\)HTML";/)[1];
 const output = process.env.WAVEFORM_SCREENSHOTS || '/tmp/waveform-phone-preview';
 fs.mkdirSync(output, { recursive: true });
 const track = { title: 'In My Time of Dying (Live from Earls Court, 1975)', artist: 'Led Zeppelin', album: 'Physical Graffiti', artwork: 'https://is1-ssl.mzstatic.com/test.svg' };
-const standard={background:'#080d0a',panel:'#121a13',accent:'#a8d57a',search:'#a79ae8',line:'#374838'};
-const albumPalette={background:'#331a12',panel:'#472519',accent:'#f0a48b',search:'#9cdbf0',line:'#6b534b'};
+const standard={background:'#080d0a',panel:'#121a13',line:'#374838',text:'#edf3e8',secondary:'#edf3e8',tertiary:'#a7b2a7',quaternary:'#a7b2a7',accent:'#a8d57a',search:'#a79ae8',light:false,field:Array(40).fill('#080d0a')};
+// A light album palette, as the P4 extracts it from a yellow cover: dark text on a light colour field.
+const albumPalette={background:'#f7dc72',panel:'#e3c85e',line:'#ba8826',text:'#411a0b',secondary:'#8f3003',tertiary:'#6c4622',quaternary:'#8f3003',accent:'#bd4716',search:'#411a0b',light:true,
+    field:Array.from({length:40},(_,i)=>i<20?'#e6c062':'#eed884')};
 let state = { appearance:'album', status: 'capturing', track: null, name: 'Simon', brightness: 65, style: 'classic' };
 let unauthorized = false, failing = false;
 const posts = [];
@@ -89,9 +91,17 @@ const server = http.createServer((req, res) => {
         assert(await page.getByRole('dialog').isVisible());
         assert.equal(await page.locator('#brightness').inputValue(), '65');
         assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--green')),albumPalette.accent);
+        // Every text role follows the album, and the light field is drawn behind the page.
+        assert.equal(await page.evaluate(()=>getComputedStyle(document.querySelector('#title')).getPropertyValue('--ink').trim()),albumPalette.text);
+        assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--ink2')),albumPalette.secondary);
+        assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--muted2')),albumPalette.quaternary);
+        assert.equal(await page.evaluate(()=>document.documentElement.style.colorScheme),'light');
+        assert.deepEqual(await page.evaluate(()=>{const canvas=[...document.querySelectorAll('.field canvas')].find(c=>c.style.opacity==='1');return [...canvas.getContext('2d').getImageData(0,4,1,1).data]}),[0xee,0xd8,0x84,255]);
         await page.getByRole('button',{name:'Classic black',exact:true}).click();
         await page.locator('[data-appearance=classic][aria-pressed=true]').waitFor();
         assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--bg')),standard.background);
+        assert.equal(await page.evaluate(()=>document.documentElement.style.getPropertyValue('--ink')),standard.text);
+        assert.equal(await page.evaluate(()=>document.documentElement.style.colorScheme),'dark');
         assert(posts.some(post=>post.path==='/api/appearance'&&post.body==='value=classic'));
         await page.getByRole('button',{name:'Album colours',exact:true}).click();
         await page.locator('[data-appearance=album][aria-pressed=true]').waitFor();

@@ -52,11 +52,23 @@ public:
         cJSON *palette = cJSON_AddObjectToObject(root, "palette");
         ok = ok && palette != nullptr;
         if (palette != nullptr) {
-            const uint32_t values[] = {colours.background, colours.panel, colours.accent, colours.search, colours.line};
-            const char *keys[] = {"background", "panel", "accent", "search", "line"};
-            for (unsigned i=0; i<5; ++i) {
-                char hex[8]; std::snprintf(hex, sizeof(hex), "#%06x", static_cast<unsigned>(values[i]));
-                ok = ok && cJSON_AddStringToObject(palette, keys[i], hex) != nullptr;
+            const auto hex = [](uint32_t value, char (&text)[8]) {
+                std::snprintf(text, sizeof(text), "#%06x", static_cast<unsigned>(value & 0xffffff));
+                return text;
+            };
+            const uint32_t values[] = {colours.background, colours.panel, colours.line, colours.text,
+                colours.secondary, colours.tertiary, colours.quaternary, colours.accent, colours.search};
+            const char *keys[] = {"background", "panel", "line", "text", "secondary", "tertiary",
+                "quaternary", "accent", "search"};
+            char text[8];
+            for (unsigned i = 0; i < 9; ++i)
+                ok = ok && cJSON_AddStringToObject(palette, keys[i], hex(values[i], text)) != nullptr;
+            ok = ok && cJSON_AddBoolToObject(palette, "light", colours.light) != nullptr;
+            cJSON *field = cJSON_AddArrayToObject(palette, "field");
+            ok = ok && field != nullptr;
+            for (uint32_t cell : colours.field) {
+                cJSON *item = ok ? cJSON_CreateString(hex(cell, text)) : nullptr;
+                ok = ok && item != nullptr && cJSON_AddItemToArray(field, item);
             }
         }
         cJSON *track = visible ? cJSON_AddObjectToObject(root, "track") : nullptr;

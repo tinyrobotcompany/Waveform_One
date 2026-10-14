@@ -208,4 +208,4 @@ printf '%s\n' 'PASS: hosted Wi-Fi RX buffer ownership on old and consuming callb
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/album_palette_test.cpp" -o "$build_dir/p4_palette"
 "$build_dir/p4_palette"
-printf '%s\n' 'PASS: artwork palette bounds, neutral fallbacks, deterministic extraction and readable contrast'
+printf '%s\n' 'PASS: album colours: edge background, vivid accent, text readable on every field cell, banding-free field'
