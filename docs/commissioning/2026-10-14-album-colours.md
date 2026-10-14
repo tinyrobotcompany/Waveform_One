@@ -62,3 +62,34 @@ PSRAM. A new album's field is drawn under the old one, which then fades out.
   room. A brightness cap for light covers may be wanted.
 - Palette and field extraction run under the GUI lock once per album. On the
   Mac they take about 3 ms; the P4 is expected to take tens of milliseconds.
+
+## Hardware test — 14 October 2026, combined with the P4 audio work
+
+The device ran a combined build: this branch, plus Codex's uncommitted
+`feature/p4-direct-audio` changes (onboard ES7210 microphone, continuous
+ACRCloud recognition, memory settings). It was built in
+`.worktrees/album-colours-audio` with Codex's local sdkconfig, and only the P4
+was flashed.
+
+- **The first flash restart-looped.** The recognition task overflowed its
+  stack about 2.5 s after boot. Inlining had grown `update_recognition`'s
+  frame from 224 B to about 3.7 KB, on a 24 KB task stack that was already
+  nearly full. The colour functions are now out of line (`[[gnu::noinline]]`),
+  and `update_recognition` is 192 B. The task stack was left unchanged to
+  avoid using internal RAM.
+- **After the fix, nothing restarted over seven minutes and two songs.**
+  - "Waterloo" by ABBA: the cover decoded at 400 × 400.
+  - "Gloria", then "The Electric Co." by U2: two covers decoded, and the
+    album cache was ready.
+  - Simon confirmed the album colours on the screen ("It worked", "It's
+    really good").
+- **Open, and not yet attributed:**
+  - Internal free memory fell from 94 KB to 52 KB, and the largest DMA-capable
+    block from 48 KB to 4 KB, over seven minutes. The fall had started before
+    any album colours were shown. The colour code allocates only from PSRAM.
+    Comparison with the audio-only build is needed.
+  - "Recognition display update deferred: GUI busy" happens often: in bursts
+    every 30 ms, with the 10 ms lock timeout. The audio-only build also logged
+    deferrals; their rates have not been compared. The full-screen field image
+    makes each redraw dearer than a flat fill, so this branch may raise the
+    rate.

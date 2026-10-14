@@ -104,7 +104,10 @@ uint16_t *field_pixels[2]{};
 unsigned field_shown = 0;
 lv_color_t theme_accent() { return lv_color_hex(current_palette.accent); }
 lv_color_t theme_search() { return lv_color_hex(current_palette.search); }
-void paint_palette()
+// The colour functions stay out of line: they run from the recognition task's
+// display callback, and inlined there their frames (palettes, field rows)
+// would sit on that task's nearly full stack for every status update.
+[[gnu::noinline]] void paint_palette()
 {
     const auto &p = current_palette;
     const auto colour = [](uint32_t value) { return lv_color_hex(value); };
@@ -144,7 +147,7 @@ void fade_palette(void *, int32_t progress)
 // Draws the new field into the buffer not on screen, under the old one,
 // which then fades out. A change during a fade jumps to the field it was
 // fading to first, so the buffer being drawn is never the one on show.
-void show_field(const album_palette::Palette &palette)
+[[gnu::noinline]] void show_field(const album_palette::Palette &palette)
 {
     if (field_back == nullptr) return; // no buffers: the plain background colour shows
     lv_image_set_src(field_front, &field_images[field_shown]);
@@ -185,7 +188,7 @@ void create_field(lv_obj_t *screen)
     lv_image_set_src(field_back, &field_images[0]);
     lv_obj_add_flag(field_front, LV_OBJ_FLAG_HIDDEN);
 }
-void apply_palette()
+[[gnu::noinline]] void apply_palette()
 {
     const auto next = album_colours ? cover_palette : album_palette::Palette{};
     for (unsigned i=0; i<2; ++i) if (appearance_buttons[i])
@@ -271,7 +274,7 @@ void set_searching(bool active, bool has_track = false)
     lv_anim_start(&animation);
 }
 
-void clear_recognition_track()
+[[gnu::noinline]] void clear_recognition_track()
 {
     lv_label_set_text(headline, "Listening for music");
     lv_label_set_text(artist, "Play a song to bring this screen to life.");
@@ -1013,6 +1016,16 @@ void create_product_screen()
     lv_timer_create(update_clock, 1000, nullptr);
 }
 
+[[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
+                                            bool same_cover)
+{
+    if (!same_cover) cover_palette = {};
+    if (track != nullptr && image != nullptr && image->pixels != nullptr
+        && (!same_cover || cover_palette == album_palette::Palette{}))
+        cover_palette = album_palette::extract(image->pixels, image->width, image->height);
+    network_set_palette(cover_palette);
+}
+
 bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                         const RecognitionArtwork *image)
 {
@@ -1066,11 +1079,7 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
             }
         }
     }
-    if (!same_cover) cover_palette = {};
-    if (track != nullptr && image != nullptr && image->pixels != nullptr
-        && (!same_cover || cover_palette == album_palette::Palette{}))
-        cover_palette = album_palette::extract(image->pixels, image->width, image->height);
-    network_set_palette(cover_palette);
+    update_cover_palette(track, image, same_cover);
     apply_palette();
     set_searching(status == RecognitionStatus::Capturing || status == RecognitionStatus::Identifying,
                   track != nullptr);
