@@ -27,7 +27,7 @@ LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge
 # JLCPCB's part models sit at a different rotation from KiCad's footprints for
 # some packages: degrees to add, by footprint name prefix (checked against
 # JLCPCB's placement preview, 2026-10-14).
-ROTATION_FIX = {"TSSOP-": -90, "SOT-23-": -90, "IDC-Header_": -90}
+ROTATION_FIX = {"TSSOP-": -90, "SOT-23-": -90, "IDC-Header_": -90, "JST_GH_BM": 180}
 # Parts placed from KiCad's origin rather than their courtyard (the S3
 # module's courtyard includes its antenna keep-out), plus an offset in the
 # footprint's own frame (mm, Y up, before rotation): JLCPCB centres the module
