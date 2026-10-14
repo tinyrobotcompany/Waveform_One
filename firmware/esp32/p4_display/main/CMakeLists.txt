@@ -1,15 +1,15 @@
 idf_component_register(
     SRCS "main.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
-         "recognition.cpp" "recognition_input.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
+         "recognition.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
          "fonts/waveform_font_24.c" "fonts/waveform_font_32.c"
          "fonts/waveform_font_40.c" "fonts/waveform_font_48.c"
-    INCLUDE_DIRS "." "../third_party"
+    INCLUDE_DIRS "." "../third_party" "../../visualizer/main" "../../mic_test/main"
     EMBED_FILES "fonts/waveform_unicode.bin"
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif
                   esp_http_server esp_timer nvs_flash esp_driver_sdmmc heap
-                  esp_http_client mbedtls esp_new_jpeg esp-dsp esp_codec_dev)
+                  esp_http_client mbedtls esp_new_jpeg esp-dsp esp_codec_dev esp_driver_parlio)
 
 # Optimise the continuously running fingerprint only; retain IEEE floating-point semantics.
 set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-O3")
@@ -53,3 +53,6 @@ file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/acrcloud_config.h" CONTENT
 #define ACRCLOUD_ACCESS_SECRET \"@ACRCLOUD_ACCESS_SECRET@\"
 " @ONLY)
 target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+
+# Audit the experimental task stack before any hardware trial.
+set_source_files_properties(p4_led.cpp PROPERTIES COMPILE_OPTIONS "-fstack-usage")

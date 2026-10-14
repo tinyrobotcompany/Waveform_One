@@ -20,3 +20,17 @@ menu "Waveform recognition audio"
         range 0 36
         default 24
 endmenu
+
+menu "Experimental P4 HUB75 takeover"
+    config WAVEFORM_P4_LED
+        bool "Drive HUB75 directly from the P4 expansion connectors"
+        depends on WAVEFORM_P4_MIC
+        default n
+        help
+            Requires the documented buffered adapter and rewiring. Disables
+            the S3 USB controller path. Never enable on unverified wiring.
+    config WAVEFORM_P4_LED_PATTERN
+        bool "Show diagnostic stripes instead of audio"
+        depends on WAVEFORM_P4_LED
+        default y
+endmenu
