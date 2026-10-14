@@ -34,8 +34,11 @@ CONFIG_LV_USE_QRCODE=y
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_SPI_FLASH_SUPPORT_GD_CHIP=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
-# TLS uses the ordinary heap: its large buffers land in PSRAM (above the
-# 16 KB internal threshold) while start-up allocations stay internal.
+# Prefer PSRAM for allocations above 1 KB, preserving internal DMA memory for
+# hosted Wi-Fi and I2S. Default malloc still works before PSRAM initialization.
+CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=1024
+CONFIG_SPIRAM_MALLOC_RESERVE_INTERNAL=65536
+# TLS uses the ordinary heap rather than forcing early boot allocations into PSRAM.
 # EXTERNAL_MEM_ALLOC crashed at boot, before PSRAM was ready.
 CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
