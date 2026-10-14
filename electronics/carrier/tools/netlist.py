@@ -200,7 +200,7 @@ LCSC = {
     "R5": "C21190",                        # 1k 0603
     "SW1": "C2886898", "SW2": "C2886898",  # TL3342F160QG
     "J1": "C22434582",                     # CUI PJ-063AH barrel socket
-    "J3": "C5184243",                      # GCT USB4105-GF-A-120 (16-pin)
+    "J3": "C3025063",                      # GCT USB4105-GF-A-060 (the -120 is all reserved)
     "J4": "C2798029",                      # Molex 67643-0910 USB-A
     "J5": "C492443",                       # BH254V-16P box header
     "J6": "C480516",                       # Phoenix 1715721 (MKDS 1,5/2-5,08)
