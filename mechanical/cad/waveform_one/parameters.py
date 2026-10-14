@@ -86,9 +86,6 @@ TOP_BAND = Param(12.0, "mm", P, "Front above the components; holds the top clip 
 BOTTOM_BAND = Param(12.0, "mm", P, "Front below the components; holds bottom clip bosses and the name.")
 FRONT_EDGE_CHAMFER = Param(0.8, "mm", P, "Front perimeter chamfer; also hides first-layer squish.")
 
-FRAME_GROOVE_INSET = Param(11.0, "mm", P, "Groove separating the frame from the black front, from the outer edge.")
-FRAME_GROOVE_WIDTH = Param(1.0, "mm", P, "Engraved frame line width.")
-FRAME_GROOVE_DEPTH = Param(0.6, "mm", P, "Three 0.2 mm layers.")
 
 FOOT_RECESS_DIAMETER = Param(12.0, "mm", P, "Shallow seats for stick-on rubber feet.")
 FOOT_RECESS_DEPTH = Param(1.0, "mm", P, "Seat depth.")
@@ -190,9 +187,23 @@ MIC_PORT_DIAMETER = Param(3.0, "mm", P, "Sound hole through the rear panel.")
 BRAND_TEXT = "W A V E F O R M   O N E"  # spaced capitals, as in the concept
 BRAND_FONT = "Futura"
 BRAND_FONT_SIZE = Param(4.4, "mm", P, "Gives ~3.5 mm capitals.")
-BRAND_DEPTH = Param(0.6, "mm", P, "Engraved into the front face.")
+BRAND_DEPTH = Param(1.0, "mm", P, "Cut into the front face and filled with white: five layers, so the black behind does not grey the white.")
 
 WINDOW_CHAMFER = Param(1.0, "mm", P, "45-degree chamfer on the front edge of each window.")
+
+# --- Colour stripes ------------------------------------------------------------------------
+# Two coloured bands wrap the cabinet just behind the front (owner, 2026-10-14).
+# The shells print front face down, so each band is a run of whole layers: the
+# printer changes filament only four times per shell half, and the slicer picks
+# the colours (filament 1 black body, 2 first band, 3 second band).
+
+LAYER_HEIGHT = Param(0.2, "mm", POL, "0.20mm Standard profile; band edges must fall on layer boundaries.")
+STRIPE_WIDTH = Param(20.0, "mm", POL, "Each band, front to back.")
+STRIPE_1_FROM_FRONT = Param(10.0, "mm", POL, "Front face to the first band.")
+# Slicer filament slot for the white name inlay, after the body (1) and the stripes (2, 3).
+# The CANVAS holds four filaments, so this uses the last one.
+NAME_FILAMENT = 4
+STRIPE_2_FROM_FRONT = Param(40.0, "mm", POL, "Front face to the second band; 10 mm of black between the bands.")
 
 # --- Vinyl sleeve holders on top -----------------------------------------------------------
 

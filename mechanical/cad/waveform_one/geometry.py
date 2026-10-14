@@ -87,6 +87,17 @@ class Placeholder:
 
 
 PRINT_BLACK = Color(0.12, 0.12, 0.13)
+# Preview only: the real colours are chosen in the slicer (filament 1, 2, 3).
+BAND_PREVIEW_COLOURS = (PRINT_BLACK, Color(0.85, 0.12, 0.12), Color(0.15, 0.4, 0.9), Color(0.97, 0.97, 0.97))
+
+
+@dataclass
+class Band:
+    """One colour region of a printed part, printed with slicer filament `filament` (1 = the body colour)."""
+
+    name: str
+    filament: int
+    body: Part
 
 
 @dataclass
@@ -105,13 +116,32 @@ class PrintedPart:
     # Mock-up-only accessories (e.g. stands) never exist inside the real
     # enclosure, so they are excluded from internal collision checks.
     mockup_only: bool = False
+    # Colour regions that together make up `body`, for multi-filament printing.
+    # Empty: the whole part prints in filament 1.
+    bands: tuple[Band, ...] = ()
+
+    def bed_location(self) -> Location:
+        """Print pose, then sit on Z=0 centred on the bed origin."""
+        box = (self.print_pose * self.body).bounding_box()
+        return Pos(-box.center().X, -box.center().Y, -box.min.Z) * self.print_pose
 
     def on_bed(self) -> Part:
-        posed = self.print_pose * self.body
-        box = posed.bounding_box()
-        return Pos(-box.center().X, -box.center().Y, -box.min.Z) * posed
+        return self.bed_location() * self.body
 
-    def compound(self) -> Part:
-        self.body.label = self.name
-        self.body.color = PRINT_BLACK
-        return self.body
+    def bands_on_bed(self) -> list[Band]:
+        """The colour regions in print position (one band, filament 1, when not split)."""
+        location = self.bed_location()
+        if not self.bands:
+            return [Band(self.name, 1, location * self.body)]
+        return [Band(band.name, band.filament, location * band.body) for band in self.bands]
+
+    def compound(self) -> Part | Compound:
+        """For the assembly and previews: black, with any colour bands in placeholder colours."""
+        if not self.bands:
+            self.body.label = self.name
+            self.body.color = PRINT_BLACK
+            return self.body
+        for band in self.bands:
+            band.body.label = band.name
+            band.body.color = BAND_PREVIEW_COLOURS[(band.filament - 1) % len(BAND_PREVIEW_COLOURS)]
+        return Compound(label=self.name, children=[band.body for band in self.bands])

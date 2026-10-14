@@ -74,11 +74,13 @@ def test_led_window_hides_the_panel_edge_behind_a_lip():
     assert z1 - z0 == pytest.approx(p.LED_H.v - 2 * p.LED_WINDOW_LIP.v)
 
 
-def test_name_sits_under_the_led_window_inside_the_frame():
-    x, z = shell.brand_centre()
+def test_name_is_centred_on_the_strip_below_the_led_window():
     (lx0, lx1), (lz0, _) = shell.led_window()
-    assert lx0 < x < lx1
-    assert p.FRAME_GROOVE_INSET.v + p.FRAME_GROOVE_WIDTH.v < z < lz0
+    box = shell.brand_name().bounding_box()
+    assert box.center().X == pytest.approx((lx0 + lx1) / 2, abs=1.0)  # glyph shapes shift it slightly
+    visible_edge = lz0 - p.WINDOW_CHAMFER.v
+    # Equal plastic above and below the lettering.
+    assert box.min.Z == pytest.approx(visible_edge - box.max.Z, abs=0.5)
 
 
 def test_four_clips_per_component_each_over_a_component_edge(parts):
@@ -183,3 +185,90 @@ def test_coupon_has_every_trial_hole():
     coupon = build_coupon().body
     expected = len(p.COUPON_INSERT_HOLES) + len(p.COUPON_CLEARANCE_HOLES)
     assert len(coupon.faces().filter_by(lambda f: f.geom_type.name == "CYLINDER")) == expected
+
+
+def test_shell_halves_split_into_a_black_body_and_two_colour_stripes(parts):
+    for name in ("shell_left", "shell_right"):
+        part = parts[name]
+        expected = [(f"{name}_body", 1), (f"{name}_stripe_1", 2), (f"{name}_stripe_2", 3)]
+        if name == "shell_right":  # the name sits under the LED panel
+            expected.append(("shell_right_name", p.NAME_FILAMENT))
+        assert [(b.name, b.filament) for b in part.bands] == expected
+        # Together the bands are exactly the shell half.
+        assert sum(b.body.volume for b in part.bands) == pytest.approx(part.body.volume, rel=1e-6)
+        for band, (y0, y1) in zip(part.bands[1:], shell.stripe_slabs()):
+            box = band.body.bounding_box()
+            assert (box.min.Y, box.max.Y) == pytest.approx((y0, y1), abs=1e-6), band.name
+
+
+def test_colour_stripes_are_whole_layers_on_the_bed(parts):
+    """Front face down, stripe depth is print height: 10-20 mm and 30-40 mm up."""
+    for name in ("shell_left", "shell_right"):
+        bed = parts[name].bands_on_bed()
+        assert bed[0].body.bounding_box().min.Z == pytest.approx(0.0, abs=1e-6)
+        for band, start in zip(bed[1:], (p.STRIPE_1_FROM_FRONT.v, p.STRIPE_2_FROM_FRONT.v)):
+            box = band.body.bounding_box()
+            assert (box.min.Z, box.max.Z) == pytest.approx((start, start + p.STRIPE_WIDTH.v), abs=1e-6)
+
+
+def _read_3mf(path):
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    ns = {"m": "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"}
+    with zipfile.ZipFile(path) as package:
+        model = ET.fromstring(package.read("3D/3dmodel.model"))
+        config = ET.fromstring(package.read("Metadata/model_settings.config"))
+    return model, config, ns
+
+
+def _signed_volume(mesh, ns):
+    import numpy as np
+
+    points = np.array([[float(v.get(a)) for a in "xyz"] for v in mesh.find("m:vertices", ns)])
+    triangles = np.array([[int(t.get(k)) for k in ("v1", "v2", "v3")] for t in mesh.find("m:triangles", ns)])
+    a, b, c = points[triangles[:, 0]], points[triangles[:, 1]], points[triangles[:, 2]]
+    return float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum() / 6)
+
+
+def _open_edges(mesh, ns):
+    """Edges not shared by exactly two triangles, each way round once: slicers report them as non-manifold."""
+    from collections import Counter
+
+    edges = Counter()
+    for t in mesh.find("m:triangles", ns):
+        a, b, c = (int(t.get(k)) for k in ("v1", "v2", "v3"))
+        edges.update([(a, b), (b, c), (c, a)])
+    return sum(1 for (a, b), n in edges.items() if n != 1 or edges[(b, a)] != 1)
+
+
+def test_shell_3mf_is_one_object_of_three_parts_with_their_filaments(parts, tmp_path):
+    part = parts["shell_left"]
+    export_printed_parts([part], tmp_path)
+    model, config, ns = _read_3mf(tmp_path / "3mf" / f"{printed_part_stem(part)}.3mf")
+    objects = {o.get("id"): o for o in model.find("m:resources", ns)}
+    (item,) = model.find("m:build", ns)
+    parent = objects[item.get("objectid")]
+    assert parent.get("name") == "shell_left"
+    meshes = [objects[c.get("objectid")] for c in parent.find("m:components", ns)]
+    assert [m.get("name") for m in meshes] == [b.name for b in part.bands]
+    # Outward-facing triangles: each mesh encloses its band's volume.
+    for mesh, band in zip(meshes, part.bands):
+        assert _signed_volume(mesh.find("m:mesh", ns), ns) == pytest.approx(band.body.volume, rel=1e-3), band.name
+        assert _open_edges(mesh.find("m:mesh", ns), ns) == 0, band.name
+    filaments = {pt.find("metadata[@key='name']").get("value"): pt.find("metadata[@key='extruder']").get("value")
+                 for pt in config.iter("part")}
+    assert filaments == {b.name: str(b.filament) for b in part.bands}
+
+
+def test_name_is_a_flush_white_inlay_in_the_first_layers(parts):
+    """The lettering is cut into the front face and filled, so the front prints flat."""
+    right = parts["shell_right"]
+    name = right.bands_on_bed()[-1]
+    box = name.body.bounding_box()
+    assert name.filament == p.NAME_FILAMENT
+    assert (box.min.Z, box.max.Z) == pytest.approx((0.0, p.BRAND_DEPTH.v), abs=1e-6)
+    assert name.body.volume == pytest.approx(shell.brand_name().volume, rel=1e-6)
+    # Filled: the bed face of the shell has no recess where the name is.
+    assert right.on_bed().bounding_box().min.Z == pytest.approx(0.0, abs=1e-6)
+    assert all(b.filament != p.NAME_FILAMENT for b in parts["shell_left"].bands)

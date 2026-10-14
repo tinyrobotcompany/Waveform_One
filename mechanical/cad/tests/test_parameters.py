@@ -88,3 +88,18 @@ def test_geometry_modules_have_no_dimensional_literals(module):
 def test_tongue_too_thick_for_the_wall_fails_clearly():
     errors = parameter_errors(with_value("TONGUE_THICKNESS", 3.6))
     assert any("leaves no material either side in SHELL_WALL" in e for e in errors)
+
+
+def test_overlapping_colour_stripes_fail_clearly():
+    errors = parameter_errors(with_value("STRIPE_2_FROM_FRONT", 15.0))
+    assert any("The colour stripes overlap" in e for e in errors)
+
+
+def test_colour_stripe_edges_must_fall_on_layer_boundaries():
+    errors = parameter_errors(with_value("STRIPE_WIDTH", 10.1))
+    assert any("STRIPE_WIDTH (10.1 mm) is not a whole number of 0.2 mm layers" in e for e in errors)
+
+
+def test_colour_stripe_cannot_start_inside_the_front_plate():
+    errors = parameter_errors(with_value("STRIPE_1_FROM_FRONT", 2.0))
+    assert any("starts inside the 4.0 mm front plate" in e for e in errors)

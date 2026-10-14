@@ -109,6 +109,18 @@ profiles, slice, print.
 About 600 cm³ in total (~750 g of PETG). Single-part files are also in
 `exports/3mf/` and `exports/stl/` if a part ever needs reprinting on its own.
 
+**Colour stripes.** The two shell halves come split into a black body and two
+coloured bands, each band 20 mm wide, starting 10 mm and 40 mm behind the
+front ([colour plan](docs/colour-plan.md)). In ElegooSlicer, check that each
+shell is **one object with three parts** in the object list. Parts set to
+filament 1 print in the body colour; set filament slots 2 and 3 to the band
+colours. The right shell has a fourth part, `shell_right_name`: WAVEFORM
+ONE inlaid in the front face, on filament 4 (white). If the slicer shows the
+parts on filament 1, set `…_stripe_1` to filament 2, `…_stripe_2` to 3 and
+`shell_right_name` to 4. If
+it asks whether to load the file as a single object with multiple parts,
+answer **Yes**.
+
 **Print the coupon first.** Front row: heat-set insert holes 3.8 → 4.2 mm;
 back row: M3 screw holes 3.0 → 3.4 mm; the cut-off corner marks the smallest
 end. Report the insert hole that grips best and the smallest hole an M3 screw

@@ -10,7 +10,7 @@ panel screws across the joint.
 Both halves print front face down: the front gets the bed's finish, every wall
 grows straight up, and wall-mounted bosses have 45-degree undersides.
 
-Front-face details (frame groove, window chamfers, the name) are cut into the
+Front-face details (window chamfers, the name) are cut into the
 face that sits on the bed.
 """
 
@@ -23,6 +23,7 @@ from waveform_one import carrier
 from waveform_one.enclosure import FRONT_FACE_DOWN, clips, record_holder, rear_panel
 from waveform_one.geometry import (
     CUT_OVERSHOOT,
+    Band,
     PrintedPart,
     box_between,
     front_plane,
@@ -46,10 +47,12 @@ def led_window() -> tuple[tuple[float, float], tuple[float, float]]:
 
 
 def brand_centre() -> tuple[float, float]:
-    """(x, z) of the name: under the LED panel, midway between frame groove and window."""
+    """(x, z) of the name: centred on the strip of front below the LED window.
+
+    That strip runs from the case's bottom edge to the window's chamfered edge.
+    """
     (x0, x1), (z_window, _) = led_window()
-    groove_top = p.FRAME_GROOVE_INSET.v + p.FRAME_GROOVE_WIDTH.v
-    return (x0 + x1) / 2, (groove_top + z_window) / 2
+    return (x0 + x1) / 2, (z_window - p.WINDOW_CHAMFER.v) / 2
 
 
 def _outer_shell() -> Part:
@@ -70,19 +73,11 @@ def _cut_windows(shell: Part) -> Part:
     return chamfer(front.inner_wires().edges(), p.WINDOW_CHAMFER.v)
 
 
-def _front_engraving() -> Part:
-    width, _, height = layout.case_size()
-    inset, groove = p.FRAME_GROOVE_INSET.v, p.FRAME_GROOVE_WIDTH.v
-    r = p.CORNER_RADIUS.v
-    depth = p.FRAME_GROOVE_DEPTH.v
-    outer = rounded_prism(width - 2 * inset, height - 2 * inset, r - inset, -CUT_OVERSHOOT, depth + CUT_OVERSHOOT, height / 2)
-    inner_inset = inset + groove
-    o = CUT_OVERSHOOT
-    inner = rounded_prism(width - 2 * inner_inset, height - 2 * inner_inset, r - inner_inset, -2 * o, (depth + o) + 2 * o, height / 2)
+def brand_name() -> Part:
+    """The name, as cut into the front face; the cut is filled with the white inlay."""
     x, z = brand_centre()
     text = Text(p.BRAND_TEXT, p.BRAND_FONT_SIZE.v, font=p.BRAND_FONT, font_style=FontStyle.BOLD)
-    name = extrude(front_plane(0, z, x) * text, amount=-p.BRAND_DEPTH.v)
-    return (outer - inner) + name
+    return extrude(front_plane(0, z, x) * text, amount=-p.BRAND_DEPTH.v)
 
 
 def _pockets() -> Part:
@@ -161,7 +156,7 @@ def _top_and_bottom_holes() -> list[Part]:
 
 def build_full_shell() -> Part:
     shell = _cut_windows(_outer_shell())
-    shell -= _front_engraving()
+    shell -= brand_name()
     shell += _pockets()
     for features, cuts in (clips.build_bosses(), _rear_bosses(), _carrier_posts()):
         for feature in features:
@@ -189,6 +184,33 @@ def tongue_boxes(grow: float = 0.0) -> list[Part]:
     ]
 
 
+def stripe_slabs() -> list[tuple[float, float]]:
+    """Front-to-back extent (Y) of each colour stripe."""
+    width = p.STRIPE_WIDTH.v
+    return [(start, start + width) for start in (p.STRIPE_1_FROM_FRONT.v, p.STRIPE_2_FROM_FRONT.v)]
+
+
+def colour_bands(name: str, body: Part, inlay: Part | None = None) -> tuple[Band, ...]:
+    """The shell half as its black body plus one band per colour stripe, and the name inlay.
+
+    Each stripe is the whole cross-section between two depths: printed front
+    face down, every layer is one colour, so the printer only changes filament
+    at the stripe edges. The name inlay fills the lettering cut into the front
+    face; it sits in the first few layers, the only ones that mix two colours.
+    """
+    width, depth, height = layout.case_size()
+    o = CUT_OVERSHOOT
+    base = body
+    stripes = []
+    for index, (y0, y1) in enumerate(stripe_slabs(), start=1):
+        slab = box_between((-width / 2 - o, y0, -o), (width / 2 + o, y1, height + o))
+        stripes.append(Band(f"{name}_stripe_{index}", index + 1, body & slab))
+        base = base - slab
+    if inlay is None:
+        return (Band(f"{name}_body", 1, base), *stripes)
+    return (Band(f"{name}_body", 1, base - inlay), *stripes, Band(f"{name}_name", p.NAME_FILAMENT, inlay))
+
+
 def build_halves() -> list[PrintedPart]:
     shell = build_full_shell()
     width, depth, height = layout.case_size()
@@ -201,7 +223,17 @@ def build_halves() -> list[PrintedPart]:
     for groove in tongue_boxes(grow=p.JOINT_CLEARANCE.v):
         right -= groove
     note = "Front face down on the bed; no supports."
-    return [
-        PrintedPart("shell_left", left, FRONT_FACE_DOWN, note),
-        PrintedPart("shell_right", right, FRONT_FACE_DOWN, note),
-    ]
+    halves = []
+    name = brand_name()
+    for label, body, (x0, x1) in (
+        ("shell_left", left, (-width / 2 - o, seam)),
+        ("shell_right", right, (seam, width / 2 + o)),
+    ):
+        inlay = name & box_between((x0, -o, -o), (x1, depth + o, height + o))
+        if inlay.volume > 0:  # the name lies in this half: print it filled, in white
+            body += inlay
+            bands = colour_bands(label, body, inlay)
+        else:
+            bands = colour_bands(label, body)
+        halves.append(PrintedPart(label, body, FRONT_FACE_DOWN, note, bands=bands))
+    return halves

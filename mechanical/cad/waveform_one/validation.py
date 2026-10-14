@@ -40,10 +40,17 @@ def _layout_errors(params: dict[str, p.Param]) -> list[str]:
             errors.append(f"Shell groove ({groove_t:.2f} mm) leaves no material either side in {host} ({v(host):.1f} mm)")
     if v("CORNER_RADIUS") <= v("SHELL_WALL"):
         errors.append("CORNER_RADIUS must exceed SHELL_WALL so the inside corners stay rounded")
-    frame = v("FRAME_GROOVE_INSET") + v("FRAME_GROOVE_WIDTH")
-    for band in ("SIDE_BAND", "BOTTOM_BAND", "TOP_BAND"):
-        if frame >= v("SHELL_WALL") + v(band):
-            errors.append(f"Frame groove ({frame:.1f} mm in) would cut into the components behind {band}")
+    width, layer = v("STRIPE_WIDTH"), v("LAYER_HEIGHT")
+    first, second = v("STRIPE_1_FROM_FRONT"), v("STRIPE_2_FROM_FRONT")
+    if first < v("FRONT_THICKNESS"):
+        errors.append(f"The first colour stripe ({first:.1f} mm) starts inside the {v('FRONT_THICKNESS'):.1f} mm front plate")
+    if second < first + width:
+        errors.append(f"The colour stripes overlap: the second starts at {second:.1f} mm, before the first ends")
+    if second + width > v("CASE_DEPTH"):
+        errors.append(f"The second colour stripe runs past the {v('CASE_DEPTH'):.0f} mm case depth")
+    for name, edge in (("STRIPE_1_FROM_FRONT", first), ("STRIPE_2_FROM_FRONT", second), ("STRIPE_WIDTH", width)):
+        if abs(edge / layer - round(edge / layer)) > 1e-6:
+            errors.append(f"{name} ({edge} mm) is not a whole number of {layer} mm layers")
     return errors
 
 
