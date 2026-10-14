@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <cmath>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -150,8 +151,10 @@ inline std::vector<uint8_t> body(const Credentials &credentials, const std::stri
 
 enum class Result { Matched, NoMatch, Limited, Failed };
 
-// Reads an identify response. Of several candidates, the one matching the
-// most of the clip wins: a short chance match must not beat the real song.
+// Preserve the primary candidate when confidence and coverage are close.
+// Sampled remixes can cover a few more milliseconds than the original and
+// must not replace it on that numerical detail. Meaningfully longer coverage
+// can still beat a short incidental match at comparable confidence.
 inline Result parse(const cJSON *root, RecognitionTrack &track)
 {
     using recognition_metadata::field;
@@ -170,7 +173,9 @@ inline Result parse(const cJSON *root, RecognitionTrack &track)
         const cJSON *score = field(music, "score");
         const double length = cJSON_IsNumber(begin) && cJSON_IsNumber(end) ? end->valuedouble - begin->valuedouble : 0;
         const double value = cJSON_IsNumber(score) ? score->valuedouble : 0;
-        if (length > best_length || (length == best_length && value > best_score)) {
+        if (!std::isfinite(length) || length < 0 || !std::isfinite(value) || value < 0 || value > 100) continue;
+        if (best == nullptr || value > best_score + 3
+            || (std::abs(value - best_score) <= 3 && length > best_length + 500)) {
             best = music; best_length = length; best_score = value;
         }
     }
@@ -179,6 +184,16 @@ inline Result parse(const cJSON *root, RecognitionTrack &track)
     recognition_metadata::text(field(field(best, "album"), "name"), track.album);
     const cJSON *duration = field(best, "duration_ms");
     if (cJSON_IsNumber(duration) && duration->valuedouble > 0) track.duration_s = duration->valuedouble / 1000;
+    const cJSON *matched_begin = field(best, "sample_begin_time_offset_ms");
+    const cJSON *matched_end = field(best, "sample_end_time_offset_ms");
+    if (cJSON_IsNumber(matched_begin) && cJSON_IsNumber(matched_end) &&
+        std::isfinite(matched_begin->valuedouble) && std::isfinite(matched_end->valuedouble) &&
+        matched_begin->valuedouble >= 0 && matched_end->valuedouble > matched_begin->valuedouble) {
+        track.sample_begin_ms = matched_begin->valuedouble;
+        track.sample_end_ms = matched_end->valuedouble;
+    }
+    const cJSON *confidence = field(best, "score");
+    if (cJSON_IsNumber(confidence)) track.match_score = confidence->valuedouble;
     // Song position at the clip's start.
     const cJSON *db = field(best, "db_begin_time_offset_ms");
     const cJSON *sample = field(best, "sample_begin_time_offset_ms");

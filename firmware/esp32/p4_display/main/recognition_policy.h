@@ -9,13 +9,20 @@
 #include <string_view>
 
 namespace recognition_policy {
-struct Session { uint64_t epoch; bool ready; };
+struct Session { uint64_t epoch; bool ready; bool transport_ready = false; };
+
+// A level vote is not a transport failure. Finish a started ACR acquisition
+// even if that vote becomes quiet; the planner bounds its attempts/lifetime.
+inline bool request_allowed(bool acr, Session session, bool acquiring) {
+    return session.transport_ready && (session.ready || (acr && acquiring));
+}
 
 // Network and controller availability. Any change invalidates in-flight
 // work: a lookup that began on a different network must not be shown.
 class Sessions {
 public:
-    Session snapshot() const { return {epoch_, online_ && connected_}; }
+    Session snapshot() const { return {epoch_, online_ && connected_ && sound_, online_ && connected_}; }
+    uint64_t transport_epoch() const { return transport_epoch_; }
     bool set_network(bool available, std::string_view pairing_url)
     {
         // Pairing rotates independently of the network. Keep only the origin,
@@ -28,17 +35,22 @@ public:
         }
         available = available && !origin.empty();
         if (available == online_ && origin == origin_) return false;
-        online_ = available; origin_ = origin; ++epoch_;
+        online_ = available; origin_ = origin; ++epoch_; ++transport_epoch_;
         return true;
     }
     bool set_controller(bool available)
     {
         if (connected_ == available) return false;
-        connected_ = available; ++epoch_; return true;
+        connected_ = available; ++epoch_; ++transport_epoch_; return true;
+    }
+    void invalidate_audio() { sound_ = false; ++epoch_; ++transport_epoch_; }
+    bool set_sound(bool value) {
+        if (sound_ == value) return false;
+        sound_ = value; ++epoch_; return true;
     }
 private:
-    uint64_t epoch_ = 1;
-    bool online_ = false, connected_ = false;
+    uint64_t epoch_ = 1, transport_epoch_ = 1;
+    bool online_ = false, connected_ = false, sound_ = false;
     std::string origin_;
 };
 
@@ -98,19 +110,24 @@ private:
 // (measured 2026-10-12); a paid service allows more.
 class Budget {
 public:
-    static constexpr unsigned kMaxPerWindow = 16;
+    static constexpr unsigned kMaxPerWindow = 24;
     static constexpr int64_t kWindowUs = 60000000;
     explicit Budget(unsigned per_window = 3) : per_window_(std::min(per_window, kMaxPerWindow)) {}
     bool available(int64_t now) const
     {
         unsigned recent = 0;
-        for (unsigned i = 0; i < per_window_; ++i) recent += spent_[i] >= 0 && now - spent_[i] < kWindowUs;
+        for (unsigned i = 0; i < populated_; ++i) recent += now - spent_[i] < kWindowUs;
         return recent < per_window_;
     }
-    void spend(int64_t now) { spent_[next_++ % per_window_] = now; }
+    void spend(int64_t now) {
+        spent_[next_++ % per_window_] = now;
+        populated_ = std::min(populated_ + 1, per_window_);
+    }
 private:
     unsigned per_window_;
-    int64_t spent_[kMaxPerWindow] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+    // Zero-filled timestamps are not requests: only populated entries count.
+    int64_t spent_[kMaxPerWindow]{};
+    unsigned populated_ = 0;
     unsigned next_ = 0;
 };
 
@@ -123,6 +140,10 @@ private:
 //   was and the catalogue says how long the song is, so the next lookup waits
 //   until 4 s after that song should end. Without a length, check every 60 s.
 // - Silence ends everything: the display returns to its standard screen.
+inline bool lookup_ready(bool acr, bool complete_pcm, bool signature_valid, size_t peaks) {
+    return acr ? complete_pcm : signature_valid && peaks >= 5;
+}
+
 struct Window { uint32_t first = 0, last = 0; };
 
 class Planner {
@@ -133,7 +154,9 @@ public:
 
     Planner() = default;
     // Seconds of sound before each quick try.
-    explicit Planner(std::initializer_list<uint32_t> seconds)
+    explicit Planner(std::initializer_list<uint32_t> seconds,
+                     uint32_t retry_hops = kRetryHops, uint32_t verify_hops = kVerifyHops)
+        : retry_hops_(retry_hops), verify_hops_(verify_hops)
     {
         tries_ = 0;
         for (uint32_t value : seconds) if (tries_ < kMaxQuickTries) first_tries_[tries_++] = value * kHopsPerSecond;
@@ -145,6 +168,18 @@ public:
     static constexpr uint32_t kNextSongHops = 4 * kHopsPerSecond;
 
     void sound_started(uint32_t hop) { begin(hop); active_ = true; }
+    // A level decision does not break PCM continuity. Resume the same rolling
+    // acquisition across a short quiet interval; discard context only once
+    // that interval is as long as our entire retained lookup window.
+    void resume_sound(uint32_t hop, uint32_t quiet_hop) {
+        if (!active_ || (quiet_hop != 0 && hop >= quiet_hop && hop - quiet_hop >= kMaxWindow)) {
+            stopped(); sound_started(hop);
+        }
+    }
+    void observe_quiet(uint32_t heard, uint32_t quiet_hop) {
+        if (heard >= quiet_hop && heard - quiet_hop >= kMaxWindow) stopped();
+    }
+
     // Recent sounds were not music the service knows (an air conditioner,
     // talk): one try after 6 s, then every two minutes, until something matches.
     void set_cautious(bool value) { cautious_ = value; }
@@ -158,36 +193,41 @@ public:
         return showing;
     }
     bool active() const { return active_; }
+    bool acquiring() const { return active_ && !matched_ && attempts_ < tries_; }
     bool matched() const { return matched_; }
 
     // The next lookup window, if one is due once heard hops exist.
     bool due(uint32_t heard, Window &window)
     {
         if (!active_ || heard <= segment_) return false;
-        if (matched_ && end_ != 0 && !ended_ && heard >= end_ + kNextSongHops) {
+        if (verify_hops_ == kVerifyHops && matched_ && end_ != 0 && !ended_ && heard >= end_ + kNextSongHops) {
             // The song should be over: identify whatever follows it.
             begin(end_); ended_ = true;
         }
         const uint32_t elapsed = heard - segment_;
         bool ready;
-        if (matched_ && !ended_) ready = end_ == 0 && heard >= verify_;
+        if (matched_ && !ended_) ready = (verify_hops_ < kVerifyHops || end_ == 0) && heard >= verify_;
         else if (cautious_) ready = attempts_ == 0 ? elapsed >= kCautiousFirstHops : heard >= last_attempt_ + kCautiousRetryHops;
         else if (attempts_ < tries_) ready = elapsed >= first_tries_[attempts_];
-        else ready = heard >= last_attempt_ + kRetryHops;
+        else ready = heard >= last_attempt_ + retry_hops_;
         if (!ready) return false;
         window.last = heard;
-        window.first = std::max(segment_, heard > kMaxWindow ? heard - kMaxWindow : 0);
+        const uint32_t length = matched_ && verify_hops_ < kVerifyHops ? 5 * kHopsPerSecond : kMaxWindow;
+        window.first = std::max(segment_, heard > length ? heard - length : 0);
         return true;
     }
 
-    void attempted(uint32_t heard) { ++attempts_; last_attempt_ = heard; }
+    void attempted(uint32_t heard) {
+        ++attempts_; last_attempt_ = heard;
+        if (matched_ && verify_hops_ < kVerifyHops) verify_ = heard + verify_hops_;
+    }
 
     // A song was identified in window. offset_s is the song position at the
     // window's first hop; duration_s is zero when unknown.
     void matched(const Window &window, uint32_t heard, double offset_s, double duration_s)
     {
         matched_ = true; ended_ = false; misses_ = 0;
-        end_ = 0; verify_ = heard + kVerifyHops;
+        end_ = 0; verify_ = heard + verify_hops_;
         if (duration_s >= 30 && duration_s <= 3600 && offset_s >= 0 && offset_s < duration_s) {
             const double end = window.first + (duration_s - offset_s) * kHopsPerSecond;
             // Too close to call: check again shortly instead.
@@ -215,6 +255,7 @@ public:
 private:
     void begin(uint32_t hop) { segment_ = hop; attempts_ = 0; last_attempt_ = hop; }
 
+    uint32_t retry_hops_ = kRetryHops, verify_hops_ = kVerifyHops;
     uint32_t first_tries_[kMaxQuickTries] = {4 * kHopsPerSecond, 10 * kHopsPerSecond};
     unsigned tries_ = 2;
     bool cautious_ = false;

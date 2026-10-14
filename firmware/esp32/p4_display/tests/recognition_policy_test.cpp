@@ -1,5 +1,6 @@
 #include <cassert>
 #include "recognition_policy.h"
+#include "recognition_delivery.h"
 
 int main()
 {
@@ -8,6 +9,7 @@ int main()
 
     // Sessions: network and controller changes invalidate work.
     Sessions sessions;
+    sessions.set_sound(true);
     assert(!sessions.snapshot().ready);
     assert(sessions.set_controller(true));
     assert(!sessions.snapshot().ready);
@@ -164,6 +166,16 @@ int main()
     Budget paid(12);
     for (int i = 0; i < 12; ++i) { assert(paid.available(i)); paid.spend(i); }
     assert(!paid.available(12) && paid.available(60000000));
+    Budget frequent(24);
+    for (int i = 0; i < 24; ++i) {
+        assert(frequent.available(i * 2500000LL));
+        frequent.spend(i * 2500000LL);
+    }
+    assert(!frequent.available(59999999));
+    assert(frequent.available(60000000));
+    frequent.spend(60000000);
+    assert(!frequent.available(60000001));
+    assert(frequent.available(62500000));
 
     assert(retry_after("Sat, 10 Oct 2026 12:03:00 GMT", 1791633600) == 180000000);
     assert(retry_after("Sat, 31 Feb 2026 12:00:00 GMT", 1) == 0);
@@ -178,4 +190,155 @@ int main()
     assert(retry_after("180") == 180000000);
     assert(retry_after("0") == 0 && retry_after("invalid") == 0);
     assert(retry_after("9999999999999999999999999999999") == 0);
+    // Silence invalidates a lookup even if music restarts before it returns.
+    Sessions music_session;
+    music_session.set_network(true, "http://192.168.1.10");
+    music_session.set_controller(true);
+    music_session.set_sound(true);
+    const auto pending = music_session.snapshot();
+    assert(pending.ready);
+    assert(music_session.set_sound(false) && !music_session.snapshot().ready);
+    assert(music_session.set_sound(true));
+    assert(music_session.snapshot().epoch != pending.epoch);
+    assert(!music_session.set_sound(true));
+
+    // ACRCloud checks actual audio periodically, irrespective of album length.
+    Planner periodic({3, 5, 8}, 5 * s, 5 * s);
+    periodic.sound_started(0);
+    assert(periodic.due(3 * s, window));
+    periodic.attempted(3 * s);
+    periodic.matched(window, 3 * s, 0, 600);
+    assert(!periodic.due(8 * s - 1, window));
+    assert(periodic.due(8 * s, window) && window.last - window.first == 5 * s);
+    periodic.attempted(8 * s);
+    assert(!periodic.due(8 * s + 1, window));
+    assert(periodic.due(13 * s, window));
+    Planner faster({3, 5, 8}, 313, 313);
+    faster.sound_started(0);
+    assert(faster.due(3 * s, window));
+    faster.attempted(3 * s);
+    faster.matched(window, 3 * s, 0, 600);
+    assert(!faster.due(3 * s + 312, window));
+    assert(faster.due(3 * s + 313, window));
+    faster.attempted(window.last);
+    assert(!faster.due(3 * s + 625, window));
+    assert(faster.due(3 * s + 626, window));
+
+    // Regression: repeated short quiet decisions must not starve the first
+    // 3/5/8-second lookups by restarting acquisition every time.
+    Planner continuous({3, 5, 8}, 313, 313);
+    continuous.resume_sound(0, 0);
+    continuous.observe_quiet(2 * s, 2 * s);
+    continuous.resume_sound(2 * s + 100, 2 * s);
+    assert(continuous.due(3 * s, window) && window.first == 0);
+    continuous.attempted(window.last);
+    continuous.observe_quiet(4 * s, 4 * s);
+    continuous.resume_sound(4 * s + 100, 4 * s);
+    assert(continuous.due(5 * s, window) && window.first == 0);
+    continuous.attempted(window.last);
+    continuous.observe_quiet(6 * s, 6 * s);
+    continuous.resume_sound(6 * s + 100, 6 * s);
+    assert(continuous.due(8 * s, window) && window.first == 0);
+    continuous.observe_quiet(20 * s, 12 * s);
+    assert(!continuous.active());
+    continuous.resume_sound(21 * s, 12 * s);
+    assert(!continuous.due(23 * s, window));
+    assert(continuous.due(24 * s, window) && window.first == 21 * s);
+    const auto physical = music_session.transport_epoch();
+    music_session.set_sound(false); music_session.set_sound(true);
+    assert(music_session.transport_epoch() == physical);
+    music_session.set_controller(false); music_session.set_controller(true);
+    assert(music_session.transport_epoch() != physical);
+
+    // Production request admission, not just Planner::due(): a quiet vote
+    // during acquisition must not prevent the buffered 3/5/8 s attempts.
+    Sessions acquisition_session;
+    acquisition_session.set_network(true, "http://192.168.1.10");
+    acquisition_session.set_controller(true);
+    Planner acquisition({3, 5, 8}, 313, 313);
+    assert(!request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
+    acquisition_session.set_sound(true);
+    acquisition.resume_sound(0, 0);
+    acquisition_session.set_sound(false);
+    acquisition.observe_quiet(2 * s, 2 * s);
+    for (uint32_t hop : {3 * s, 5 * s + 63, 8 * s + 1}) {
+        assert(request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
+        assert(!request_allowed(false, acquisition_session.snapshot(), acquisition.acquiring()));
+        assert(acquisition.due(hop, window));
+        acquisition.attempted(hop);
+    }
+    // Finish the bounded acquisition; do not keep querying a quiet room.
+    assert(!request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
+    acquisition.observe_quiet(10 * s, 2 * s);
+    assert(!acquisition.active());
+    acquisition.resume_sound(11 * s, 2 * s);
+    acquisition_session.set_sound(true);
+    assert(request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
+    acquisition_session.set_controller(false);
+    assert(!request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
+    acquisition_session.set_controller(true);
+    acquisition_session.set_network(false, "");
+    assert(!request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
+
+    // Derived replay of logged level events during user-confirmed continuous
+    // Drive My Car, 2026-10-13 08:42:21.737 through 08:42:29.745 UTC.
+    // These are host log arrival times, rounded up to audio hops: scheduling
+    // regression evidence only, not a raw-audio accuracy/latency benchmark.
+    const uint32_t events_ms[] = {0, 1429, 2241, 4072, 4684, 6524};
+    auto replay = [&](bool old_gate) {
+        Sessions state;
+        state.set_network(true, "http://192.168.1.10"); state.set_controller(true);
+        Planner plan({3, 5, 8}, 313, 313);
+        unsigned event = 0, requests = 0;
+        uint32_t quiet = 0, next_request = 0;
+        for (uint32_t hop = 0; hop <= 8 * s + 1; ++hop) {
+            if (event < 6 && hop * 8 >= events_ms[event]) {
+                const bool sound = event++ % 2 == 0;
+                state.set_sound(sound);
+                if (sound) plan.resume_sound(hop, quiet);
+                else quiet = hop;
+            }
+            if (!state.snapshot().ready) plan.observe_quiet(hop, quiet);
+            const bool admitted = old_gate ? state.snapshot().ready
+                : request_allowed(true, state.snapshot(), plan.acquiring());
+            Window clip;
+            if (admitted && hop >= next_request && plan.due(hop, clip)) {
+                plan.attempted(hop); next_request = hop + 313; ++requests;
+            }
+        }
+        return requests;
+    };
+    assert(replay(true) == 2);
+    assert(replay(false) == 3);
+
+    // Once matched, quiet does not trigger a new unbounded lookup sequence.
+    acquisition.sound_started(0);
+    acquisition.matched({0, 3 * s}, 3 * s, 0, 200);
+    assert(!acquisition.acquiring());
+    assert(!request_allowed(true, {1, false, true}, acquisition.acquiring()));
+
+    // A GUI timeout is retryable, but an old clear cannot erase a new track.
+    recognition_delivery::EmptyUpdate delivery;
+    unsigned calls = 0;
+    delivery.request(7, RecognitionStatus::Waiting);
+    assert(!delivery.flush(7, [&](RecognitionStatus) { ++calls; return false; }));
+    assert(delivery.pending());
+    assert(delivery.flush(7, [&](RecognitionStatus status) {
+        ++calls; assert(status == RecognitionStatus::Waiting); return true;
+    }));
+    assert(!delivery.pending() && calls == 2);
+    delivery.request(7, RecognitionStatus::Waiting);
+    assert(!delivery.flush(8, [&](RecognitionStatus) { ++calls; return true; }));
+    assert(calls == 2 && !delivery.pending());
+    delivery.request(8, RecognitionStatus::Waiting);
+    delivery.cancel(); // a newer matched track in the same session wins
+    assert(!delivery.flush(8, [&](RecognitionStatus) { ++calls; return true; }));
+    assert(calls == 2);
+
+    // ACRCloud needs verified PCM, never a successful Shazam signature.
+    assert(lookup_ready(true, true, false, 0));
+    assert(!lookup_ready(true, false, true, 100));
+    assert(!lookup_ready(false, true, false, 100));
+    assert(!lookup_ready(false, true, true, 4));
+    assert(lookup_ready(false, true, true, 5));
 }

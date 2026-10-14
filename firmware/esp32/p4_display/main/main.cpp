@@ -952,12 +952,15 @@ void create_product_screen()
     lv_timer_create(update_clock, 1000, nullptr);
 }
 
-void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
+bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                         const RecognitionArtwork *image)
 {
     network_set_recognition(status, track);
     // The recognition/session mutex is acquired before this GUI lock everywhere.
-    if (!bsp_display_lock(1000)) return;
+    if (!bsp_display_lock(10)) {
+        ESP_LOGW(kTag, "Recognition display update deferred: GUI busy");
+        return false;
+    }
     const bool same_cover = track != nullptr
         && std::strcmp(displayed_track.artwork_url, track->artwork_url) == 0;
     const bool same_track = track != nullptr
@@ -1012,6 +1015,7 @@ void update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                   track != nullptr);
     set_recognition_feedback(status, track != nullptr);
     bsp_display_unlock();
+    return true;
 }
 
 } // namespace

@@ -47,10 +47,21 @@ public:
     // SoundStarted event reports the hop the sound most likely began at.
     Event push(const int16_t *hop, unsigned samples, uint32_t hop_number, uint32_t &start_hop)
     {
-        for (unsigned i = 0; i < samples; ++i) energy_ += double(hop[i]) * hop[i];
+        for (unsigned i = 0; i < samples; ++i) {
+            energy_ += double(hop[i]) * hop[i];
+            sum_ += hop[i];
+            rails_ += hop[i] == INT16_MIN || hop[i] == INT16_MAX;
+            zeros_ += hop[i] == 0;
+        }
         count_ += samples;
         if (++block_hops_ < kBlockHops) return Event::None;
         const double level = 10 * std::log10(energy_ / count_ / (32768.0 * 32768.0) + 1e-12);
+        quality_.mean = sum_ / count_;
+        const double ac_power = std::max(0.0, energy_ / count_ - quality_.mean * quality_.mean);
+        quality_.ac_db = 10 * std::log10(ac_power / (32768.0 * 32768.0) + 1e-12);
+        quality_.rail_percent = 100.0 * rails_ / count_;
+        quality_.zero_percent = 100.0 * zeros_ / count_;
+        sum_ = 0; rails_ = zeros_ = 0;
         energy_ = 0; count_ = 0; block_hops_ = 0;
         last_level_ = level;
         return block(level, hop_number, start_hop);
@@ -60,7 +71,8 @@ public:
     void discontinuity()
     {
         energy_ = 0; count_ = 0; block_hops_ = 0;
-        loud_ = quiet_ = 0; quiet_history_ = 0;
+        sum_ = 0; rails_ = zeros_ = 0; quality_ = {};
+        loud_ = quiet_ = resumed_loud_ = 0; quiet_history_ = 0;
         sound_ = unrecognised_ = false;
     }
 
@@ -89,6 +101,10 @@ public:
     bool calibrated() const { return calibration_ >= kCalibrationBlocks; }
     double background_db() const { return background_; }
     double level_db() const { return last_level_; }
+    // Diagnostics only: changing the detector's input requires a separate
+    // validation. dBFS is digital level, not calibrated acoustic dB SPL.
+    struct Quality { double mean = 0, ac_db = -120, rail_percent = 0, zero_percent = 0; };
+    Quality quality() const { return quality_; }
 
 private:
     Event block(double level, uint32_t hop_number, uint32_t &start_hop)
@@ -108,7 +124,7 @@ private:
         if (!sound_) {
             loud_ = level >= background_ + kStartAboveDb ? loud_ + 1 : 0;
             if (loud_ < kStartBlocks) return Event::None;
-            sound_ = true; quiet_ = 0;
+            sound_ = true; quiet_ = resumed_loud_ = 0; quiet_history_ = 0;
             // Include the blocks that proved the sound plus one before them.
             const uint32_t back = (kStartBlocks + 1) * kBlockHops;
             start_hop = hop_number + 1 > back ? hop_number + 1 - back : 0;
@@ -117,6 +133,10 @@ private:
         const bool quiet = level < background_ + kStopAboveDb;
         quiet_history_ = (quiet_history_ << 1) | (quiet ? 1u : 0u);
         if (!quiet) {
+            // A confidently resumed passage starts a fresh quiet-vote window.
+            // A single cough still does not erase genuine stop evidence.
+            resumed_loud_ = std::min(resumed_loud_ + 1, kStartBlocks);
+            if (resumed_loud_ == kStartBlocks) quiet_history_ = 0;
             const unsigned dip = quiet_;
             quiet_ = 0;
             if (dip < kGapBlocks) return Event::None;
@@ -126,6 +146,7 @@ private:
             gap_end_ = resumed;
             return Event::Gap;
         }
+        resumed_loud_ = 0;
         ++quiet_;
         // Mostly quiet for the stop time: a creak or a cough in the room must
         // not restart the count.
@@ -138,8 +159,11 @@ private:
     }
 
     double energy_ = 0;
+    double sum_ = 0;
+    unsigned rails_ = 0, zeros_ = 0;
+    Quality quality_;
     unsigned count_ = 0, block_hops_ = 0;
-    unsigned calibration_ = 0, loud_ = 0, quiet_ = 0;
+    unsigned calibration_ = 0, loud_ = 0, quiet_ = 0, resumed_loud_ = 0;
     double background_ = kLowestDb, last_level_ = kLowestDb;
     double low_ = 0, high_ = kLowestDb;
     uint32_t gap_end_ = 0, quiet_history_ = 0;

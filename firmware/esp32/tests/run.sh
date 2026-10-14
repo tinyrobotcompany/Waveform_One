@@ -80,6 +80,13 @@ printf '%s\n' 'PASS: production P4 USB audio stream, restarts, shared controls a
 "$build_dir/p4_listening"
 printf '%s\n' 'PASS: sound start and silence detection against the learnt room background'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/audio_presence_test.cpp" -o "$build_dir/p4_presence"
+"$build_dir/p4_presence"
+printf '%s\n' 'PASS: audio presence independent of lookup, absolute positions and stale-result invalidation'
+
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \

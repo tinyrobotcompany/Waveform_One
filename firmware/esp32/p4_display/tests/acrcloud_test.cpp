@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include "acrcloud.h"
+#include "recognition_evidence.h"
 
 namespace {
 std::string hex(const std::array<uint8_t, 20> &digest)
@@ -75,6 +76,33 @@ int main()
     assert(std::strcmp(track.title, "Whole Lotta Love (1990 Remaster)") == 0);
     assert(std::strcmp(track.artist, "Led Zeppelin") == 0 && std::strcmp(track.album, "Led Zeppelin II") == 0);
     assert(track.duration_s == 334 && track.offset_s == 29.16);
+    assert(track.sample_begin_ms == 0 && track.sample_end_ms == 3000 && track.match_score == 97);
+    const auto region = recognition_evidence::coverage(track, 16000, 96000);
+    assert(region.valid && region.first == 16000 && region.last == 64000);
+    using recognition_evidence::retained_after_activity_change;
+    assert(retained_after_activity_change(region, true, true, true, 63000));
+    assert(!retained_after_activity_change(region, false, true, true, 63000)); // still stopped
+    assert(!retained_after_activity_change(region, true, false, true, 63000)); // disconnect/reconnect
+    assert(!retained_after_activity_change(region, true, true, false, 63000)); // PCM discontinuity
+    assert(!retained_after_activity_change(region, true, true, true, 64000)); // only old audio matched
+    assert(!retained_after_activity_change({}, true, true, true, 0));
+
+    assert(!recognition_evidence::coverage(track, 16000, 32000).valid);
+    auto malformed = track;
+    malformed.sample_end_ms = std::numeric_limits<double>::infinity();
+    assert(!recognition_evidence::coverage(malformed, 16000, 96000).valid);
+    malformed.sample_end_ms = -1;
+    assert(!recognition_evidence::coverage(malformed, 16000, 96000).valid);
+    assert(!recognition_evidence::coverage(RecognitionTrack{}, 16000, 96000).valid);
+    malformed = track;
+    malformed.sample_begin_ms = 4000; // reversed interval
+    assert(!recognition_evidence::coverage(malformed, 16000, 96000).valid);
+    malformed.sample_begin_ms = std::numeric_limits<double>::quiet_NaN();
+    assert(!recognition_evidence::coverage(malformed, 16000, 96000).valid);
+    malformed.sample_begin_ms = 0;
+    malformed.sample_end_ms = 1e100;
+    assert(!recognition_evidence::coverage(malformed, 0, UINT64_MAX).valid);
+    assert(!recognition_evidence::coverage(track, 96000, 16000).valid);
     cJSON_Delete(root);
     root = cJSON_Parse(R"({"status":{"code":1001,"msg":"No result"}})");
     assert(parse(root, track) == Result::NoMatch && track.title[0] == '\0');
@@ -85,6 +113,17 @@ int main()
     for (const char *bad : {R"({"status":{"code":3001}})", R"({"status":{}})", R"({"metadata":{}})"}) {
         root = cJSON_Parse(bad); assert(parse(root, track) == Result::Failed); cJSON_Delete(root);
     }
+    // Real ACRCloud response: the primary original recording and a sampled
+    // DJ mix both scored 100. A 220 ms coverage difference must not replace
+    // the provider's primary recording with the sampled remix.
+    root = cJSON_Parse(R"({"status":{"code":0},"metadata":{"music":[
+        {"title":"Crazy in Love","artists":[{"name":"Beyoncé"}],"score":100,
+         "sample_begin_time_offset_ms":0,"sample_end_time_offset_ms":6880},
+        {"title":"Danna and Kristy's 6Min Pop Mix 100Bpm","artists":[{"name":"DJ Baddmixx"}],"score":100,
+         "sample_begin_time_offset_ms":0,"sample_end_time_offset_ms":7100}]}})");
+    assert(parse(root, track) == Result::Matched);
+    assert(std::strcmp(track.title, "Crazy in Love") == 0);
+    cJSON_Delete(root);
     // Unsafe text is refused rather than shown.
     root = cJSON_Parse(R"({"status":{"code":0},"metadata":{"music":[{"title":"bad\u0007title"}]}})");
     assert(parse(root, track) == Result::NoMatch);

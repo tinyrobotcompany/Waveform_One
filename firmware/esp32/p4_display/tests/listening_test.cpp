@@ -40,6 +40,31 @@ struct Run {
 int main()
 {
     using listening::Event;
+    // Independent diagnostic checks: DC energy is not acoustic AC energy;
+    // rails and zeros must be measured without changing detector decisions.
+    {
+        listening::Detector meter;
+        int16_t samples[128];
+        uint32_t number = 0, begin = 0;
+        auto block = [&] {
+            for (unsigned h = 0; h < listening::kBlockHops; ++h)
+                meter.push(samples, 128, number++, begin);
+        };
+        std::fill(samples, samples + 128, 1024);
+        block();
+        assert(meter.quality().mean == 1024 && meter.quality().ac_db <= -119);
+        assert(std::abs(meter.level_db() + 30.103) < 0.01);
+        assert(meter.quality().rail_percent == 0 && meter.quality().zero_percent == 0);
+        for (unsigned i = 0; i < 128; ++i) samples[i] = i % 2 ? INT16_MAX : INT16_MIN;
+        block();
+        assert(meter.quality().mean == -0.5 && meter.quality().ac_db > -0.001);
+        assert(meter.quality().rail_percent == 100);
+        std::fill(samples, samples + 128, 0);
+        block();
+        assert(meter.quality().zero_percent == 100 && meter.quality().rail_percent == 0);
+        meter.discontinuity();
+        assert(meter.quality().mean == 0 && meter.quality().zero_percent == 0);
+    }
     Run room;
     // A quiet room (-48 dBFS) is learnt as background, never as sound.
     assert(room.play(30, 130, Event::SoundStarted) < 0);
@@ -147,4 +172,14 @@ int main()
     assert(zero.play(5, 0, Event::SoundStarted) < 0);
     assert(zero.detector.background_db() <= -89);
     assert(zero.play(2, 130, Event::SoundStarted) >= 0);
+    // Votes from a previous quiet passage must not combine with a new dip
+    // after music has been confidently heard again.
+    Run resumed;
+    resumed.play(5, 130, Event::SoundStarted);
+    resumed.play(3, 520, Event::SoundStarted);
+    resumed.detector.set_patient(true);
+    assert(resumed.play(2.2, 130, Event::SilenceStarted) < 0);
+    resumed.play(0.6, 520, Event::Gap);
+    assert(resumed.play(0.4, 130, Event::SilenceStarted) < 0);
+    assert(resumed.detector.sound());
 }
