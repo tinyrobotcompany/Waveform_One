@@ -79,8 +79,9 @@ Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
 - **Rear panel (2 halves):** vents, a notch for the Pi and LED power cables,
   the microphone frame and sound hole. Its split is offset from the shell's so
   it ties the two shell halves together.
-- **Top:** two holders hold a 12-inch sleeve, leaning back 8°, screwed on from
-  inside.
+- **Top (optional):** two holders hold a 12-inch sleeve, leaning back 8°.
+  They attach with magnets: two in each holder's base, over two glued into
+  blind pockets under the top wall. Without the holders, the top is plain.
 - The ESP32 sits behind the LED panel; for now fix it with foam tape or Velcro
   (the dev board has no mounting holes).
 
@@ -104,7 +105,8 @@ profiles, slice, print.
 | 2 | `2_shell_left_revB_PETG.3mf` | left shell half | 19 h |
 | 3 | `3_shell_right_revB_PETG.3mf` | right shell half | 20 h |
 | 4 | `4_small_parts_a_revB_PETG.3mf` | left rear panel, Pi tray, 4 screen clips | 4 h 31 m |
-| 5 | `5_small_parts_b_revB_PETG.3mf` | right rear panel, 2 record holders, 4 LED clips | 4 h 51 m |
+| 5 | `5_small_parts_b_revB_PETG.3mf` | right rear panel, 4 LED clips | not yet sliced |
+| 6 | `6_record_holders_optional_revB_PETG.3mf` | 2 record holders (optional) | not yet sliced |
 
 About 600 cm³ in total (~750 g of PETG). Single-part files are also in
 `exports/3mf/` and `exports/stl/` if a part ever needs reprinting on its own.
@@ -130,12 +132,12 @@ slides through; the model is rebuilt with those values before the big parts.
 
 | Item | Qty | Where |
 |---|---|---|
-| M3 heat-set inserts, ~5.7 mm long | 26 | clip bosses 8, rear bosses 10, tray pads 4, holders 4 |
+| M3 heat-set inserts, ~5.7 mm long | 22 | clip bosses 8, rear bosses 10, tray pads 4 |
 | M3 × 8 screws | 22 | clips 8, rear panel 10, tray 4 |
-| M3 × 10 screws | 4 | holders, from inside through the top |
+| Neodymium disc magnets, 10 × 3 mm (N52) | 8 | record holders, optional: 2 per holder, 4 under the top |
 | M2.5 × 6 screws | 4 | Pi onto the tray standoffs |
 | Stick-on rubber feet, ≤ 12 mm | 4 | seats under the case |
-| Epoxy or superglue | — | joining the shell halves |
+| Epoxy or superglue | — | joining the shell halves; magnets into their pockets |
 
 Fit inserts with a soldering iron (a dedicated insert tip helps).
 
@@ -149,7 +151,15 @@ Fit inserts with a soldering iron (a dedicated insert tip helps).
 6. ESP32 behind the LED panel with foam tape; connect HUB75, USB and mic wires.
 7. Microphone into the frame on the rear panel (dab of hot glue), facing the hole.
 8. Feed the power cables through the rear notch; screw on both rear panel halves.
-9. Holders on top, screwed from inside. Feet underneath.
+9. Feet underneath.
+10. Optional record holders. Get the magnet polarity right:
+    1. Glue the four magnets into the pockets under the top wall, from inside.
+    2. Let the glue set.
+    3. Place a loose magnet on top of the case over each one; it settles the
+       way it attracts.
+    4. Mark its upper face.
+    5. Glue it into the holder's base pocket, marked face in first. The face
+       that touched the case then faces the case again, so the holder pulls on.
 
 ## Layout
 

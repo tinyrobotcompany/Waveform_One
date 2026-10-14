@@ -43,7 +43,9 @@ PRINT_JOBS = (
     ("2_shell_left", ("shell_left",)),
     ("3_shell_right", ("shell_right",)),
     ("4_small_parts_a", ("rear_panel_left",) + _clip_names("screen")),
-    ("5_small_parts_b", ("rear_panel_right", "record_holder_left", "record_holder_right") + _clip_names("led")),
+    ("5_small_parts_b", ("rear_panel_right",) + _clip_names("led")),
+    # Optional: Waveform One is complete without them.
+    ("6_record_holders_optional", ("record_holder_left", "record_holder_right")),
 )
 
 

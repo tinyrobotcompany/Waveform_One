@@ -218,8 +218,16 @@ HOLDER_HEIGHT = Param(24.0, "mm", P, "Above the case top.")
 HOLDER_CORNER_RADIUS = Param(4.0, "mm", P, "Rounded vertical edges.")
 HOLDER_X = Param(110.0, "mm", P, "Holder centres from the middle; supports the sleeve near its edges.")
 HOLDER_REAR_INSET = Param(10.0, "mm", P, "Holder rear face from the case's rear face.")
-HOLDER_SCREW_SPACING = Param(28.0, "mm", P, "Two screws per holder, along X.")
-HOLDER_SCREW_INSET = Param(8.0, "mm", P, "Screw centres from the holder's front face.")
+HOLDER_MAGNET_SPACING = Param(28.0, "mm", P, "Two magnets per holder, along X.")
+HOLDER_MAGNET_INSET = Param(8.0, "mm", P, "Magnet centres from the holder's front face, clear of the slot.")
+# The holders are optional (owner, 2026-10-14). They attach with magnets, so
+# the top stays plain when they are left off: each magnet sits in a blind
+# pocket, in the holder's base and under the shell's top wall, glued in.
+MAGNET_DIAMETER = Param(10.0, "mm", D, "Neodymium disc magnet, 10 x 3 mm (N52).")
+MAGNET_THICKNESS = Param(3.0, "mm", D, "Neodymium disc magnet, 10 x 3 mm (N52).")
+MAGNET_HOLE_CLEARANCE = Param(0.3, "mm", P, "Added to the diameter: room for the magnet and glue.")
+MAGNET_POCKET_EXTRA = Param(0.2, "mm", P, "Pocket depth beyond the magnet's thickness.")
+MIN_TOP_SKIN = Param(0.6, "mm", POL, "Least plastic left over a shell magnet pocket: three layers, no hole on top.")
 
 # --- Calibration coupon ------------------------------------------------------------------------
 

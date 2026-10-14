@@ -159,10 +159,21 @@ def test_holders_lean_the_sleeve_back_from_their_slots(parts):
     assert lean > 0  # the slot's top is further back than its floor
 
 
-def test_holder_screws_pass_through_the_top_wall():
-    for x, y in record_holder.screw_positions():
+def test_holder_magnets_sit_in_blind_pockets_under_an_unbroken_top(parts):
+    from build123d import Vector
+
+    top = layout.case_height()
+    skin = p.SHELL_WALL.v - record_holder.magnet_pocket_depth()
+    assert len(record_holder.magnet_positions()) == 4
+    for x, y in record_holder.magnet_positions():
         assert abs(x) < layout.case_width() / 2 - p.CORNER_RADIUS.v
         assert 0 < y < p.CASE_DEPTH.v
+        shell_half = parts["shell_left" if x < layout.seam_x() else "shell_right"].body
+        assert shell_half.is_inside(Vector(x, y, top - skin / 2))  # plastic over the pocket
+        assert not shell_half.is_inside(Vector(x, y, top - p.SHELL_WALL.v + 1.0))  # pocket open inside
+        holder = parts["record_holder_left" if x < 0 else "record_holder_right"].body
+        assert not holder.is_inside(Vector(x, y, top + 1.0))  # pocket in the base
+        assert holder.is_inside(Vector(x, y, top + record_holder.magnet_pocket_depth() + 0.5))
 
 
 def test_enclosure_parts_do_not_hit_electronics_or_each_other(parts):

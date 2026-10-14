@@ -145,7 +145,12 @@ def _floor_vents() -> list[Part]:
 def _top_and_bottom_holes() -> list[Part]:
     height = layout.case_height()
     o = CUT_OVERSHOOT
-    holes = [z_cylinder(x, y, height - p.SHELL_WALL.v - o, height + o, p.M3_CLEARANCE_HOLE.v) for x, y in record_holder.screw_positions()]
+    inside = height - p.SHELL_WALL.v
+    # Blind pockets from inside for the holder magnets: the top surface stays unbroken.
+    holes = [
+        z_cylinder(x, y, inside - o, inside + record_holder.magnet_pocket_depth(), record_holder.magnet_pocket_diameter())
+        for x, y in record_holder.magnet_positions()
+    ]
     inset, r, depth = p.FOOT_INSET.v, p.FOOT_RECESS_DIAMETER.v, p.FOOT_RECESS_DEPTH.v
     half = layout.case_width() / 2
     for x in (-half + inset, half - inset):

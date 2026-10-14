@@ -103,3 +103,8 @@ def test_colour_stripe_edges_must_fall_on_layer_boundaries():
 def test_colour_stripe_cannot_start_inside_the_front_plate():
     errors = parameter_errors(with_value("STRIPE_1_FROM_FRONT", 2.0))
     assert any("starts inside the 4.0 mm front plate" in e for e in errors)
+
+
+def test_magnet_too_thick_for_the_top_wall_fails_clearly():
+    errors = parameter_errors(with_value("MAGNET_THICKNESS", 3.5))
+    assert any("Holder magnet pockets leave 0.3 mm of top wall" in e for e in errors)

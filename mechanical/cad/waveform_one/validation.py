@@ -40,6 +40,9 @@ def _layout_errors(params: dict[str, p.Param]) -> list[str]:
             errors.append(f"Shell groove ({groove_t:.2f} mm) leaves no material either side in {host} ({v(host):.1f} mm)")
     if v("CORNER_RADIUS") <= v("SHELL_WALL"):
         errors.append("CORNER_RADIUS must exceed SHELL_WALL so the inside corners stay rounded")
+    skin = v("SHELL_WALL") - v("MAGNET_THICKNESS") - v("MAGNET_POCKET_EXTRA")
+    if skin < v("MIN_TOP_SKIN"):
+        errors.append(f"Holder magnet pockets leave {skin:.1f} mm of top wall; at least {v('MIN_TOP_SKIN'):.1f} mm is needed")
     width, layer = v("STRIPE_WIDTH"), v("LAYER_HEIGHT")
     first, second = v("STRIPE_1_FROM_FRONT"), v("STRIPE_2_FROM_FRONT")
     if first < v("FRONT_THICKNESS"):
