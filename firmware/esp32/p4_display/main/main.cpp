@@ -89,43 +89,106 @@ std::atomic_int current_brightness{100};
 
 bool searching = false;
 bool album_colours = true;
+bool wifi_online = false;
 RecognitionStatus theme_status = RecognitionStatus::Waiting;
 album_palette::Palette cover_palette{}, current_palette{}, target_palette{}, fade_from{};
 lv_obj_t *appearance_buttons[2]{};
+lv_obj_t *wifi_header_text = nullptr, *settings_button = nullptr, *settings_text = nullptr, *header_rule = nullptr;
+// The album colour field fills the screen behind everything. field_back
+// shows the current field; field_front holds the previous one on top while
+// it fades out. Each buffer is a full 1024 x 600 RGB565 image in PSRAM.
+constexpr unsigned kScreenWidth = 1024, kScreenHeight = 600;
+lv_obj_t *field_back = nullptr, *field_front = nullptr;
+lv_image_dsc_t field_images[2]{};
+uint16_t *field_pixels[2]{};
+unsigned field_shown = 0;
 lv_color_t theme_accent() { return lv_color_hex(current_palette.accent); }
 lv_color_t theme_search() { return lv_color_hex(current_palette.search); }
-void paint_palette()
+// The colour functions stay out of line: they run from the recognition task's
+// display callback, and inlined there their frames (palettes, field rows)
+// would sit on that task's nearly full stack for every status update.
+[[gnu::noinline]] void paint_palette()
 {
-    auto *screen = lv_screen_active();
-    lv_obj_set_style_bg_color(screen, lv_color_hex(current_palette.background), 0);
-    lv_obj_set_style_bg_grad_dir(screen, LV_GRAD_DIR_NONE, 0);
-    lv_obj_set_style_bg_color(artwork, lv_color_hex(current_palette.panel), 0);
+    const auto &p = current_palette;
+    const auto colour = [](uint32_t value) { return lv_color_hex(value); };
+    lv_obj_set_style_bg_color(lv_screen_active(), colour(p.background), 0);
+    lv_obj_set_style_bg_color(artwork, colour(p.panel), 0);
     lv_obj_set_style_border_color(artwork, displayed_track.title[0] ? theme_accent()
-        : searching ? theme_search() : lv_color_hex(current_palette.line), 0);
+        : searching ? theme_search() : colour(p.line), 0);
+    lv_obj_set_style_text_color(artwork_mark, colour(p.tertiary), 0);
     lv_obj_set_style_text_color(eyebrow, theme_accent(), 0);
-    if (brand_label) lv_obj_set_style_text_color(brand_label, theme_accent(), 0);
+    lv_obj_set_style_text_color(headline, colour(p.text), 0);
+    lv_obj_set_style_text_color(artist, colour(p.secondary), 0);
+    lv_obj_set_style_text_color(album, colour(p.tertiary), 0);
+    lv_obj_set_style_text_color(recognition_status, colour(p.quaternary), 0);
     lv_obj_set_style_bg_color(recognition_dot,
         recognition_feedback::searching(theme_status) ? theme_search() : theme_accent(), 0);
-}
-uint32_t blend_colour(uint32_t from, uint32_t to, unsigned progress)
-{
-    uint32_t value = 0;
-    for (unsigned shift : {0U, 8U, 16U})
-        value |= ((((from >> shift) & 255) * (255-progress)
-            + ((to >> shift) & 255) * progress) / 255) << shift;
-    return value;
+    if (brand_label == nullptr) return; // the host preview has no header
+    lv_obj_set_style_text_color(brand_label, theme_accent(), 0);
+    lv_obj_set_style_text_color(welcome_label, colour(p.tertiary), 0);
+    lv_obj_set_style_text_color(clock_label, colour(p.text), 0);
+    lv_obj_set_style_text_color(wifi_indicator, wifi_online ? theme_accent() : colour(p.tertiary), 0);
+    lv_obj_set_style_bg_color(wifi_header_button, colour(p.panel), 0);
+    lv_obj_set_style_border_color(wifi_header_button, theme_accent(), 0);
+    lv_obj_set_style_text_color(wifi_header_text, colour(p.text), 0);
+    lv_obj_set_style_bg_color(settings_button, colour(p.panel), 0);
+    lv_obj_set_style_border_color(settings_button, colour(p.line), 0);
+    lv_obj_set_style_text_color(settings_text, colour(p.text), 0);
+    lv_obj_set_style_bg_color(header_rule, colour(p.line), 0);
 }
 void fade_palette(void *, int32_t progress)
 {
-    const unsigned step = static_cast<unsigned>(progress);
-    current_palette = {blend_colour(fade_from.background,target_palette.background,step),
-        blend_colour(fade_from.panel,target_palette.panel,step),
-        blend_colour(fade_from.accent,target_palette.accent,step),
-        blend_colour(fade_from.search,target_palette.search,step),
-        blend_colour(fade_from.line,target_palette.line,step)};
+    current_palette = album_palette::blend(fade_from, target_palette, static_cast<unsigned>(progress));
     paint_palette();
+    if (field_front == nullptr) return;
+    lv_obj_set_style_image_opa(field_front, static_cast<lv_opa_t>(255 - progress), 0);
+    if (progress >= 255) lv_obj_add_flag(field_front, LV_OBJ_FLAG_HIDDEN);
 }
-void apply_palette()
+// Draws the new field into the buffer not on screen, under the old one,
+// which then fades out. A change during a fade jumps to the field it was
+// fading to first, so the buffer being drawn is never the one on show.
+[[gnu::noinline]] void show_field(const album_palette::Palette &palette)
+{
+    if (field_back == nullptr) return; // no buffers: the plain background colour shows
+    lv_image_set_src(field_front, &field_images[field_shown]);
+    lv_obj_set_style_image_opa(field_front, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(field_front, LV_OBJ_FLAG_HIDDEN);
+    const unsigned next = 1 - field_shown;
+    album_palette::render_field(palette, field_pixels[next], kScreenWidth, kScreenHeight);
+    lv_image_cache_drop(&field_images[next]);
+    lv_image_set_src(field_back, &field_images[next]);
+    field_shown = next;
+}
+void create_field(lv_obj_t *screen)
+{
+    for (unsigned i = 0; i < 2; ++i) {
+        field_pixels[i] = static_cast<uint16_t *>(heap_caps_aligned_alloc(64,
+            kScreenWidth * kScreenHeight * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        if (field_pixels[i] == nullptr) {
+            ESP_LOGW(kTag, "Colour field allocation failed; using plain backgrounds");
+            heap_caps_free(field_pixels[0]); field_pixels[0] = field_pixels[1] = nullptr;
+            return;
+        }
+        auto &image = field_images[i];
+        image.header.magic = LV_IMAGE_HEADER_MAGIC;
+        image.header.cf = LV_COLOR_FORMAT_RGB565;
+        image.header.w = kScreenWidth;
+        image.header.h = kScreenHeight;
+        image.header.stride = kScreenWidth * sizeof(uint16_t);
+        image.data_size = kScreenWidth * kScreenHeight * sizeof(uint16_t);
+        image.data = reinterpret_cast<uint8_t *>(field_pixels[i]);
+    }
+    album_palette::render_field(current_palette, field_pixels[0], kScreenWidth, kScreenHeight);
+    field_back = lv_image_create(screen);
+    field_front = lv_image_create(screen);
+    for (lv_obj_t *field : {field_back, field_front}) {
+        lv_obj_set_pos(field, 0, 0);
+        lv_obj_remove_flag(field, LV_OBJ_FLAG_CLICKABLE);
+    }
+    lv_image_set_src(field_back, &field_images[0]);
+    lv_obj_add_flag(field_front, LV_OBJ_FLAG_HIDDEN);
+}
+[[gnu::noinline]] void apply_palette()
 {
     const auto next = album_colours ? cover_palette : album_palette::Palette{};
     for (unsigned i=0; i<2; ++i) if (appearance_buttons[i])
@@ -134,6 +197,7 @@ void apply_palette()
     if (next == target_palette) return;
     lv_anim_delete(nullptr, fade_palette);
     fade_from = current_palette; target_palette = next;
+    show_field(next);
     lv_anim_t animation;
     lv_anim_init(&animation);
     lv_anim_set_exec_cb(&animation, fade_palette);
@@ -210,7 +274,7 @@ void set_searching(bool active, bool has_track = false)
     lv_anim_start(&animation);
 }
 
-void clear_recognition_track()
+[[gnu::noinline]] void clear_recognition_track()
 {
     lv_label_set_text(headline, "Listening for music");
     lv_label_set_text(artist, "Play a song to bring this screen to life.");
@@ -498,8 +562,9 @@ void remote_set_network(NetworkMode mode, const char *address)
 {
     recognition_set_network(mode == NetworkMode::HomeWifi, address);
     if (!bsp_display_lock(1000)) return;
+    wifi_online = mode == NetworkMode::HomeWifi;
+    paint_palette();
     if (mode == NetworkMode::Unconfigured) {
-        lv_obj_set_style_text_color(wifi_indicator, kMuted, 0);
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -350, 28);
         lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(network_qr_placeholder, LV_OBJ_FLAG_HIDDEN);
@@ -510,7 +575,6 @@ void remote_set_network(NetworkMode mode, const char *address)
                           "Connect Waveform One to your\nhome Wi-Fi in Settings. The\napp QR will appear here.");
         lv_label_set_text(wifi_status, "Choose your home Wi-Fi network.");
     } else if (mode == NetworkMode::Reconnecting) {
-        lv_obj_set_style_text_color(wifi_indicator, kMuted, 0);
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);
         lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(network_qr_placeholder, LV_OBJ_FLAG_HIDDEN);
@@ -521,7 +585,6 @@ void remote_set_network(NetworkMode mode, const char *address)
                           "Reconnecting to home Wi-Fi.\nPhone remotes must scan the\nnew QR once it appears.");
         lv_label_set_text(wifi_status, "Reconnecting to home Wi-Fi…");
     } else {
-        lv_obj_set_style_text_color(wifi_indicator, kAccent, 0);
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);
         lv_qrcode_set_data(network_qr, address);
         lv_obj_remove_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
@@ -581,6 +644,7 @@ void create_product_screen()
     lv_obj_set_style_bg_color(screen, kBackground, 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    create_field(screen);
 
     lv_obj_t *brand = brand_label = make_label(screen, "WAVEFORM ONE", &lv_font_montserrat_20, kAccent);
     lv_obj_align(brand, LV_ALIGN_TOP_LEFT, 42, 28);
@@ -603,11 +667,11 @@ void create_product_screen()
     lv_obj_set_style_radius(wifi_header_button, 9, 0);
     lv_obj_align(wifi_header_button, LV_ALIGN_TOP_RIGHT, -180, 15);
     lv_obj_add_event_cb(wifi_header_button, on_open_settings, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *wifi_header_text = make_label(wifi_header_button, "Connect Wi-Fi",
+    wifi_header_text = make_label(wifi_header_button, "Connect Wi-Fi",
                                             &lv_font_montserrat_16, kForeground);
     lv_obj_center(wifi_header_text);
 
-    lv_obj_t *settings_button = lv_button_create(screen);
+    settings_button = lv_button_create(screen);
     lv_obj_set_size(settings_button, 120, 46);
     lv_obj_set_style_bg_color(settings_button, kPanel, 0);
     lv_obj_set_style_border_color(settings_button, kLine, 0);
@@ -615,15 +679,15 @@ void create_product_screen()
     lv_obj_set_style_radius(settings_button, 9, 0);
     lv_obj_align(settings_button, LV_ALIGN_TOP_RIGHT, -42, 15);
     lv_obj_add_event_cb(settings_button, on_open_settings, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t *settings_text = make_label(settings_button, "Settings", &lv_font_montserrat_16,
+    settings_text = make_label(settings_button, "Settings", &lv_font_montserrat_16,
                                          kForeground);
     lv_obj_center(settings_text);
 
-    lv_obj_t *rule = lv_obj_create(screen);
-    lv_obj_set_size(rule, 940, 2);
-    lv_obj_set_style_border_width(rule, 0, 0);
-    lv_obj_set_style_bg_color(rule, kLine, 0);
-    lv_obj_align(rule, LV_ALIGN_TOP_MID, 0, 70);
+    header_rule = lv_obj_create(screen);
+    lv_obj_set_size(header_rule, 940, 2);
+    lv_obj_set_style_border_width(header_rule, 0, 0);
+    lv_obj_set_style_bg_color(header_rule, kLine, 0);
+    lv_obj_align(header_rule, LV_ALIGN_TOP_MID, 0, 70);
 
     artwork = lv_obj_create(screen);
     lv_obj_set_size(artwork, 390, 390);
@@ -952,6 +1016,16 @@ void create_product_screen()
     lv_timer_create(update_clock, 1000, nullptr);
 }
 
+[[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
+                                            bool same_cover)
+{
+    if (!same_cover) cover_palette = {};
+    if (track != nullptr && image != nullptr && image->pixels != nullptr
+        && (!same_cover || cover_palette == album_palette::Palette{}))
+        cover_palette = album_palette::extract(image->pixels, image->width, image->height);
+    network_set_palette(cover_palette);
+}
+
 bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                         const RecognitionArtwork *image)
 {
@@ -1005,11 +1079,7 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
             }
         }
     }
-    if (!same_cover) cover_palette = {};
-    if (track != nullptr && image != nullptr && image->pixels != nullptr
-        && (!same_cover || cover_palette == album_palette::Palette{}))
-        cover_palette = album_palette::extract(image->pixels, image->width, image->height);
-    network_set_palette(cover_palette);
+    update_cover_palette(track, image, same_cover);
     apply_palette();
     set_searching(status == RecognitionStatus::Capturing || status == RecognitionStatus::Identifying,
                   track != nullptr);

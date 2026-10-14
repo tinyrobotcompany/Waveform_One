@@ -1,0 +1,7 @@
+(version 1)
+
+# Through-hole ground pads (connector shells, header pins) next to tracks can
+# be left with a single thermal spoke; one 0.5 mm spoke is enough for them.
+(rule "Single spoke on through-hole pads"
+    (condition "A.Type == 'Pad' && A.Pad_Type == 'Through-hole'")
+    (constraint min_resolved_spokes 1))

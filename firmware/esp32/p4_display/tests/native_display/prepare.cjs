@@ -8,7 +8,7 @@ const helpers = source.slice(source.indexOf('void set_label_text('), source.inde
 const panel = source.slice(source.indexOf('    lv_obj_t *information ='), source.indexOf('    artwork_image = lv_image_create(artwork);'));
 if (!helpers || !panel) throw Error('Native source blocks not found');
 fs.writeFileSync(path.join(out, 'native_helpers.inc'), helpers);
-fs.writeFileSync(path.join(out, 'native_palette.inc'), source.slice(source.indexOf('void paint_palette('),source.indexOf('uint32_t blend_colour(')));
+fs.writeFileSync(path.join(out, 'native_palette.inc'), source.slice(source.indexOf('void paint_palette('),source.indexOf('void fade_palette(')));
 fs.writeFileSync(path.join(out, 'native_panel.inc'), panel);
 fs.writeFileSync(path.join(out, 'native_appearance.inc'), source.slice(source.indexOf('    lv_obj_t *profile_heading ='),source.indexOf('    lv_obj_t *display_heading =')));
 const font = fs.readFileSync(path.join(__dirname, '../../main/fonts/waveform_unicode.bin'));

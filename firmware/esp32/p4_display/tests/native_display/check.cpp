@@ -4,6 +4,7 @@
 #include <string>
 #include <cstdlib>
 #include <vector>
+#include <algorithm>
 #include "album_palette.h"
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "display_fonts.h"
@@ -21,9 +22,11 @@ constexpr lv_color_t kMuted = LV_COLOR_MAKE(0xa7,0xb2,0xa7);
 lv_obj_t *headline, *artist, *album, *eyebrow, *recognition_status, *recognition_dot;
 RecognitionStatus theme_status = RecognitionStatus::Waiting;
 album_palette::Palette current_palette{};
-bool album_colours=true, searching=false;
+bool album_colours=true, searching=false, wifi_online=false;
 RecognitionTrack displayed_track{};
-lv_obj_t *artwork=nullptr, *brand_label=nullptr, *appearance_buttons[2]{}, *style_buttons[3]{}, *style_status=nullptr;
+lv_obj_t *artwork=nullptr, *artwork_mark=nullptr, *brand_label=nullptr, *welcome_label=nullptr, *clock_label=nullptr,
+    *wifi_indicator=nullptr, *wifi_header_button=nullptr, *wifi_header_text=nullptr, *settings_button=nullptr,
+    *settings_text=nullptr, *header_rule=nullptr, *appearance_buttons[2]{}, *style_buttons[3]{}, *style_status=nullptr;
 void on_style(lv_event_t *) {}
 void on_appearance(lv_event_t *) {}
 lv_color_t theme_search() { return lv_color_hex(current_palette.search); }
@@ -114,32 +117,46 @@ int main() {
     lv_obj_align(image,LV_ALIGN_BOTTOM_MID,0,-26);
     lv_obj_set_style_border_color(cover,kSearchAccent,0);
     screenshot("native-search.ppm",display);
+    // Album covers: WAVEFORM_ALBUM_FIXTURES holds covers.txt, one cover per
+    // line ("name width height<TAB>title<TAB>artist<TAB>album"), and each
+    // cover as name.rgb565 (little-endian, as the P4's JPEG decoder writes).
     if (const char *directory=std::getenv("WAVEFORM_ALBUM_FIXTURES")) {
         lv_obj_add_flag(image,LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(mark,LV_OBJ_FLAG_HIDDEN);
-        artwork=cover;
-        const char *names[]={"monty","emmet","beatles","dexter"};
-        const char *titles[]={"A Jamaican in Paris","Universal Truth","Rubber Soul","Other Side of Round Midnight"};
-        const char *artists[]={"Monty Alexander","Emmet Cohen","The Beatles","Dexter Gordon"};
-        for(unsigned i=0;i<4;++i) {
-            std::string base=std::string(directory)+"/"+names[i];
-            FILE *palette=std::fopen((base+".palette").c_str(),"r"); assert(palette);
-            assert(std::fscanf(palette,"%x %x %x %x %x",&current_palette.background,&current_palette.panel,
-                &current_palette.accent,&current_palette.search,&current_palette.line)==5); std::fclose(palette);
-            std::vector<uint8_t> rgb(320*320*2);
-            FILE *pixels=std::fopen((base+".rgb565").c_str(),"rb"); assert(pixels);
+        artwork=cover; artwork_mark=mark;
+        static uint16_t field[1024*600];
+        lv_image_dsc_t field_image{};
+        field_image.header.magic=LV_IMAGE_HEADER_MAGIC; field_image.header.cf=LV_COLOR_FORMAT_RGB565;
+        field_image.header.w=1024; field_image.header.h=600; field_image.header.stride=2048;
+        field_image.data_size=sizeof(field); field_image.data=reinterpret_cast<uint8_t *>(field);
+        auto *background=lv_image_create(screen); lv_obj_set_pos(background,0,0); lv_obj_move_background(background);
+        FILE *list=std::fopen((std::string(directory)+"/covers.txt").c_str(),"r"); assert(list);
+        char line[1024];
+        while(std::fgets(line,sizeof(line),list)) {
+            char name[64]; unsigned width=0,height=0; int used=0;
+            if(std::sscanf(line,"%63s %u %u%n",name,&width,&height,&used)!=3) continue;
+            std::string rest(line+used+1); rest.erase(rest.find_last_not_of("\r\n")+1);
+            const auto tab1=rest.find('\t'), tab2=rest.find('\t',tab1+1);
+            const std::string title=rest.substr(0,tab1), artist_name=rest.substr(tab1+1,tab2-tab1-1), album_name=rest.substr(tab2+1);
+            std::vector<uint8_t> rgb(width*height*2);
+            FILE *pixels=std::fopen((std::string(directory)+"/"+name+".rgb565").c_str(),"rb"); assert(pixels);
             assert(std::fread(rgb.data(),1,rgb.size(),pixels)==rgb.size()); std::fclose(pixels);
+            current_palette=album_palette::extract(rgb.data(),width,height);
+            assert(album_palette::render_field(current_palette,field,1024,600));
+            lv_image_cache_drop(&field_image); lv_image_set_src(background,&field_image);
             lv_image_dsc_t descriptor{};
             descriptor.header.magic=LV_IMAGE_HEADER_MAGIC; descriptor.header.cf=LV_COLOR_FORMAT_RGB565;
-            descriptor.header.w=320; descriptor.header.h=320; descriptor.header.stride=640;
+            descriptor.header.w=width; descriptor.header.h=height; descriptor.header.stride=width*2;
             descriptor.data_size=rgb.size(); descriptor.data=rgb.data();
             auto *picture=lv_image_create(cover); lv_image_set_src(picture,&descriptor);
-            lv_image_set_scale(picture,358*256/320); lv_obj_center(picture);
-            std::snprintf(displayed_track.title,sizeof(displayed_track.title),"%s",titles[i]);
-            set_label_text(headline,titles[i]); set_label_text(artist,artists[i]); set_label_text(album,"Album colours");
+            lv_image_set_scale(picture,std::min(358U*256/width,358U*256/height)); lv_obj_center(picture);
+            std::snprintf(displayed_track.title,sizeof(displayed_track.title),"%s",title.c_str());
+            set_label_text(headline,title.c_str()); set_label_text(artist,artist_name.c_str()); set_label_text(album,album_name.c_str());
             set_recognition_feedback(RecognitionStatus::Matched,true); paint_palette();
-            screenshot(("native-album-"+std::string(names[i])+".ppm").c_str(),display);
+            screenshot(("native-album-"+std::string(name)+".ppm").c_str(),display);
             lv_obj_delete(picture); lv_image_cache_drop(&descriptor);
         }
+        std::fclose(list);
+        lv_obj_delete(background); current_palette={}; paint_palette();
     }
     auto *settings_panel=lv_obj_create(screen);
     lv_obj_set_size(settings_panel,1024,600); lv_obj_set_pos(settings_panel,0,0);
