@@ -180,6 +180,10 @@ GROUP_TITLES = {
     "connectors": "Microphone, P4 power, P4 UART",
 }
 
+# The USB-C power section is laid out but not yet fit to build: see SPEC.md,
+# "Before the USB-C build can be ordered". Set True only when that list is done.
+USBC_LAYOUT_REVIEWED = False
+
 # LCSC part numbers for JLCPCB assembly, fitted parts only. All in stock at
 # JLCPCB on 2026-10-14; recheck stock when ordering.
 LCSC = {

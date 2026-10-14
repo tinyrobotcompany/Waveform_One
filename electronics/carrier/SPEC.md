@@ -59,12 +59,19 @@ The 5 V rail feeds everything. Two inputs can supply it:
     fits the USB-C section and leaves F1 out. Never fit both. (Solder jumpers
     were considered and rejected: a solder bridge cannot carry 6 A.)
 
-Layout notes for the USB-C build, to review before fitting it:
+Before the USB-C build can be ordered (`USBC_LAYOUT_REVIEWED` in
+`tools/netlist.py` stays False until all of these are done;
+`tools/export_jlc.py` refuses to export USB-C parts while it is False):
   - J2's two VBUS pads are joined by a 0.25 mm track that passes between the
-    socket's locating holes; it carries 15 V at up to 2 A. Widen it (or pour
-    it) before fitting, or confirm its temperature rise.
+    socket's locating holes. At full LED load the board draws about 33 W, so
+    from a 45 W charger at 15 V this carries up to 3 A. Widen it (or pour
+    it) and check its temperature rise.
   - The buck converter's switch node runs 1.5 mm wide, straight from U3 to L1.
-    Compare the whole section with TI's layout example before fitting.
+    Compare the whole section with TI's layout example.
+  - Give U2, U3 and the USB-C passives LCSC part numbers in `LCSC`, and check
+    their stock.
+  - Users power it from a USB-C PD charger of 45 W or more (15 V at 3 A).
+    Decide whether one ships in the box.
 
 The USB cable from the P4 also carries 5 V. The S3's USB socket must not feed
 that into the board's rail; only the data lines and detection are connected.

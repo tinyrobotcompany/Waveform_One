@@ -36,7 +36,13 @@ ORIGIN_OFFSET = {"ESP32-S3-WROOM-1": (0.0, -3.77)}
 
 
 def fitted():
-    return [part for part in netlist.PARTS if not part.dnp and not part.ref.startswith(("H", "JP"))]
+    parts = [part for part in netlist.PARTS if not part.dnp and not part.ref.startswith(("H", "JP"))]
+    usbc = [part.ref for part in parts if part.group == "usbc_power"]
+    if usbc and not netlist.USBC_LAYOUT_REVIEWED:
+        raise SystemExit(f"USB-C power parts are fitted ({', '.join(usbc)}) but the layout is not yet "
+                         "fit to build. Finish SPEC.md's \"Before the USB-C build can be ordered\" list, "
+                         "then set USBC_LAYOUT_REVIEWED in netlist.py.")
+    return parts
 
 
 def gerbers():
