@@ -221,3 +221,10 @@ printf '%s\n' 'PASS: hosted Wi-Fi RX buffer ownership on old and consuming callb
     -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/album_palette_test.cpp" -o "$build_dir/p4_palette"
 "$build_dir/p4_palette"
 printf '%s\n' 'PASS: album colours: edge background, vivid accent, text readable on every field cell, banding-free field'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/mic_test/main" \
+    "$esp_dir/p4_display/tests/p4_led_test.cpp" -o "$build_dir/p4_led"
+"$build_dir/p4_led"
+printf '%s\n' 'PASS: P4 HUB75 blanking, DMA buffer ownership and 16 kHz LED spectrum'
