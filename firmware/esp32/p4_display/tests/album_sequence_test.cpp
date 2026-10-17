@@ -4,6 +4,7 @@
 #include <string>
 #include "album_sequence.h"
 #include "album_cache.h"
+#include "album_cache_retry.h"
 
 namespace {
 std::string song(int disc, int number, const char *title, long ms)
@@ -35,6 +36,39 @@ int main()
     assert(album->tracks[2].duration_s > 328 && album->tracks[2].duration_s < 329);
     assert(album->load(root, "Not On This Album") == -1 && album->count == 0);
     cJSON_Delete(root);
+
+    // Box sets must not silently lose their cache at the old 64-track limit.
+    std::string box = "{\"results\":[";
+    for (unsigned i = 0; i < 200; ++i) {
+        if (i) box += ",";
+        const auto name = "Track " + std::to_string(i);
+        box += song(1, i + 1, name.c_str(), 180000);
+    }
+    box += "]}";
+    root = cJSON_Parse(box.c_str());
+    assert(album->load(root, "Track 199") == 199 && album->count == 200);
+    cJSON_Delete(root);
+    box.insert(box.size() - 2, "," + song(1, 201, "Overflow", 180000));
+    root = cJSON_Parse(box.c_str());
+    assert(album->load(root, "Track 0") == -1 && album->count == 0);
+    cJSON_Delete(root);
+
+    // A cover already loaded does not affect the independent cache retries.
+    album_cache::Retry retry;
+    const auto first = retry.request();
+    assert(retry.due(0));
+    assert(!retry.complete(first, false, 100, 0));
+    assert(!retry.due(30000099) && retry.due(30000100));
+    assert(!retry.complete(first, false, 30000100, 120000000));
+    assert(!retry.due(150000099) && retry.due(150000100));
+    assert(retry.complete(first, true, 150000100, 0));
+    assert(!retry.pending());
+    const auto second = retry.request();
+    assert(!retry.complete(first, true, 0, 0)); // stale success cannot replace new album
+    assert(!retry.complete(first, false, 0, 999999999)); // nor delay it
+    assert(retry.due(0));
+    for (int i = 0; i < 3; ++i) retry.complete(second, false, i * 60000000LL, 0);
+    assert(!retry.pending()); // broken catalogue cannot loop indefinitely
 
     // Verified matches can reuse an album in any order, never by time alone.
     auto cache = std::make_unique<album_cache::Album>();

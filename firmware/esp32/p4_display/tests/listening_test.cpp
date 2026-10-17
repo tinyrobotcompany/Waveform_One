@@ -89,11 +89,11 @@ int main()
     assert(room.detector.gap_end() + 50 >= pause + 125 && room.detector.gap_end() <= pause + 175);
     // A dip shorter than 0.4 s is not a gap.
     assert(room.play(0.2, 130, Event::Gap) < 0 && room.play(2, 520, Event::Gap) < 0);
-    // ...but 1.6 s back at the background is.
+    // ...but about 3 s back at the background is.
     const uint32_t stop = room.hops;
-    const long silent = room.play(5, 130, Event::SilenceStarted);
-    // Mostly quiet (7 of 8 blocks of 0.2 s); the first may straddle the stop.
-    assert(silent >= 0 && silent - stop >= 150 && silent - stop <= 225);
+    const long silent = room.play(6, 130, Event::SilenceStarted);
+    // Mostly quiet (12 of 15 blocks of 0.2 s) and averaging near the room.
+    assert(silent >= 0 && silent - stop >= 250 && silent - stop <= 400);
     assert(!room.detector.sound());
 
     // A real room wanders several dB from moment to moment; that is not sound,
@@ -135,7 +135,7 @@ int main()
     assert(gap.play(2, 520, Event::SoundStarted) >= 0);
 
     // A stop in a room with the odd louder moment (a creak every second)
-    // is still found within about two seconds.
+    // is still found within about four seconds.
     {
         Run creaky;
         creaky.play(5, 130, Event::SoundStarted);
@@ -146,20 +146,40 @@ int main()
             found = creaky.play(0.8, 130, Event::SilenceStarted);
             if (found < 0) found = creaky.play(0.2, 400, Event::SilenceStarted);
         }
-        assert(found >= 0 && found - long(stopped) <= 3 * 125);
+        assert(found >= 0 && found - long(stopped) <= 4 * 125);
         float levels[listening::Detector::kRecentBlocks];
         assert(creaky.detector.recent(levels) == listening::Detector::kRecentBlocks);
         assert(levels[49] < -40 && *std::max_element(levels, levels + 50) > -40);
     }
 
-    // While a song is shown, a 2 s quiet passage is a gap, not a stop.
+    // While a song is shown, a quiet passage of several seconds is a gap,
+    // not a stop; a longer quiet is.
     room.detector.set_patient(true);
     assert(room.play(5, 520, Event::SoundStarted) >= 0);
-    assert(room.play(2, 130, Event::SilenceStarted) < 0);
+    assert(room.play(6, 130, Event::SilenceStarted) < 0);
     assert(room.play(2, 520, Event::Gap) >= 0 && room.detector.sound());
-    const long patient = room.play(5, 130, Event::SilenceStarted);
-    assert(patient >= 0 && room.detector.stop_blocks() == 15);
+    const uint32_t quiet = room.hops;
+    const long patient = room.play(10, 130, Event::SilenceStarted);
+    assert(patient >= 0 && patient - long(quiet) <= 9 * 125 && room.detector.stop_blocks() == 40);
     room.detector.set_patient(false);
+
+    // The P4's onboard microphones (measured 2026-10-17): a room at -72 dBFS,
+    // a jazz trio fading in to only 6-10 dB above it, with soft passages
+    // 3 dB above it. The fade-in must not become the background, and a soft
+    // passage under a shown song is not a stop. Silence still is.
+    {
+        Run jazz;
+        const auto rms = [](double dbfs) { return 32768 * std::pow(10, dbfs / 20); };
+        assert(jazz.play(20, rms(-72), Event::SoundStarted) < 0);
+        long heard = -1;
+        for (int step = 0; step <= 12 && heard < 0; ++step) heard = jazz.play(1, rms(-70 + step * 0.6), Event::SoundStarted);
+        assert(heard >= 0 && jazz.detector.background_db() < -70);
+        jazz.detector.set_patient(true);
+        assert(jazz.play(60, rms(-64), Event::SilenceStarted) < 0);
+        assert(jazz.play(6, rms(-69), Event::SilenceStarted) < 0 && jazz.detector.sound());
+        assert(jazz.play(5, rms(-64), Event::SilenceStarted) < 0);
+        assert(jazz.play(12, rms(-72), Event::SilenceStarted) >= 0 && !jazz.detector.sound());
+    }
 
     // Switched on while music plays: the music is heard as sound, not learnt
     // as the background.

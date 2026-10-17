@@ -149,7 +149,9 @@ struct Window { uint32_t first = 0, last = 0; };
 class Planner {
 public:
     static constexpr uint32_t kHopsPerSecond = 125;
-    static constexpr uint32_t kMaxWindow = 8 * kHopsPerSecond;
+    // ACRCloud recommends about 10 s. Short clips of quiet or sparse music
+    // (a jazz trio through the onboard microphones) rarely match.
+    static constexpr uint32_t kMaxWindow = 10 * kHopsPerSecond;
     static constexpr unsigned kMaxQuickTries = 3;
 
     Planner() = default;
@@ -212,8 +214,7 @@ public:
         else ready = heard >= last_attempt_ + retry_hops_;
         if (!ready) return false;
         window.last = heard;
-        const uint32_t length = matched_ && verify_hops_ < kVerifyHops ? 5 * kHopsPerSecond : kMaxWindow;
-        window.first = std::max(segment_, heard > length ? heard - length : 0);
+        window.first = std::max(segment_, heard > kMaxWindow ? heard - kMaxWindow : 0);
         return true;
     }
 

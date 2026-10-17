@@ -20,7 +20,7 @@ int main() {
             audio->write(packet.data(), packet.size());
     };
     std::array<int16_t, 4096> buffer{};
-    auto clip = std::make_unique<std::array<int16_t, 5 * hz>>();
+    auto clip = std::make_unique<std::array<int16_t, 10 * hz>>();
     Sessions sessions;
     sessions.set_network(true, "http://192.168.1.10");
     sessions.set_controller(true); sessions.set_sound(true);
@@ -33,12 +33,12 @@ int main() {
     planner.attempted(window.last);
     planner.matched(window, window.last, 0, 300);
 
-    // Six seconds of input accumulate while HTTPS/catalogue/artwork blocks.
+    // Twelve seconds of input accumulate while HTTPS/catalogue/artwork blocks.
     // After each completed lookup the next request must reach the stream's
     // current tail, not launch partway through draining its queued samples.
     for (unsigned cycle = 0; cycle < 5; ++cycle) {
         const int16_t current_song = int16_t(222 + cycle);
-        write(6, current_song);
+        write(12, current_song);
         const uint64_t tail = audio->written();
         unsigned reads = 0;
         uint64_t first_due = 0;
@@ -63,8 +63,8 @@ int main() {
                 requested = true;
             }
         }
-        assert(requested && reads == 24);
-        if (cycle == 0) assert(tail - first_due == 55040); // old admission: 3.440 s stale
+        assert(requested && reads == 47);
+        if (cycle == 0) assert(tail - first_due == 151040); // old admission: 9.440 s stale
     }
     // Transport loss still takes precedence even when the reader is caught up.
     sessions.set_controller(false);

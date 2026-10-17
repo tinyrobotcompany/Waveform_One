@@ -1,0 +1,44 @@
+menu "Waveform recognition audio"
+    config WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
+        bool "Compare one failed recognition sample at 16 kHz (bench only)"
+        default n
+        help
+            After one no-match, send the exact original PCM and an amplitude-
+            normalized copy to ACRCloud. At most two extra requests per boot.
+            Does not publish diagnostic matches. Alters request timing during
+            the comparison; never enable for normal latency acceptance.
+    config WAVEFORM_CONTINUOUS_RECOGNITION
+        bool "Run recognition independently of acoustic loudness"
+        default n
+        help
+            Feed the normal rate-limited recognition schedule whenever audio
+            arrives. Loudness votes do not start, stop or hide matches. Albums
+            can remain visible after music stops; stop detection is separate.
+    config WAVEFORM_P4_MIC
+        bool "Use onboard P4 microphones instead of S3 USB audio"
+        default n
+    config WAVEFORM_P4_MIC_CHANNEL
+        int "Onboard stereo input channel (0 or 1)"
+        depends on WAVEFORM_P4_MIC
+        range 0 1
+        default 0
+    config WAVEFORM_P4_MIC_GAIN_DB
+        int "Onboard microphone gain in dB"
+        depends on WAVEFORM_P4_MIC
+        range 0 36
+        default 24
+endmenu
+
+menu "Experimental P4 HUB75 takeover"
+    config WAVEFORM_P4_LED
+        bool "Drive HUB75 directly from the P4 expansion connectors"
+        depends on WAVEFORM_P4_MIC
+        default n
+        help
+            Requires the documented buffered adapter and rewiring. Disables
+            the S3 USB controller path. Never enable on unverified wiring.
+    config WAVEFORM_P4_LED_PATTERN
+        bool "Show diagnostic stripes instead of audio"
+        depends on WAVEFORM_P4_LED
+        default y
+endmenu

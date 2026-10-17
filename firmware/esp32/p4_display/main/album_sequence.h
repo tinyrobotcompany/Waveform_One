@@ -17,7 +17,7 @@
 // Times are 128-sample hops of 16 kHz audio (125 per second).
 namespace album_sequence {
 
-inline constexpr unsigned kMaxTracks = 64;
+inline constexpr unsigned kMaxTracks = 200;
 
 struct Track {
     char title[513]{};
@@ -25,7 +25,7 @@ struct Track {
     double duration_s = 0;
 };
 
-// Allocate in PSRAM: about 66 KB.
+// Allocate in PSRAM: about 207 KB, bounded by the catalogue request limit.
 struct Sequence {
     unsigned count = 0;
     Track tracks[kMaxTracks];

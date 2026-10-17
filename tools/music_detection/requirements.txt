@@ -1,0 +1,6 @@
+# Offline model preparation/evaluation only; nothing here runs on the device.
+ai-edge-litert==2.3.0
+flatbuffers==25.12.19
+numpy==2.5.3
+scipy==1.18.1
+soundfile==0.14.0

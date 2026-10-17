@@ -27,6 +27,8 @@
 #include "search_waveform.h"
 #include "album_palette.h"
 #include "usb_controller.h"
+#include "music_detector.h"
+#include "p4_led.h"
 
 namespace {
 
@@ -456,7 +458,7 @@ void on_style(lv_event_t *event)
 {
     if (lv_event_get_code(event) != LV_EVENT_CLICKED) return;
     const auto style = static_cast<LedStyle>(reinterpret_cast<intptr_t>(lv_event_get_user_data(event)));
-    const StyleRequestResult result = usb_controller_set_style(style);
+    const StyleRequestResult result = (p4_led_enabled() ? p4_led_set_style(style) : usb_controller_set_style(style));
     lv_label_set_text(style_status, result == StyleRequestResult::Queued
                                         ? "Applying…"
                                         : "LED controller is not available.");
@@ -464,7 +466,7 @@ void on_style(lv_event_t *event)
 
 bool remote_set_style(LedStyle style)
 {
-    const bool queued = usb_controller_set_style(style) == StyleRequestResult::Queued;
+    const bool queued = (p4_led_enabled() ? p4_led_set_style(style) : usb_controller_set_style(style)) == StyleRequestResult::Queued;
     if (bsp_display_lock(1000)) {
         lv_label_set_text(style_status, queued ? "Applying…" : "LED controller is not available.");
         bsp_display_unlock();
@@ -1114,7 +1116,9 @@ extern "C" void app_main()
 
     ESP_LOGI(kTag, "Display and touch initialized");
     recognition_start(update_recognition);
-    usb_controller_start(update_controller_status);
+    music_detector_start();
+    if (p4_led_enabled()) p4_led_start(update_controller_status);
+    else usb_controller_start(update_controller_status);
     RemoteCallbacks remote{};
     remote.set_appearance = remote_set_appearance;
     remote.set_style = remote_set_style;

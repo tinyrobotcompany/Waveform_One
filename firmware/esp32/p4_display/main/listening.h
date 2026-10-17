@@ -12,11 +12,16 @@ namespace listening {
 
 inline constexpr unsigned kHopsPerSecond = 125;
 inline constexpr unsigned kBlockHops = 25;           // 0.2 s level blocks
+// The P4's onboard microphones hear music only 5-12 dB above the room
+// (measured 2026-10-17), so single blocks are unreliable: quiet passages of
+// a jazz trio dip to within 3 dB of the room. Decisions use several blocks.
 inline constexpr double kStartAboveDb = 6;           // sound: 6 dB over background...
-inline constexpr unsigned kStartBlocks = 3;          // ...for 0.6 s
-inline constexpr double kStopAboveDb = 5;            // silence: within 5 dB of background...
-inline constexpr unsigned kStopBlocks = 8;           // ...for 1.6 s, or
-inline constexpr unsigned kShowingStopBlocks = 15;   // 3 s while a song is shown: quiet passages are not stops
+inline constexpr unsigned kStartBlocks = 4;          // ...in 4 of the last 5 blocks (1 s)
+inline constexpr unsigned kStartWindow = 5;
+inline constexpr double kStopAboveDb = 5;            // silence: blocks within 5 dB of background...
+inline constexpr double kStopMedianDb = 2.5;         // ...with a median under 2.5 dB above it...
+inline constexpr unsigned kStopBlocks = 15;          // ...for 3 s, or
+inline constexpr unsigned kShowingStopBlocks = 40;   // 8 s while a song is shown: quiet passages are not stops
 inline constexpr unsigned kCalibrationBlocks = 10;   // first 2 s set the background...
 // ...but never louder than a quiet room: music already playing at power-on
 // must not become the background. A noisy room is learnt within seconds.
@@ -30,9 +35,13 @@ inline constexpr double kLoudestStartDb = -50;
 // are limited by the planner's caution instead.)
 inline constexpr double kFallFraction = 0.2;           // per block, towards quieter levels
 inline constexpr double kQuietRiseFraction = 0.05;     // per block, towards louder levels...
-inline constexpr double kQuietRiseDbPerBlock = 0.25;   // ...at most 1.25 dB a second
+inline constexpr double kQuietRiseDbPerBlock = 0.05;   // ...at most 0.25 dB a second: slower than music fading in
 inline constexpr double kSoundRiseDbPerBlock = 0.0033; // 1 dB a minute
 inline constexpr double kLowestDb = -90;
+// Room noise wanders this far above the background. Anything louder is not
+// learnt quickly, even before it counts as sound: quiet music that builds up
+// slowly must not lift the background with it.
+inline constexpr double kWanderDb = 3;
 
 inline constexpr unsigned kGapBlocks = 2;            // a 0.4 s dip is a gap between tracks
 
@@ -85,6 +94,7 @@ public:
 
     // The last kRecentBlocks block levels in dB, oldest first, for logs.
     static constexpr unsigned kRecentBlocks = 50;  // 10 s
+    static_assert(kShowingStopBlocks <= kRecentBlocks, "the stop average reads recent levels");
     unsigned recent(float *out) const
     {
         const unsigned count = recent_count_ < kRecentBlocks ? recent_count_ : kRecentBlocks;
@@ -120,23 +130,27 @@ private:
         }
         if (level < background_) background_ += (level - background_) * kFallFraction;
         else if (sound_) background_ = std::min(level, background_ + kSoundRiseDbPerBlock);
-        else background_ += std::min(kQuietRiseDbPerBlock, (level - background_) * kQuietRiseFraction);
+        else if (level - background_ <= kWanderDb)
+            background_ += std::min(kQuietRiseDbPerBlock, (level - background_) * kQuietRiseFraction);
+        else background_ = std::min(level, background_ + kSoundRiseDbPerBlock);
         if (!sound_) {
-            loud_ = level >= background_ + kStartAboveDb ? loud_ + 1 : 0;
-            if (loud_ < kStartBlocks) return Event::None;
-            sound_ = true; quiet_ = resumed_loud_ = 0; quiet_history_ = 0;
+            loud_ = (loud_ << 1 | (level >= background_ + kStartAboveDb)) & ((1u << kStartWindow) - 1);
+            if (unsigned(__builtin_popcount(loud_)) < kStartBlocks) return Event::None;
+            sound_ = true; loud_ = quiet_ = resumed_loud_ = 0; quiet_history_ = 0;
             // Include the blocks that proved the sound plus one before them.
             const uint32_t back = (kStartBlocks + 1) * kBlockHops;
             start_hop = hop_number + 1 > back ? hop_number + 1 - back : 0;
+            sound_blocks_ = 0;
             return Event::SoundStarted;
         }
+        ++sound_blocks_;
         const bool quiet = level < background_ + kStopAboveDb;
         quiet_history_ = (quiet_history_ << 1) | (quiet ? 1u : 0u);
         if (!quiet) {
             // A confidently resumed passage starts a fresh quiet-vote window.
             // A single cough still does not erase genuine stop evidence.
-            resumed_loud_ = std::min(resumed_loud_ + 1, kStartBlocks);
-            if (resumed_loud_ == kStartBlocks) quiet_history_ = 0;
+            resumed_loud_ = std::min(resumed_loud_ + 1, kResumedBlocks);
+            if (resumed_loud_ == kResumedBlocks) quiet_history_ = 0;
             const unsigned dip = quiet_;
             quiet_ = 0;
             if (dip < kGapBlocks) return Event::None;
@@ -151,9 +165,16 @@ private:
         // Mostly quiet for the stop time: a creak or a cough in the room must
         // not restart the count.
         const unsigned window = stop_blocks();
-        const uint32_t mask = window >= 32 ? 0xffffffffu : (1u << window) - 1;
-        const unsigned quiet_blocks = unsigned(__builtin_popcount(quiet_history_ & mask));
+        if (sound_blocks_ < window) return Event::None;
+        const uint64_t mask = window >= 64 ? ~uint64_t(0) : (uint64_t(1) << window) - 1;
+        const unsigned quiet_blocks = unsigned(__builtin_popcountll(quiet_history_ & mask));
         if (quiet_blocks * 5 < window * 4) return Event::None;
+        // The vote above lets a creak through; a quiet passage of music does
+        // not pass the median, because it stays a few dB above the room.
+        float window_levels[kRecentBlocks];
+        for (unsigned i = 0; i < window; ++i) window_levels[i] = recent_[(recent_count_ - 1 - i) % kRecentBlocks];
+        std::nth_element(window_levels, window_levels + window / 2, window_levels + window);
+        if (window_levels[window / 2] >= background_ + kStopMedianDb) return Event::None;
         sound_ = unrecognised_ = false; loud_ = 0; quiet_ = 0; quiet_history_ = 0;
         return Event::SilenceStarted;
     }
@@ -166,7 +187,10 @@ private:
     unsigned calibration_ = 0, loud_ = 0, quiet_ = 0, resumed_loud_ = 0;
     double background_ = kLowestDb, last_level_ = kLowestDb;
     double low_ = 0, high_ = kLowestDb;
-    uint32_t gap_end_ = 0, quiet_history_ = 0;
+    static constexpr unsigned kResumedBlocks = 3;    // 0.6 s of confident sound clears old quiet votes
+    uint32_t gap_end_ = 0;
+    uint64_t quiet_history_ = 0;
+    unsigned sound_blocks_ = 0;
     float recent_[kRecentBlocks]{};
     unsigned recent_count_ = 0;
     bool sound_ = false, unrecognised_ = false, patient_ = false;
