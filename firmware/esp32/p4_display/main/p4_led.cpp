@@ -11,10 +11,12 @@
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "esp_timer.h"
+#include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <atomic>
 #include <new>
+#include <cstdio>
 
 #if CONFIG_WAVEFORM_P4_LED_PATTERN
 constexpr bool diagnostic_pattern = true;
@@ -101,20 +103,46 @@ void run(void *) {
     if (error != ESP_OK) { fail("callback registration", error); return; }
     error = parlio_tx_unit_enable(unit);
     if (error != ESP_OK) { fail("PARLIO enable", error); return; }
-    struct Work { p4_led::Spectrum spectrum; visual::Renderer renderer; int16_t samples[512]; };
+    struct Work {
+        p4_led::Spectrum spectrum;
+        visual::Renderer renderer;
+        int16_t samples[p4_led::Spectrum::size];
+        audio::Bands band_power{}, displayed{};
+        char band_log[256]{}, display_log[256]{};
+    };
     void *memory = heap_caps_aligned_alloc(16, sizeof(Work), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!memory) { fail("analysis allocation", ESP_ERR_NO_MEM); return; }
     auto *work = new (memory) Work{};
+    bool calibration_saved = diagnostic_pattern;
+    if (!diagnostic_pattern) {
+        nvs_handle_t handle;
+        if (nvs_open("p4_led", NVS_READONLY, &handle) == ESP_OK) {
+            p4_led::Levels::Noise noise{};
+            size_t length = sizeof(noise);
+            const auto result = nvs_get_blob(handle, "noise_v1", noise.data(), &length);
+            nvs_close(handle);
+            calibration_saved = result == ESP_OK && length == sizeof(noise) && work->spectrum.loadNoise(noise);
+        }
+        ESP_LOGI(tag, "LED room reference: %s", calibration_saved ? "loaded" : "measuring quiet room for 3 seconds");
+    }
     p4_hub75::Buffers ownership;
-    uint64_t position = 0; uint32_t segment = UINT32_MAX;
-    size_t filled = 0;
+    uint64_t analysed_end = 0; uint32_t segment = UINT32_MAX;
     int64_t last_audio = 0, last_log = 0;
+    unsigned analyses = 0;
+    float peak_rms = 0;
     unsigned updates = 0;
     unsigned applied_request = 0;
     bool first = true;
     parlio_transmit_config_t tx{};
     tx.idle_value = p4_hub75::blank;
     tx.flags.loop_transmission = true; tx.flags.queue_nonblocking = true;
+    // ESP-IDF 6.1 sets buffer_need_switch only for a replacement transmit.
+    // Seed the loop with an immutable blank frame; the first rendered frame
+    // then gets a real switch callback. Never wait for one on initial start.
+    frames[0]->fill(p4_hub75::blank);
+    error = parlio_tx_unit_transmit(unit, frames[0]->data(), sizeof(p4_hub75::Frame)*8, &tx);
+    if (error != ESP_OK) { fail("initial transmit", error); return; }
+    if (!ownership.started(0)) { fail("initial ownership", ESP_ERR_INVALID_STATE); return; }
     ESP_LOGI(tag, "PARLIO 64x32 clock=1000000 frame_bytes=%u mode=%s",
         unsigned(sizeof(p4_hub75::Frame)), diagnostic_pattern ? "diagnostic" : "onboard_audio");
     while (true) {
@@ -127,21 +155,36 @@ void run(void *) {
             const auto *audio = recognition_input_audio();
             if (audio) {
                 const auto end = audio->written();
-                if (end > position + 1024) { position = end - 512; filled = 0; }
-                const auto read = audio->read(position, work->samples + filled, 512 - filled);
-                if (read.skipped || read.segment != segment) {
-                    // Re-read a complete frame after a stream break, never splice.
-                    filled = 0; position = read.position; segment = read.segment;
-                    work->renderer.render({}, now / 1000);
-                } else if (read.count) {
-                    filled += read.count; position = read.position + read.count; last_audio = now;
-                    if (filled == 512) {
-                        work->renderer.render(work->spectrum.process(work->samples), now / 1000);
-                        filled = 0;
+                // Read the newest complete window, overlapping consecutive
+                // analyses. Never drain a backlog or splice stream segments.
+                constexpr size_t window = p4_led::Spectrum::size;
+                if (end >= window && end != analysed_end) {
+                    const auto read = audio->read(end - window, work->samples, window);
+                    if (read.segment != segment || read.skipped) {
+                        work->spectrum.reset();
+                        work->renderer.render({}, now / 1000);
+                        segment = read.segment;
+                        last_audio = 0;
+                    }
+                    if (!read.skipped && read.count == window) {
+                        const float elapsed = last_audio ? float(now - last_audio) / 1000000 : 0.02f;
+                        const auto frame = work->spectrum.process(work->samples, elapsed);
+                        work->renderer.render(frame, now / 1000);
+                        peak_rms = std::max(peak_rms, frame.rms);
+                        for (unsigned b = 0; b < audio::kBandCount; ++b) {
+                            work->band_power[b] += frame.bandRms[b] * frame.bandRms[b];
+                            work->displayed[b] += frame.levels[b];
+                        }
+                        ++analyses;
+                        analysed_end = read.position + read.count;
+                        last_audio = now;
                     }
                 }
             }
-            if (now - last_audio > 500000) { filled = 0; work->renderer.render({}, now / 1000); }
+            if (now - last_audio > 500000) {
+                work->spectrum.reset(); last_audio = 0;
+                work->renderer.render({}, now / 1000);
+            }
         }
         const int index = ownership.writable();
         if (index < 0) { fail("buffer ownership", ESP_ERR_INVALID_STATE); return; }
@@ -154,6 +197,19 @@ void run(void *) {
         uint32_t notification = 0;
         if (xTaskNotifyWait(0, UINT32_MAX, &notification, pdMS_TO_TICKS(500)) != pdTRUE ||
             !ownership.switched(int(notification)-1)) { fail("DMA handoff", ESP_ERR_TIMEOUT); return; }
+        if (!calibration_saved && work->spectrum.calibrated()) {
+            nvs_handle_t handle;
+            esp_err_t saved = nvs_open("p4_led", NVS_READWRITE, &handle);
+            if (saved == ESP_OK) {
+                const auto &noise = work->spectrum.noise();
+                saved = nvs_set_blob(handle, "noise_v1", noise.data(), sizeof(noise));
+                if (saved == ESP_OK) saved = nvs_commit(handle);
+                nvs_close(handle);
+            }
+            // Attempt once per boot; a storage failure must not stall scanning.
+            calibration_saved = true;
+            ESP_LOGI(tag, "LED room reference ready; persistence=%s", esp_err_to_name(saved));
+        }
         available.store(true);
         if (first || request != applied_request) {
             first = false; applied_request = request;
@@ -162,9 +218,23 @@ void run(void *) {
         }
         ++updates;
         if (now - last_log >= 5000000) {
-            ESP_LOGI(tag, "updates=%u dma_largest=%u", updates,
+            ESP_LOGI(tag, "updates=%u analyses=%u peak_dbfs=%.1f dma_largest=%u", updates, analyses,
+                20 * std::log10(std::max(peak_rms, 1e-9f)),
                 unsigned(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA)));
-            updates = 0; last_log = now;
+            if (analyses) {
+                size_t db_used = 0, display_used = 0;
+                for (unsigned b = 0; b < audio::kBandCount; ++b) {
+                    const float db = 10 * std::log10(std::max(work->band_power[b] / analyses, 1e-18f));
+                    db_used += std::snprintf(work->band_log + db_used, sizeof(work->band_log) - db_used,
+                        "%s%.0f", b ? "," : "", db);
+                    display_used += std::snprintf(work->display_log + display_used,
+                        sizeof(work->display_log) - display_used, "%s%.0f", b ? "," : "",
+                        100 * work->displayed[b] / analyses);
+                }
+                ESP_LOGI(tag, "bands_dbfs=[%s] displayed_pct=[%s]", work->band_log, work->display_log);
+                work->band_power.fill(0); work->displayed.fill(0);
+            }
+            updates = 0; analyses = 0; peak_rms = 0; last_log = now;
         }
         vTaskDelay(pdMS_TO_TICKS(20));
     }

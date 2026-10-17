@@ -37,6 +37,14 @@ inline uint8_t diagnostic(unsigned x, unsigned row) {
 // confirms that the replacement is active. Unexpected callbacks are rejected.
 class Buffers {
 public:
+    // IDF starts the first loop synchronously, without a buffer-switch event.
+    // Call only after that first transmit succeeds; retain this frame until
+    // an actual replacement callback releases it.
+    bool started(int index) {
+        if (active_ >= 0 || pending_ >= 0 || index < 0 || index > 1) return false;
+        active_ = index;
+        return true;
+    }
     int writable() const { return pending_ >= 0 ? -1 : active_ == 0 ? 1 : 0; }
     bool submit(int index) {
         if (index != writable() || index < 0) return false;

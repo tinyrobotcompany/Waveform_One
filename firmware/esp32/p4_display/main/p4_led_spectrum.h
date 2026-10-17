@@ -5,20 +5,31 @@
 #include <algorithm>
 #include <cstdint>
 #include "audio_pipeline.h"
+#include "p4_led_levels.h"
 
 namespace p4_led {
-// Independent 16 kHz/512-point visualizer; no shared ESP-DSP global table and
+// Independent 16 kHz/1024-point visualizer; no shared ESP-DSP global table and
 // no changes to the recognition FFT or microphone. Allocate this in PSRAM.
 class Spectrum {
 public:
-    static constexpr unsigned size = 512;
+    static constexpr unsigned size = 1024;
     Spectrum() {
         for (unsigned i = 0; i < size; ++i)
             window_[i] = 0.5f - 0.5f * std::cos(6.28318530718f * i / (size - 1));
         for (unsigned i = 0; i < size / 2; ++i)
             twiddles_[i] = std::polar(1.0f, -6.28318530718f * i / size);
     }
-    audio::Frame process(const int16_t *pcm) {
+    unsigned binCount(unsigned band) const {
+        unsigned count = 0;
+        for (unsigned bin = 1; bin < size / 2; ++bin)
+            if (bandFor(bin) == int(band)) ++count;
+        return count;
+    }
+    void reset() { levels_.reset(); }
+    bool calibrated() const { return levels_.ready(); }
+    bool loadNoise(const Levels::Noise &noise) { return levels_.load(noise); }
+    const Levels::Noise &noise() const { return levels_.noise(); }
+    audio::Frame process(const int16_t *pcm, float elapsed = float(size) / 16000) {
         float mean = 0, window_power = 0;
         for (unsigned i = 0; i < size; ++i) mean += pcm[i] / 32768.0f;
         mean /= size;
@@ -43,21 +54,24 @@ public:
                     const auto even = data_[start+i];
                     data_[start+i] = even + odd; data_[start+i+length/2] = even - odd;
                 }
-        for (unsigned bin = 2; bin < size / 2; ++bin) {
-            const float hz = bin * 16000.0f / size;
-            if (hz >= 7500) continue;
-            const int band = std::min(23, int(24 * std::log(hz / 60) / std::log(7500.0f / 60)));
+        for (unsigned bin = 1; bin < size / 2; ++bin) {
+            const int band = bandFor(bin);
+            if (band < 0) continue;
             out.bandRms[band] += std::norm(data_[bin]) * 2 / (size * window_power);
         }
         for (unsigned b = 0; b < 24; ++b) {
             out.bandRms[b] = std::sqrt(out.bandRms[b]);
-            const float db = 20 * std::log10(std::max(out.bandRms[b], 1e-9f));
-            // Diagnostic visual range only; does not admit/reject recognition.
-            out.levels[b] = std::clamp((db + 80) / 45, 0.0f, 1.0f);
         }
+        levels_.apply(out, elapsed);
         return out;
     }
 private:
+    static int bandFor(unsigned bin) {
+        const float hz = bin * 16000.0f / size;
+        if (hz < 60 || hz >= 7500) return -1;
+        return std::min(23, int(24 * std::log(hz / 60) / std::log(7500.0f / 60)));
+    }
+    Levels levels_{};
     std::array<float, size> window_{};
     std::array<std::complex<float>, size> data_{};
     std::array<std::complex<float>, size / 2> twiddles_{};
