@@ -4,7 +4,10 @@
     "width": 72.0,
     "depth": 44.0,
     "thickness": 1.6,
-    "corner_radius": 3.0
+    "corner_radius": 3.0,
+    "case_left_x": -130.0,
+    "case_rear_y": 68.0,
+    "standoff_height": 5.0
   },
   "mounting_holes": [
     [

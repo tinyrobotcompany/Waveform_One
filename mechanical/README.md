@@ -136,10 +136,9 @@ slides through; the model is rebuilt with those values before the big parts.
 
 | Item | Qty | Where |
 |---|---|---|
-| M3 heat-set inserts, ~5.7 mm long | 23 | clip bosses 9, rear bosses 10, tray pads 4 |
-| M3 × 8 screws | 23 | clips 9, rear panel 10, tray 4 |
+| M3 heat-set inserts, ~5.7 mm long | 27 | clip bosses 9, rear bosses 10, carrier posts 4, LED adapter posts 4 |
+| M3 × 8 screws | 27 | clips 9, rear panel 10, carrier board 4, LED adapter board 4 |
 | Neodymium disc magnets, 10 × 3 mm (N52) | 8 | record holders, optional: 2 per holder, 4 under the top |
-| M2.5 × 6 screws | 4 | Pi onto the tray standoffs |
 | Stick-on rubber feet, ≤ 12 mm | 4 | seats under the case |
 | Epoxy or superglue | — | joining the shell halves; magnets into their pockets |
 
@@ -151,9 +150,11 @@ Fit inserts with a soldering iron (a dedicated insert tip helps).
 2. Press heat-set inserts into all bosses and pads.
 3. Screen into its pocket, glass forward; screw on its five clips.
 4. Diffuser then LED panel into the right pocket; screw on its four clips.
-5. Pi onto the tray (M2.5), tray onto the floor pads.
-6. Connect the LED panel: the P4 drives it through the LED adapter board
-   (`electronics/led-adapter`), whose mount is still to come.
+5. Carrier board onto its four floor posts (right half); LED adapter board onto
+   its four posts in the left half, behind the screen, sockets J1 and J2 to the back.
+6. Plug the two 12-pin cables from the P4's sockets into J1 (P4 socket P3) and
+   J2 (P4 socket P1), the panel's grey ribbon into J3, and two wires from the
+   carrier's LED power terminal into J4 (5 V and GND).
 7. Microphone into the frame on the rear panel (dab of hot glue), facing the hole.
 8. Feed the power cables through the rear notch; screw on both rear panel halves.
 9. Feet underneath.

@@ -19,7 +19,7 @@ from build123d import Axis, Part, Text, FontStyle, chamfer, extrude
 from waveform_one import layout
 from waveform_one import parameters as p
 from waveform_one.components import lcd
-from waveform_one import carrier
+from waveform_one.pcb import CARRIER, LED_ADAPTER
 from waveform_one.enclosure import FRONT_FACE_DOWN, clips, record_holder, rear_panel
 from waveform_one.geometry import (
     CUT_OVERSHOOT,
@@ -110,14 +110,16 @@ def _rear_bosses():
     return bosses, holes
 
 
-def _carrier_posts():
-    """Floor posts with heat-set inserts under the carrier board's four holes."""
+def _board_posts():
+    """Floor posts with heat-set inserts under the holes of the carrier and LED adapter boards."""
     _, _, z_floor = layout.interior_bounds()[0]
-    size, height = p.CARRIER_POST_SIZE.v, carrier.board()["standoff_height"]
+    size = p.CARRIER_POST_SIZE.v
     posts, holes = [], []
-    for x, y in carrier.hole_centres():
-        posts.append(sloped_pad(x, size, y - size / 2, y + size / 2, z_floor, height, up=True))
-        holes.append(z_cylinder(x, y, z_floor + height - p.M3_INSERT_DEPTH.v, z_floor + height + CUT_OVERSHOOT, p.M3_INSERT_HOLE.v))
+    for board in (CARRIER, LED_ADAPTER):
+        height = board.board()["standoff_height"]
+        for x, y in board.hole_centres():
+            posts.append(sloped_pad(x, size, y - size / 2, y + size / 2, z_floor, height, up=True))
+            holes.append(z_cylinder(x, y, z_floor + height - p.M3_INSERT_DEPTH.v, z_floor + height + CUT_OVERSHOOT, p.M3_INSERT_HOLE.v))
     return posts, holes
 
 
@@ -163,7 +165,7 @@ def build_full_shell() -> Part:
     shell = _cut_windows(_outer_shell())
     shell -= brand_name()
     shell += _pockets()
-    for features, cuts in (clips.build_bosses(), _rear_bosses(), _carrier_posts()):
+    for features, cuts in (clips.build_bosses(), _rear_bosses(), _board_posts()):
         for feature in features:
             shell += feature
         for cut in cuts:

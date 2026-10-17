@@ -9,7 +9,7 @@ from waveform_one.components import build_all
 from waveform_one.enclosure import clips
 from waveform_one.validation import ValidationError, collision_errors, outside_bounds_errors, require_valid_layout
 
-EXPECTED = ["Screen", "Diffuser", "LedPanel", "CarrierBoard", "Microphone"]
+EXPECTED = ["Screen", "Diffuser", "LedPanel", "CarrierBoard", "LedAdapter", "Microphone"]
 
 
 @pytest.fixture(scope="module")
@@ -82,6 +82,16 @@ def test_carrier_board_follows_the_kicad_placement():
     assert xs[0] == pytest.approx(board["case_left_x"] + 4.0)
     assert ys[1] == pytest.approx(board["case_rear_y"] - 4.0)
     assert {item["ref"] for item in carrier.parts()} >= {"J1", "J3", "J4", "J5", "J6", "J7", "U1"}
+
+
+def test_led_adapter_follows_its_kicad_placement():
+    from waveform_one.pcb import LED_ADAPTER
+    holes = LED_ADAPTER.hole_centres()
+    board = LED_ADAPTER.board()
+    assert len(holes) == 4
+    assert min(x for x, _ in holes) == pytest.approx(board["case_left_x"] + 4.0)
+    assert max(y for _, y in holes) == pytest.approx(board["case_rear_y"] - 4.0)
+    assert {item["ref"] for item in LED_ADAPTER.parts()} >= {"J1", "J2", "J3", "J4", "U1", "U2"}
 
 
 def test_microphone_sits_on_the_rear_panel(parts):

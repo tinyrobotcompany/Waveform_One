@@ -151,6 +151,25 @@ def test_carrier_posts_line_up_with_the_board_holes(parts):
         assert (shell_right & ring).volume > 0  # post material around it
 
 
+def test_led_adapter_sits_on_posts_in_the_left_half_below_the_p4_sockets(parts):
+    from build123d import Box, Pos
+    from waveform_one.pcb import LED_ADAPTER
+    (x0, x1), (y0, y1) = LED_ADAPTER.bounds()
+    (x_min, _, z_floor), _ = layout.interior_bounds()
+    assert x_min + p.CORNER_RADIUS.v - p.SHELL_WALL.v <= x0 and x1 < layout.seam_x() - p.TONGUE_DEPTH.v
+    # Under the P4's two GPIO sockets, so the 12-pin cables stay short.
+    for start, end in p.P4_GPIO_SOCKETS:
+        assert x0 < lcd.edge_x(end) and lcd.edge_x(start) < x1
+    shell_left = parts["shell_left"].body
+    top = z_floor + LED_ADAPTER.board()["standoff_height"]
+    for x, y in LED_ADAPTER.hole_centres():
+        assert (shell_left & (Pos(x, y, top - 1.0) * Box(0.5, 0.5, 0.5))).volume == pytest.approx(0, abs=1e-6)
+        ring = Pos(x + p.M3_INSERT_HOLE.v / 2 + 1.0, y, top - 1.0) * Box(0.5, 0.5, 0.5)
+        assert (shell_left & ring).volume > 0
+    # The floor vents start behind the posts.
+    assert shell.floor_vent_region()[1][0] > y1 + p.CARRIER_POST_SIZE.v / 2
+
+
 def test_rear_panel_has_an_opening_at_each_rear_socket(parts):
     panel = parts["rear_panel_left"].body + parts["rear_panel_right"].body
     (_, _, _), (_, y_inner, _) = layout.interior_bounds()
