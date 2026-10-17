@@ -6,54 +6,57 @@
 int main() {
     using music_detection::Presence;
     constexpr int64_t s = 1000000;
+    constexpr uint64_t window = Presence::kWindowSamples;
     int8_t scores[521]{};
     for (auto &value : scores) value = -128;
     assert(music_detection::music_score(scores) == 0);
     scores[24] = 127;
     assert(music_detection::music_score(scores) > 0.99f);
 
-    // Talk scores near zero: never music, and after 10 s it is called not music.
+    // Talk scores near zero: never music.
     Presence talk;
-    for (int64_t t = 0; t <= 30 * s; t += s / 2) talk.update(0.06f, t);
-    assert(!talk.music(30 * s) && talk.not_music(30 * s));
-    Presence early;
-    early.update(0.0f, 0);
-    assert(!early.music(s) && !early.not_music(9 * s));
+    for (int64_t t = 0; t <= 30 * s; t += s / 2) talk.update(0.06f, t, uint64_t(t) * 16 / 1000);
+    assert(!talk.music(30 * s));
 
-    // A confident window enters at once; two weak ones within 4 s enter too.
-    Presence pop;
-    pop.update(0.7f, s);
-    assert(pop.music(s));
-    Presence quiet;
-    quiet.update(0.25f, s);
-    assert(!quiet.music(s));
-    quiet.update(0.1f, 2 * s);
-    quiet.update(0.25f, 4 * s);
-    assert(quiet.music(4 * s) && !quiet.not_music(4 * s));
-    // Weak windows further apart do not.
-    Presence sparse;
-    sparse.update(0.25f, 0);
-    sparse.update(0.25f, 5 * s);
-    assert(!sparse.music(5 * s));
+    // Real talk on the device, 16:06:05: one burst scoring 0.67, 0.41, 0.33,
+    // 0.33 in windows 0.4 s apart. Overlapping windows are one piece of
+    // evidence, so the burst is at most two, and is not music.
+    Presence burst;
+    const float scored[] = {0.668f, 0.414f, 0.332f, 0.332f};
+    for (unsigned i = 0; i < 4; ++i) burst.update(scored[i], 5 * s + i * 400000, 80000 + i * 6400);
+    assert(!burst.music(7 * s));
 
-    // Quiet music holds through 18 s without a positive window, then lapses
-    // after 20 s and must re-enter.
-    quiet.update(0.05f, 20 * s);
-    assert(quiet.music(22 * s));
-    assert(!quiet.music(24 * s + 1));
-    quiet.update(0.05f, 25 * s);
-    assert(!quiet.music(25 * s));
-    quiet.update(0.3f, 26 * s);
-    assert(!quiet.music(26 * s));
+    // Music: three separate music-like windows within 6 s.
+    Presence song;
+    song.update(0.3f, 1 * s, 1 * window);
+    song.update(0.25f, 2 * s, 2 * window);
+    assert(!song.music(2 * s));
+    song.update(0.05f, 3 * s, 3 * window);
+    song.update(0.4f, 4 * s, 4 * window);
+    assert(song.music(4 * s));
+    // Three spread over more than 6 s do not enter.
+    Presence slow;
+    slow.update(0.3f, 0, 1 * window);
+    slow.update(0.3f, 4 * s, 5 * window);
+    slow.update(0.3f, 8 * s, 9 * window);
+    assert(!slow.music(8 * s));
+    slow.update(0.3f, 9 * s, 10 * window);
+    assert(slow.music(9 * s));
 
-    // Silence resets: talk after a song does not inherit its decision.
-    pop.reset();
-    assert(!pop.music(2 * s) && !pop.not_music(60 * s));
+    // Quiet passages hold for 15 s without a music-like window, then lapse.
+    song.update(0.0f, 15 * s, 15 * window);
+    assert(song.music(19 * s) && !song.music(19 * s + 1));
+    song.update(0.0f, 20 * s, 20 * window);
+    assert(!song.music(20 * s));
+
+    // Silence resets.
+    slow.reset();
+    assert(!slow.music(9 * s));
 
     // Invalid scores are ignored.
     Presence invalid;
-    invalid.update(std::numeric_limits<float>::quiet_NaN(), 0);
-    invalid.update(2.0f, 0);
-    assert(!invalid.music(0) && !invalid.not_music(20 * s));
-    std::puts("PASS: music presence enters on music-like windows, holds quiet music, never on talk");
+    invalid.update(std::numeric_limits<float>::quiet_NaN(), 0, window);
+    invalid.update(2.0f, 0, window);
+    assert(!invalid.music(0));
+    std::puts("PASS: music presence needs three separate music-like windows; talk bursts and overlaps do not count");
 }

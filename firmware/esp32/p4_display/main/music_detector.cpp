@@ -93,14 +93,13 @@ void detector_task(void *model)
         }
         const int64_t now = esp_timer_get_time();
         const float score = music_detection::music_score(interpreter.output(0)->data.int8);
-        presence.update(score, now);
-        const auto state = presence.music(now) ? MusicVerdict::Music
-            : presence.not_music(now) ? MusicVerdict::NotMusic : MusicVerdict::Undecided;
+        presence.update(score, now, read.position + read.count);
+        const auto state = presence.music(now) ? MusicVerdict::Music : MusicVerdict::Undecided;
         verdict.store(state);
         if (now - last_log >= 2000000 || score >= music_detection::Presence::kWeak) {
             last_log = now;
             ESP_LOGI(kTag, "score=%.3f verdict=%s processing_ms=%lld", score,
-                state == MusicVerdict::Music ? "music" : state == MusicVerdict::NotMusic ? "not_music" : "undecided",
+                state == MusicVerdict::Music ? "music" : "undecided",
                 static_cast<long long>((now - started) / 1000));
         }
         vTaskDelay(pdMS_TO_TICKS(20));

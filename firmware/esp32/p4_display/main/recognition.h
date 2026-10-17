@@ -32,4 +32,7 @@ void recognition_set_controller(bool connected);
 // The room's level detector currently hears sound (music, or anything as
 // loud). Safe to call from any task; false until recognition has started.
 bool recognition_sound_heard();
+// The sound is music: the classifier says so, a song is recognised, or the
+// classifier is unavailable. What the LED panel shows and lookups run on.
+bool recognition_music_heard();
 

@@ -61,6 +61,11 @@ RecognitionCallback show = nullptr;
 audio_presence::Snapshot sound_state;
 std::atomic_bool track_visible{false};
 std::atomic_bool sound_heard{false};
+std::atomic_bool music_heard{false};
+// Sound has gone on for a while without the classifier calling it music:
+// lookups still run, cautiously, in case it is music the classifier misses.
+std::atomic_bool cautious_lookups{false};
+constexpr int64_t kUnconfirmedSoundUs = 30000000;
 struct SoundSession { Session session; audio_presence::Snapshot audio; uint64_t transport_epoch; };
 SoundSession sound_session() {
     std::lock_guard<std::mutex> lock(session_mutex);
@@ -433,20 +438,46 @@ void presence_task(void *)
     int64_t last_audio = esp_timer_get_time();
     bool missing = false;
     int64_t last_diagnostic = 0;
+    // Recognition and the display follow music, not just sound: sound counts
+    // once the classifier calls it music, a song from it is on screen, or it
+    // has gone on for 30 s (cautious lookups). Talk alone stays on the home
+    // screen and costs no lookups.
+    bool music = false;
+    int64_t sound_since = 0;
     const auto changed = [&](const audio_presence::Snapshot &state, listening::Event event) {
         if (kContinuousRecognition) return; // level detector is diagnostic only
-        {
+        if (event == listening::Event::None) {
             std::lock_guard<std::mutex> lock(session_mutex);
-            sound_state = state;
-            if (event == listening::Event::None) {
-                sessions.invalidate_audio();
-                clear_display_locked(RecognitionStatus::Waiting);
-            } else if (sessions.set_sound(state.sound)) {
-                clear_display_locked(state.sound ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
-            }
+            sound_state = state; music = false;
+            sessions.invalidate_audio();
+            clear_display_locked(RecognitionStatus::Waiting);
         }
         if (event != listening::Event::None)
             log_levels(state.sound ? "Sound started" : "Silence", tracker.detector());
+    };
+    const auto follow_music = [&] {
+        const auto raw = tracker.snapshot();
+        const int64_t now = esp_timer_get_time();
+        if (!raw.sound) sound_since = 0;
+        else if (!sound_since) sound_since = now;
+        const auto verdict = music_detector_verdict();
+        const bool classified = verdict == MusicVerdict::Music || verdict == MusicVerdict::Unavailable
+            || track_visible.load();
+        const bool unconfirmed = raw.sound && now - sound_since >= kUnconfirmedSoundUs;
+        cautious_lookups.store(unconfirmed && !classified);
+        const bool wanted = raw.sound && (classified || unconfirmed);
+        music_heard.store(raw.sound && classified);
+        if (kContinuousRecognition || wanted == music) return;
+        music = wanted;
+        ESP_LOGI(kTag, "Music %s verdict=%d track=%d unconfirmed=%d", music ? "started" : "ended",
+            int(verdict), track_visible.load(), unconfirmed);
+        std::lock_guard<std::mutex> lock(session_mutex);
+        sound_state = raw;
+        sound_state.sound = music;
+        // The classifier's hold lapsed while sound continues: end here.
+        if (!music && raw.sound) sound_state.quiet_sample = position;
+        if (sessions.set_sound(music))
+            clear_display_locked(music ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
     };
     while (true) {
         const auto *audio = recognition_input_audio();
@@ -464,12 +495,13 @@ void presence_task(void *)
                 tracker.feed(buffer.get(), count, read.position, read.segment, changed);
                 sound_heard.store(tracker.snapshot().sound);
                 position = read.position + count;
+                follow_music();
                 last_audio = esp_timer_get_time(); missing = false;
             }
         }
         if (!missing && esp_timer_get_time() - last_audio >= 3000000) {
             tracker.reset(changed); missing = true;
-            sound_heard.store(false);
+            sound_heard.store(false); music_heard.store(false); cautious_lookups.store(false);
             if (kContinuousRecognition) {
                 std::lock_guard<std::mutex> lock(session_mutex);
                 recognition_activity::missing(sessions, sound_state);
@@ -588,10 +620,9 @@ void recognition_task(void *)
             show_now(current.audio.sound ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
         }
         if (paid && !current.audio.sound) planner.observe_quiet(heard, quiet_hop);
-        // Sound the classifier has heard for 10 s without anything music-like
-        // (talk, a vacuum cleaner): one try, then one every two minutes. Never
-        // none, so music the classifier misses is still identified.
-        planner.set_cautious(music_detector_verdict() == MusicVerdict::NotMusic);
+        // Sound the classifier has not called music for 30 s: one try, then
+        // one every two minutes, so music it misses is still identified.
+        planner.set_cautious(cautious_lookups.load());
         // Retry a busy display using still-owned track/artwork. A session
         // change above cancels/replaces this before any retry can publish.
         flush_display();
@@ -762,6 +793,7 @@ void recognition_start(RecognitionCallback callback)
 }
 
 bool recognition_sound_heard() { return sound_heard.load(); }
+bool recognition_music_heard() { return music_heard.load(); }
 
 void recognition_set_network(bool available, const char *address)
 {
