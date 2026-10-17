@@ -23,8 +23,14 @@ def test_every_parameter_is_classified_and_valid():
 
 
 def test_owner_measurements_are_marked_measured():
-    for name in ("SCREEN_W", "SCREEN_H", "LED_W", "LED_H"):
+    for name in ("SCREEN_W", "SCREEN_H"):
         assert p.all_params()[name].status is p.Status.MEASURED
+
+
+def test_led_panel_follows_the_waveshare_drawing():
+    assert (p.LED_W.v, p.LED_H.v, p.LED_D.v) == (191.8, 95.8, 10.0)
+    for name in ("LED_W", "LED_H", "LED_D"):
+        assert p.all_params()[name].status is p.Status.DATASHEET
 
 
 def test_insert_hole_is_required_for_the_enclosure():
@@ -88,3 +94,23 @@ def test_geometry_modules_have_no_dimensional_literals(module):
 def test_tongue_too_thick_for_the_wall_fails_clearly():
     errors = parameter_errors(with_value("TONGUE_THICKNESS", 3.6))
     assert any("leaves no material either side in SHELL_WALL" in e for e in errors)
+
+
+def test_overlapping_colour_stripes_fail_clearly():
+    errors = parameter_errors(with_value("STRIPE_2_FROM_FRONT", 15.0))
+    assert any("The colour stripes overlap" in e for e in errors)
+
+
+def test_colour_stripe_edges_must_fall_on_layer_boundaries():
+    errors = parameter_errors(with_value("STRIPE_WIDTH", 10.1))
+    assert any("STRIPE_WIDTH (10.1 mm) is not a whole number of 0.2 mm layers" in e for e in errors)
+
+
+def test_colour_stripe_cannot_start_inside_the_front_plate():
+    errors = parameter_errors(with_value("STRIPE_1_FROM_FRONT", 2.0))
+    assert any("starts inside the 4.0 mm front plate" in e for e in errors)
+
+
+def test_magnet_too_thick_for_the_top_wall_fails_clearly():
+    errors = parameter_errors(with_value("MAGNET_THICKNESS", 3.5))
+    assert any("Holder magnet pockets leave 0.3 mm of top wall" in e for e in errors)

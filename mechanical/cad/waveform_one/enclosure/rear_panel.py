@@ -5,7 +5,10 @@ The panel fills the rear opening flush with the back edge and screws into
 bosses on the top and bottom walls. It splits at REAR_SEAM_X, offset from the
 shell seam so each panel half bridges the two shell halves and ties them.
 Printed outer face down; the microphone frame grows up from the inner face.
+The edition and maker are lettered into the outer face.
 """
+
+from build123d import FontStyle, Part, Plane, Pos, Text, extrude
 
 from waveform_one import carrier, layout
 from waveform_one import parameters as p
@@ -38,6 +41,31 @@ def vent_centre_z() -> float:
     return z_hi - p.REAR_BOSS_PROTRUSION.v - p.VENT_PITCH.v - p.VENT_SLOT_LENGTH.v / 2
 
 
+def back_plane(y: float, centre_z: float, centre_x: float) -> Plane:
+    """A plane facing a viewer behind the case (+Y), so text on it reads left to right from there."""
+    return Plane(origin=(centre_x, y, centre_z), x_dir=(-1, 0, 0), z_dir=(0, 1, 0))
+
+
+def back_lettering() -> Part:
+    """BACK_LINES, stacked and centred on BACK_TEXT_CENTRE, as cut into the outer face."""
+    lines = [
+        Text(line, size, font=p.BRAND_FONT, font_style=FontStyle.BOLD)
+        for line, size in zip(p.BACK_LINES, p.BACK_FONT_SIZES)
+    ]
+    heights = [line.bounding_box().size.Y for line in lines]
+    total = sum(heights) + p.BACK_LINE_GAP.v * (len(lines) - 1)
+    top = total / 2
+    sketch = None
+    for line, height in zip(lines, heights):
+        middle = line.bounding_box().center().Y
+        moved = Pos(0, top - height / 2 - middle) * line
+        sketch = moved if sketch is None else sketch + moved
+        top -= height + p.BACK_LINE_GAP.v
+    _, (_, y_inner, _) = layout.interior_bounds()
+    plane = back_plane(y_inner + p.REAR_PANEL_THICKNESS.v, p.BACK_TEXT_CENTRE_Z.v, p.BACK_TEXT_CENTRE_X.v)
+    return extrude(plane * sketch, amount=-p.BACK_TEXT_DEPTH.v)
+
+
 def build_full_panel():
     (_, _, z_lo), (_, y_inner, z_hi) = layout.interior_bounds()
     clearance = p.REAR_PANEL_CLEARANCE.v
@@ -68,6 +96,8 @@ def build_full_panel():
     # Openings for the carrier board's rear sockets (power input).
     for _, x_min, x_max, z_min, z_max in carrier.rear_openings():
         panel -= box_between((x_min, y0, z_min), (x_max, y1, z_max))
+
+    panel -= back_lettering()
 
     mx, mz = p.MIC_CENTRE_X.v, p.MIC_CENTRE_Z.v
     panel -= y_cylinder(mx, y0, y1, mz, p.MIC_PORT_DIAMETER.v)

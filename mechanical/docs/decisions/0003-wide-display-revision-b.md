@@ -42,7 +42,9 @@ Hardware as of 2026-10-10 (owner):
   rail exceeds the print envelope), screwed on from inside the case.
 - **The frame groove** on the front marks where the concept's wood frame meets
   the black front. A two-colour print (CANVAS) can change filament along it in
-  the first 4 mm of the print only.
+  the first 4 mm of the print only. *(Removed 2026-10-14: the owner chose
+  colour stripes and a white name instead, and the name is now centred on the
+  strip below the LED window; see the colour plan.)*
 
 ## Consequences
 

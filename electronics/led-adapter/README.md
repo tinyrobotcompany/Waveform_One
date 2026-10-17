@@ -20,6 +20,14 @@ P4 socket P1 ──[PH2.0 12-pin cable]── J2 ┘
 
 The labels are printed on the board.
 
+## In the case
+
+The board lies flat on four floor posts (M3 heat-set inserts, 5 mm high) in
+the left half, behind the screen and under the P4's two 12-pin sockets, with
+J1 and J2 towards the back. `board.json` gives its position (`case_left_x`,
+`case_rear_y`, `standoff_height`); the casing CAD reads it from
+`placement.json`, as it does for the carrier board.
+
 ## What is on it
 
 - **Two 74AHCT245 buffers** turn the P4's 3.3 V signals into the 5 V the

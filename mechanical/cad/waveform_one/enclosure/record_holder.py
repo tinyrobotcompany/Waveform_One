@@ -1,8 +1,9 @@
 """Two holders on top of the case that stand a 12-inch sleeve upright.
 
-Each holder has a slot leaning back RECORD_ANGLE_DEG. Holders are screwed on
-from inside the case: M3 screws pass up through the top wall into heat-set
-inserts in each holder's base.
+Each holder has a slot leaning back RECORD_ANGLE_DEG. The holders are
+optional: they attach with magnets, so the top stays plain without them. Two
+disc magnets sit in pockets in each holder's base, over two more in blind
+pockets under the shell's top wall.
 """
 
 from build123d import Axis, Pos, Rot, fillet
@@ -23,11 +24,19 @@ def slot_bottom() -> tuple[float, float]:
     return y, layout.case_height() + p.HOLDER_HEIGHT.v - p.RECORD_SLOT_DEPTH.v
 
 
-def screw_positions() -> list[tuple[float, float]]:
-    """(x, y) of every holder screw; also where the top wall needs holes."""
-    y = holder_front_y() + p.HOLDER_SCREW_INSET.v
-    half = p.HOLDER_SCREW_SPACING.v / 2
+def magnet_positions() -> list[tuple[float, float]]:
+    """(x, y) of every holder magnet; the shell's top wall has a matching pocket under each."""
+    y = holder_front_y() + p.HOLDER_MAGNET_INSET.v
+    half = p.HOLDER_MAGNET_SPACING.v / 2
     return [(sign * p.HOLDER_X.v + dx, y) for sign in (-1, 1) for dx in (-half, half)]
+
+
+def magnet_pocket_diameter() -> float:
+    return p.MAGNET_DIAMETER.v + p.MAGNET_HOLE_CLEARANCE.v
+
+
+def magnet_pocket_depth() -> float:
+    return p.MAGNET_THICKNESS.v + p.MAGNET_POCKET_EXTRA.v
 
 
 def build_holders() -> list[PrintedPart]:
@@ -44,8 +53,8 @@ def build_holders() -> list[PrintedPart]:
             (p.HOLDER_LENGTH.v + 2 * CUT_OVERSHOOT, p.RECORD_SLOT_WIDTH.v, slot_height),
         )
         body -= Pos(cx, slot_y, slot_z) * Rot(-p.RECORD_ANGLE_DEG.v, 0, 0) * cutter
-        for x, y in screw_positions():
-            if abs(x - cx) < p.HOLDER_LENGTH.v / 2:  # this holder's own screws
-                body -= z_cylinder(x, y, top - CUT_OVERSHOOT, top + p.M3_INSERT_DEPTH.v, p.M3_INSERT_HOLE.v)
+        for x, y in magnet_positions():
+            if abs(x - cx) < p.HOLDER_LENGTH.v / 2:  # this holder's own magnets, flush with its base
+                body -= z_cylinder(x, y, top - CUT_OVERSHOOT, top + magnet_pocket_depth(), magnet_pocket_diameter())
         parts.append(PrintedPart(f"record_holder_{side}", body, AS_MODELLED, "Base down, slot up; no supports."))
     return parts

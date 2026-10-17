@@ -6,9 +6,10 @@ from waveform_one import layout
 from waveform_one import parameters as p
 from waveform_one import carrier
 from waveform_one.components import build_all
+from waveform_one.enclosure import clips
 from waveform_one.validation import ValidationError, collision_errors, outside_bounds_errors, require_valid_layout
 
-EXPECTED = ["Screen", "Diffuser", "LedPanel", "CarrierBoard", "Microphone"]
+EXPECTED = ["Screen", "Diffuser", "LedPanel", "CarrierBoard", "LedAdapter", "Microphone"]
 
 
 @pytest.fixture(scope="module")
@@ -60,10 +61,17 @@ def test_front_components_sit_against_the_front_plate(parts):
     assert box(parts, "LedPanel").min.Y == pytest.approx(box(parts, "Diffuser").max.Y)
 
 
-def test_components_use_the_owner_measurements(parts):
+def test_components_use_the_owner_measurements_and_the_led_drawing(parts):
     screen, led = box(parts, "Screen").size, box(parts, "LedPanel").size
     assert (screen.X, screen.Z) == pytest.approx((165.0, 100.0))
-    assert (led.X, led.Z) == pytest.approx((195.0, 95.0))
+    assert (led.X, led.Y, led.Z) == pytest.approx((191.8, 10.0, 95.8))
+
+
+def test_led_clips_press_on_the_back_of_the_panel(parts):
+    panel_back = box(parts, "LedPanel").max.Y
+    for site in clips.clip_sites():
+        if site.name.startswith("clip_led_"):
+            assert site.rear_y == pytest.approx(panel_back)
 
 
 def test_carrier_board_follows_the_kicad_placement():
@@ -74,6 +82,16 @@ def test_carrier_board_follows_the_kicad_placement():
     assert xs[0] == pytest.approx(board["case_left_x"] + 4.0)
     assert ys[1] == pytest.approx(board["case_rear_y"] - 4.0)
     assert {item["ref"] for item in carrier.parts()} >= {"J1", "J3", "J4", "J5", "J6", "J7", "U1"}
+
+
+def test_led_adapter_follows_its_kicad_placement():
+    from waveform_one.pcb import LED_ADAPTER
+    holes = LED_ADAPTER.hole_centres()
+    board = LED_ADAPTER.board()
+    assert len(holes) == 4
+    assert min(x for x, _ in holes) == pytest.approx(board["case_left_x"] + 4.0)
+    assert max(y for _, y in holes) == pytest.approx(board["case_rear_y"] - 4.0)
+    assert {item["ref"] for item in LED_ADAPTER.parts()} >= {"J1", "J2", "J3", "J4", "U1", "U2"}
 
 
 def test_microphone_sits_on_the_rear_panel(parts):

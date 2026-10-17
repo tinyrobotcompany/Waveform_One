@@ -1,10 +1,13 @@
 {
-  "_comment": "Single source for the LED adapter board's outline, holes and part positions. Read by tools/build_board.py (KiCad). Board coordinates: millimetres, origin at the top-left corner, x to the right, y down. labels: [text, x, y, size] on the top silkscreen.",
+  "_comment": "Single source for the LED adapter board's outline, holes and part positions. Read by tools/build_board.py (KiCad) and by the casing CAD, which places the board flat on four floor posts behind the P4 screen (case_left_x, case_rear_y: the board's left and rear edges in case coordinates; the sockets J1/J2 face the rear). Board coordinates: millimetres, origin at the top-left corner, x to the right, y down. labels: [text, x, y, size] on the top silkscreen.",
   "board": {
     "width": 72.0,
     "depth": 44.0,
     "thickness": 1.6,
-    "corner_radius": 3.0
+    "corner_radius": 3.0,
+    "case_left_x": -130.0,
+    "case_rear_y": 68.0,
+    "standoff_height": 5.0
   },
   "mounting_holes": {
     "footprint": "MountingHole:MountingHole_3.2mm_M3",

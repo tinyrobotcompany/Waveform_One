@@ -56,13 +56,13 @@ won't fit the printer. Outputs (regenerated each run, not committed):
 
 ## The design
 
-Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
+Case **401 × 150 × 132 mm** (W × D × H), derived from the components:
 
 ```text
  ╭──────────────────────────────────────────────────────╮
  │ ┌──────────────────┐ ┊ ┌──────────────────────────┐  │
  │ │   7" screen      │ ┊ │      LED panel           │  │
- │ │   165 × 100      │ ┊ │      195 × 95            │  │
+ │ │   165 × 100      │ ┊ │      192 × 96            │  │
  │ └──────────────────┘ ┊ └──────────────────────────┘  │
  │                      ┊      W A V E F O R M  O N E  │
  ╰──────────────────────┊───────────────────────────────╯
@@ -73,16 +73,21 @@ Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
   half. A tongue on the left half fits a groove in the right; the halves are
   glued. Printed **front face down**: no supports, smooth front.
 - **Inside the front:** shallow pockets locate the screen and the LED panel
-  (with your diffuser in front of it). Four clips per component hold them in.
+  (with your diffuser in front of it). Clips hold them in: five for the screen
+  (the three top ones sit between the P4's 12-pin sockets and microphones, so
+  the plugs fit), four for the LED panel.
 - **Floor:** the Raspberry Pi sits on a screwed-in tray with room for a
   fan-heatsink. Vents in the floor beside it; feet seats underneath.
 - **Rear panel (2 halves):** vents, a notch for the Pi and LED power cables,
-  the microphone frame and sound hole. Its split is offset from the shell's so
+  the microphone frame and sound hole. "N°1 · MARK I" and "tinyrobotcompany" are
+  lettered 0.6 mm into the outer face of the left half, in the body colour. Its split is offset from the shell's so
   it ties the two shell halves together.
-- **Top:** two holders hold a 12-inch sleeve, leaning back 8°, screwed on from
-  inside.
-- The ESP32 sits behind the LED panel; for now fix it with foam tape or Velcro
-  (the dev board has no mounting holes).
+- **Top (optional):** two holders hold a 12-inch sleeve, leaning back 8°.
+  They attach with magnets: two in each holder's base, over two glued into
+  blind pockets under the top wall. Without the holders, the top is plain.
+- No ESP32: the P4 drives the LED panel itself (owner, 2026-10-17), through
+  the LED adapter board. The panel's size and depth come from Waveshare's
+  drawing, so the LED clips press on its back.
 
 ## Printing
 
@@ -103,11 +108,24 @@ profiles, slice, print.
 | 1 | `1_calibration_coupon_revB_PETG.3mf` | hole-size coupon | 48 m |
 | 2 | `2_shell_left_revB_PETG.3mf` | left shell half | 19 h |
 | 3 | `3_shell_right_revB_PETG.3mf` | right shell half | 20 h |
-| 4 | `4_small_parts_a_revB_PETG.3mf` | left rear panel, Pi tray, 4 screen clips | 4 h 31 m |
-| 5 | `5_small_parts_b_revB_PETG.3mf` | right rear panel, 2 record holders, 4 LED clips | 4 h 51 m |
+| 4 | `4_small_parts_a_revB_PETG.3mf` | left rear panel, Pi tray, 5 screen clips | 4 h 31 m |
+| 5 | `5_small_parts_b_revB_PETG.3mf` | right rear panel, 4 LED clips | not yet sliced |
+| 6 | `6_record_holders_optional_revB_PETG.3mf` | 2 record holders (optional) | not yet sliced |
 
 About 600 cm³ in total (~750 g of PETG). Single-part files are also in
 `exports/3mf/` and `exports/stl/` if a part ever needs reprinting on its own.
+
+**Colour stripes.** The two shell halves come split into a black body and two
+coloured bands, each band 20 mm wide, starting 10 mm and 40 mm behind the
+front ([colour plan](docs/colour-plan.md)). In ElegooSlicer, check that each
+shell is **one object with three parts** in the object list. Parts set to
+filament 1 print in the body colour; set filament slots 2 and 3 to the band
+colours. The right shell has a fourth part, `shell_right_name`: WAVEFORM
+ONE inlaid in the front face, on filament 4 (white). If the slicer shows the
+parts on filament 1, set `…_stripe_1` to filament 2, `…_stripe_2` to 3 and
+`shell_right_name` to 4. If
+it asks whether to load the file as a single object with multiple parts,
+answer **Yes**.
 
 **Print the coupon first.** Front row: heat-set insert holes 3.8 → 4.2 mm;
 back row: M3 screw holes 3.0 → 3.4 mm; the cut-off corner marks the smallest
@@ -118,12 +136,11 @@ slides through; the model is rebuilt with those values before the big parts.
 
 | Item | Qty | Where |
 |---|---|---|
-| M3 heat-set inserts, ~5.7 mm long | 26 | clip bosses 8, rear bosses 10, tray pads 4, holders 4 |
-| M3 × 8 screws | 22 | clips 8, rear panel 10, tray 4 |
-| M3 × 10 screws | 4 | holders, from inside through the top |
-| M2.5 × 6 screws | 4 | Pi onto the tray standoffs |
+| M3 heat-set inserts, ~5.7 mm long | 27 | clip bosses 9, rear bosses 10, carrier posts 4, LED adapter posts 4 |
+| M3 × 8 screws | 27 | clips 9, rear panel 10, carrier board 4, LED adapter board 4 |
+| Neodymium disc magnets, 10 × 3 mm (N52) | 8 | record holders, optional: 2 per holder, 4 under the top |
 | Stick-on rubber feet, ≤ 12 mm | 4 | seats under the case |
-| Epoxy or superglue | — | joining the shell halves |
+| Epoxy or superglue | — | joining the shell halves; magnets into their pockets |
 
 Fit inserts with a soldering iron (a dedicated insert tip helps).
 
@@ -131,13 +148,24 @@ Fit inserts with a soldering iron (a dedicated insert tip helps).
 
 1. Glue the shell halves (tongue into groove) on a flat surface; let it cure.
 2. Press heat-set inserts into all bosses and pads.
-3. Screen into its pocket, glass forward; screw on its four clips.
+3. Screen into its pocket, glass forward; screw on its five clips.
 4. Diffuser then LED panel into the right pocket; screw on its four clips.
-5. Pi onto the tray (M2.5), tray onto the floor pads.
-6. ESP32 behind the LED panel with foam tape; connect HUB75, USB and mic wires.
+5. Carrier board onto its four floor posts (right half); LED adapter board onto
+   its four posts in the left half, behind the screen, sockets J1 and J2 to the back.
+6. Plug the two 12-pin cables from the P4's sockets into J1 (P4 socket P3) and
+   J2 (P4 socket P1), the panel's grey ribbon into J3, and two wires from the
+   carrier's LED power terminal into J4 (5 V and GND).
 7. Microphone into the frame on the rear panel (dab of hot glue), facing the hole.
 8. Feed the power cables through the rear notch; screw on both rear panel halves.
-9. Holders on top, screwed from inside. Feet underneath.
+9. Feet underneath.
+10. Optional record holders. Get the magnet polarity right:
+    1. Glue the four magnets into the pockets under the top wall, from inside.
+    2. Let the glue set.
+    3. Place a loose magnet on top of the case over each one; it settles the
+       way it attracts.
+    4. Mark its upper face.
+    5. Glue it into the holder's base pocket, marked face in first. The face
+       that touched the case then faces the case again, so the holder pulls on.
 
 ## Layout
 

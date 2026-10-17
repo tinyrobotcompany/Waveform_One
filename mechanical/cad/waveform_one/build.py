@@ -33,7 +33,7 @@ REFERENCE_ONLY = frozenset({ENVELOPE_NAME, ELECTRONICS_NAME, ALBUM_NAME})
 
 
 def _clip_names(component: str) -> tuple[str, ...]:
-    return tuple(f"clip_{component}_{side}_{edge}" for side in ("left", "right") for edge in ("top", "bottom"))
+    return tuple(site.name for site in clips.clip_sites() if site.name.startswith(f"clip_{component}_"))
 
 
 # Print jobs, in the order to print them. Each becomes one ready-to-open 3MF.
@@ -43,7 +43,9 @@ PRINT_JOBS = (
     ("2_shell_left", ("shell_left",)),
     ("3_shell_right", ("shell_right",)),
     ("4_small_parts_a", ("rear_panel_left",) + _clip_names("screen")),
-    ("5_small_parts_b", ("rear_panel_right", "record_holder_left", "record_holder_right") + _clip_names("led")),
+    ("5_small_parts_b", ("rear_panel_right",) + _clip_names("led")),
+    # Optional: Waveform One is complete without them.
+    ("6_record_holders_optional", ("record_holder_left", "record_holder_right")),
 )
 
 

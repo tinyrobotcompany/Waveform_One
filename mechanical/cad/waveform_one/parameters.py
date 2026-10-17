@@ -86,9 +86,6 @@ TOP_BAND = Param(12.0, "mm", P, "Front above the components; holds the top clip 
 BOTTOM_BAND = Param(12.0, "mm", P, "Front below the components; holds bottom clip bosses and the name.")
 FRONT_EDGE_CHAMFER = Param(0.8, "mm", P, "Front perimeter chamfer; also hides first-layer squish.")
 
-FRAME_GROOVE_INSET = Param(11.0, "mm", P, "Groove separating the frame from the black front, from the outer edge.")
-FRAME_GROOVE_WIDTH = Param(1.0, "mm", P, "Engraved frame line width.")
-FRAME_GROOVE_DEPTH = Param(0.6, "mm", P, "Three 0.2 mm layers.")
 
 FOOT_RECESS_DIAMETER = Param(12.0, "mm", P, "Shallow seats for stick-on rubber feet.")
 FOOT_RECESS_DEPTH = Param(1.0, "mm", P, "Seat depth.")
@@ -109,9 +106,14 @@ SCREEN_REAR_KEEPOUT = Param(30.0, "mm", P, "HDMI and USB plugs plus cable bends 
 
 # --- Waveshare RGB-Matrix-P3-64x32 and the owner's diffuser -------------------
 
-LED_W = Param(195.0, "mm", M, "Owner measurement (2026-10-10), outer width.")
-LED_H = Param(95.0, "mm", M, "Owner measurement (2026-10-10), outer height.")
-LED_D = Param(12.0, "mm", M, "Owner rough measurement (2026-09-26); excludes connectors.")
+# From Waveshare's own 2D drawing (RGB-Matrix-P3-64x32-2D.zip on the product
+# wiki), which supersedes the owner's rough 195 x 95 x 12 mm. The 12 mm depth
+# left the clip bosses 2 mm proud of the panel's back, so the clips could not
+# press on it.
+LED_W = Param(191.8, "mm", D, "Outer width of the plastic frame (Waveshare drawing).")
+LED_H = Param(95.8, "mm", D, "Outer height of the plastic frame (Waveshare drawing).")
+LED_D = Param(10.0, "mm", D, "LED face to the back of the frame, where the clips press (Waveshare drawing). "
+              "Magnet posts stand 2.7 mm further back, clear of the clips and inside LED_REAR_KEEPOUT.")
 LED_WINDOW_LIP = Param(1.0, "mm", P, "Front overlaps the panel edge by this much.")
 LED_REAR_KEEPOUT = Param(25.0, "mm", P, "HUB75 plugs, ribbon bend and 5 V lead behind the panel.")
 DIFFUSER_THICKNESS = Param(3.0, "mm", P, "Owner's diffuser, assumed panel-sized; measure.")
@@ -126,7 +128,20 @@ POCKET_HEIGHT = Param(6.0, "mm", P, "Pocket wall height behind the front plate."
 CLIP_WIDTH = Param(10.0, "mm", P, "Clip bar width.")
 CLIP_THICKNESS = Param(3.0, "mm", P, "Clip bar thickness.")
 CLIP_OVERLAP = Param(4.0, "mm", P, "How far a clip reaches over the component edge.")
-CLIP_INSET = Param(35.0, "mm", P, "Clip centres from each component's left and right edges.")
+CLIP_INSET = Param(35.0, "mm", P, "Clip centres from each component's left and right edges (LED panel; screen bottom edge).")
+# The P4 board's top edge carries its two PH2.0 12-pin GPIO sockets (plugged
+# from behind, for the LED panel) and both microphones, so the screen's top
+# clips sit in the gaps between them. Positions along that edge are measured
+# from the board's outer end (the end with the 4-pin sockets), from Waveshare's
+# dimension drawing (about +/- 1 mm); confirm against the board.
+P4_PCB_W = Param(164.0, "mm", D, "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B board width (drawing).")
+P4_GPIO_SOCKETS = ((29.4, 58.9), (106.1, 135.7))  # DATASHEET: housing extents of the two 12-pin sockets
+P4_MICS = ((12.4, 16.3), (148.3, 152.3))  # DATASHEET: MIC1 and MIC2; keep uncovered
+SCREEN_TOP_CLIP_X = (23.5, 82.5, 142.0)  # POLICY: centres of the gaps around the sockets and microphones
+SCREEN_TOP_CLIP_WIDTH = Param(8.0, "mm", POL, "Narrower top clips: at least 1.5 mm clear of sockets and microphones.")
+GPIO_PLUG_KEEPOUT_DEPTH = Param(25.0, "mm", P, "Behind the board: mated 12-pin plug plus its wires' bend.")
+GPIO_PLUG_MARGIN = Param(1.0, "mm", P, "Each side of a socket: room for the plug's fingers.")
+GPIO_PLUG_KEEPOUT_HEIGHT = Param(11.0, "mm", P, "Down from the screen's top edge: socket (~8 mm) plus margin.")
 BOSS_DIAMETER = Param(8.0, "mm", P, "Heat-set insert bosses.")
 KEEPOUT_EDGE_INSET = Param(6.0, "mm", P, "Rear keep-outs stop short of edges where clips sit.")
 
@@ -160,17 +175,31 @@ CABLE_PORT_W = Param(30.0, "mm", P, "Notch in the rear panel's bottom edge for d
 CABLE_PORT_H = Param(14.0, "mm", P, "Notch height.")
 CABLE_PORT_X = Param(-150.0, "mm", P, "Behind the P4 board's USB-C sockets.", signed=True)
 
+# --- Lettering on the back ----------------------------------------------------------------
+# Owner, 2026-10-17: the edition and maker on the back, in the body colour.
+# Cut into the left rear panel's outer face, below the vents and clear of the
+# panel split. That face prints on the bed, so the letters are recessed (raised
+# letters there would need supports).
+
+BACK_LINES = ("N°1  ·  MARK I", "tinyrobotcompany")  # top line first
+BACK_FONT_SIZES = (7.0, 5.5)  # POLICY: mm, per line
+BACK_LINE_GAP = Param(4.0, "mm", POL, "Between the bottom of one line and the top of the next.")
+BACK_TEXT_CENTRE_X = Param(-50.0, "mm", POL, "Midway between the cable notch and the rear panel split.", signed=True)
+BACK_TEXT_CENTRE_Z = Param(50.0, "mm", POL, "Middle of the free area between the bottom bosses and the vents.")
+BACK_TEXT_DEPTH = Param(0.6, "mm", POL, "Three layers into the 3 mm panel: reads clearly, leaves 2.4 mm.")
+
 # --- Carrier board (electronics/carrier) -------------------------------------------
 # Flat on four floor posts behind the LED panel. Its outline, holes and part
 # positions come from electronics/carrier/placement.json, generated by KiCad.
 
-CARRIER_POST_SIZE = Param(10.0, "mm", P, "Square floor posts the board screws onto, with heat-set inserts.")
+CARRIER_POST_SIZE = Param(10.0, "mm", P, "Square floor posts the carrier and LED adapter boards screw onto, with heat-set inserts.")
+ADAPTER_WIRE_KEEPOUT = Param(8.0, "mm", P, "5 V wires entering the LED adapter's terminal from the front, short of the screen's back.")
 CARRIER_SIDE_CABLE_KEEPOUT = Param(40.0, "mm", P, "USB plugs to the P4 plus their cable bends, beyond the board's left edge.")
 CARRIER_PLUG_KEEPOUT = Param(25.0, "mm", P, "Mating plug and cable bend above top-entry sockets (ribbon, microphone).")
 CARRIER_WIRE_KEEPOUT = Param(20.0, "mm", P, "LED power wires leaving the terminal towards the front.")
 CARRIER_OPENING_CLEARANCE = Param(1.0, "mm", P, "Around each socket in its rear-panel opening.")
 CARRIER_MIN_STANDOFF = Param(3.0, "mm", POL, "Through-hole leads and solder joints under the board.")
-FLOOR_VENT_Y_MIN = Param(45.0, "mm", P, "Floor vents under the P4 board, front limit.")
+FLOOR_VENT_Y_MIN = Param(75.0, "mm", P, "Floor vents behind the P4 board, front limit: behind the LED adapter board's posts.")
 FLOOR_VENT_Y_MAX = Param(119.0, "mm", P, "Floor vents under the P4 board, rear limit.")
 
 # --- INMP441 microphone on the rear panel --------------------------------------------
@@ -190,9 +219,23 @@ MIC_PORT_DIAMETER = Param(3.0, "mm", P, "Sound hole through the rear panel.")
 BRAND_TEXT = "W A V E F O R M   O N E"  # spaced capitals, as in the concept
 BRAND_FONT = "Futura"
 BRAND_FONT_SIZE = Param(4.4, "mm", P, "Gives ~3.5 mm capitals.")
-BRAND_DEPTH = Param(0.6, "mm", P, "Engraved into the front face.")
+BRAND_DEPTH = Param(1.0, "mm", P, "Cut into the front face and filled with white: five layers, so the black behind does not grey the white.")
 
 WINDOW_CHAMFER = Param(1.0, "mm", P, "45-degree chamfer on the front edge of each window.")
+
+# --- Colour stripes ------------------------------------------------------------------------
+# Two coloured bands wrap the cabinet just behind the front (owner, 2026-10-14).
+# The shells print front face down, so each band is a run of whole layers: the
+# printer changes filament only four times per shell half, and the slicer picks
+# the colours (filament 1 black body, 2 first band, 3 second band).
+
+LAYER_HEIGHT = Param(0.2, "mm", POL, "0.20mm Standard profile; band edges must fall on layer boundaries.")
+STRIPE_WIDTH = Param(20.0, "mm", POL, "Each band, front to back.")
+STRIPE_1_FROM_FRONT = Param(10.0, "mm", POL, "Front face to the first band.")
+# Slicer filament slot for the white name inlay, after the body (1) and the stripes (2, 3).
+# The CANVAS holds four filaments, so this uses the last one.
+NAME_FILAMENT = 4
+STRIPE_2_FROM_FRONT = Param(40.0, "mm", POL, "Front face to the second band; 10 mm of black between the bands.")
 
 # --- Vinyl sleeve holders on top -----------------------------------------------------------
 
@@ -207,8 +250,16 @@ HOLDER_HEIGHT = Param(24.0, "mm", P, "Above the case top.")
 HOLDER_CORNER_RADIUS = Param(4.0, "mm", P, "Rounded vertical edges.")
 HOLDER_X = Param(110.0, "mm", P, "Holder centres from the middle; supports the sleeve near its edges.")
 HOLDER_REAR_INSET = Param(10.0, "mm", P, "Holder rear face from the case's rear face.")
-HOLDER_SCREW_SPACING = Param(28.0, "mm", P, "Two screws per holder, along X.")
-HOLDER_SCREW_INSET = Param(8.0, "mm", P, "Screw centres from the holder's front face.")
+HOLDER_MAGNET_SPACING = Param(28.0, "mm", P, "Two magnets per holder, along X.")
+HOLDER_MAGNET_INSET = Param(8.0, "mm", P, "Magnet centres from the holder's front face, clear of the slot.")
+# The holders are optional (owner, 2026-10-14). They attach with magnets, so
+# the top stays plain when they are left off: each magnet sits in a blind
+# pocket, in the holder's base and under the shell's top wall, glued in.
+MAGNET_DIAMETER = Param(10.0, "mm", D, "Neodymium disc magnet, 10 x 3 mm (N52).")
+MAGNET_THICKNESS = Param(3.0, "mm", D, "Neodymium disc magnet, 10 x 3 mm (N52).")
+MAGNET_HOLE_CLEARANCE = Param(0.3, "mm", P, "Added to the diameter: room for the magnet and glue.")
+MAGNET_POCKET_EXTRA = Param(0.2, "mm", P, "Pocket depth beyond the magnet's thickness.")
+MIN_TOP_SKIN = Param(0.6, "mm", POL, "Least plastic left over a shell magnet pocket: three layers, no hole on top.")
 
 # --- Calibration coupon ------------------------------------------------------------------------
 

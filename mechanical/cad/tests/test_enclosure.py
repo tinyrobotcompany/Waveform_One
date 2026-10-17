@@ -25,7 +25,8 @@ def parts():
 def test_expected_parts(parts):
     names = list(parts)
     assert names[:2] == ["shell_left", "shell_right"]
-    assert sum(n.startswith("clip_") for n in names) == 8
+    assert sum(n.startswith("clip_led_") for n in names) == 4
+    assert sum(n.startswith("clip_screen_") for n in names) == 5
     assert names[-4:] == ["rear_panel_left", "rear_panel_right", "record_holder_left", "record_holder_right"]
 
 
@@ -74,16 +75,18 @@ def test_led_window_hides_the_panel_edge_behind_a_lip():
     assert z1 - z0 == pytest.approx(p.LED_H.v - 2 * p.LED_WINDOW_LIP.v)
 
 
-def test_name_sits_under_the_led_window_inside_the_frame():
-    x, z = shell.brand_centre()
+def test_name_is_centred_on_the_strip_below_the_led_window():
     (lx0, lx1), (lz0, _) = shell.led_window()
-    assert lx0 < x < lx1
-    assert p.FRAME_GROOVE_INSET.v + p.FRAME_GROOVE_WIDTH.v < z < lz0
+    box = shell.brand_name().bounding_box()
+    assert box.center().X == pytest.approx((lx0 + lx1) / 2, abs=1.0)  # glyph shapes shift it slightly
+    visible_edge = lz0 - p.WINDOW_CHAMFER.v
+    # Equal plastic above and below the lettering.
+    assert box.min.Z == pytest.approx(visible_edge - box.max.Z, abs=0.5)
 
 
-def test_four_clips_per_component_each_over_a_component_edge(parts):
+def test_clips_each_reach_over_a_component_edge(parts):
     sites = clips.clip_sites()
-    assert len(sites) == 8
+    assert len(sites) == 9
     for site in sites:
         clip = parts[site.name].body.bounding_box()
         assert clip.min.Y == pytest.approx(site.rear_y)
@@ -97,6 +100,20 @@ def test_rear_panel_halves_bridge_the_shell_seam(parts):
     left = parts["rear_panel_left"].body.bounding_box()
     assert left.min.X < seam < left.max.X
     assert left.max.X == pytest.approx(p.REAR_SEAM_X.v, abs=1e-3)
+
+
+def test_back_lettering_is_recessed_in_the_left_panel_clear_of_vents_and_split(parts):
+    (_, _, z_lo), (_, y_inner, _) = layout.interior_bounds()
+    outer = y_inner + p.REAR_PANEL_THICKNESS.v
+    box = rear_panel.back_lettering().bounding_box()
+    assert box.min.Y == pytest.approx(outer - p.BACK_TEXT_DEPTH.v, abs=1e-3)
+    assert box.max.Y == pytest.approx(outer, abs=1e-3)
+    assert box.max.X < p.REAR_SEAM_X.v
+    assert box.min.X > p.CABLE_PORT_X.v + p.CABLE_PORT_W.v / 2
+    assert box.max.Z < rear_panel.vent_centre_z() - p.VENT_SLOT_LENGTH.v / 2
+    assert box.min.Z > z_lo + p.REAR_BOSS_PROTRUSION.v
+    left = parts["rear_panel_left"].body
+    assert not (left & rear_panel.back_lettering()).volume > 1e-3
 
 
 def test_rear_panel_screws_line_up_with_wall_bosses():
@@ -134,6 +151,25 @@ def test_carrier_posts_line_up_with_the_board_holes(parts):
         assert (shell_right & ring).volume > 0  # post material around it
 
 
+def test_led_adapter_sits_on_posts_in_the_left_half_below_the_p4_sockets(parts):
+    from build123d import Box, Pos
+    from waveform_one.pcb import LED_ADAPTER
+    (x0, x1), (y0, y1) = LED_ADAPTER.bounds()
+    (x_min, _, z_floor), _ = layout.interior_bounds()
+    assert x_min + p.CORNER_RADIUS.v - p.SHELL_WALL.v <= x0 and x1 < layout.seam_x() - p.TONGUE_DEPTH.v
+    # Under the P4's two GPIO sockets, so the 12-pin cables stay short.
+    for start, end in p.P4_GPIO_SOCKETS:
+        assert x0 < lcd.edge_x(end) and lcd.edge_x(start) < x1
+    shell_left = parts["shell_left"].body
+    top = z_floor + LED_ADAPTER.board()["standoff_height"]
+    for x, y in LED_ADAPTER.hole_centres():
+        assert (shell_left & (Pos(x, y, top - 1.0) * Box(0.5, 0.5, 0.5))).volume == pytest.approx(0, abs=1e-6)
+        ring = Pos(x + p.M3_INSERT_HOLE.v / 2 + 1.0, y, top - 1.0) * Box(0.5, 0.5, 0.5)
+        assert (shell_left & ring).volume > 0
+    # The floor vents start behind the posts.
+    assert shell.floor_vent_region()[1][0] > y1 + p.CARRIER_POST_SIZE.v / 2
+
+
 def test_rear_panel_has_an_opening_at_each_rear_socket(parts):
     panel = parts["rear_panel_left"].body + parts["rear_panel_right"].body
     (_, _, _), (_, y_inner, _) = layout.interior_bounds()
@@ -157,10 +193,21 @@ def test_holders_lean_the_sleeve_back_from_their_slots(parts):
     assert lean > 0  # the slot's top is further back than its floor
 
 
-def test_holder_screws_pass_through_the_top_wall():
-    for x, y in record_holder.screw_positions():
+def test_holder_magnets_sit_in_blind_pockets_under_an_unbroken_top(parts):
+    from build123d import Vector
+
+    top = layout.case_height()
+    skin = p.SHELL_WALL.v - record_holder.magnet_pocket_depth()
+    assert len(record_holder.magnet_positions()) == 4
+    for x, y in record_holder.magnet_positions():
         assert abs(x) < layout.case_width() / 2 - p.CORNER_RADIUS.v
         assert 0 < y < p.CASE_DEPTH.v
+        shell_half = parts["shell_left" if x < layout.seam_x() else "shell_right"].body
+        assert shell_half.is_inside(Vector(x, y, top - skin / 2))  # plastic over the pocket
+        assert not shell_half.is_inside(Vector(x, y, top - p.SHELL_WALL.v + 1.0))  # pocket open inside
+        holder = parts["record_holder_left" if x < 0 else "record_holder_right"].body
+        assert not holder.is_inside(Vector(x, y, top + 1.0))  # pocket in the base
+        assert holder.is_inside(Vector(x, y, top + record_holder.magnet_pocket_depth() + 0.5))
 
 
 def test_enclosure_parts_do_not_hit_electronics_or_each_other(parts):
@@ -183,3 +230,112 @@ def test_coupon_has_every_trial_hole():
     coupon = build_coupon().body
     expected = len(p.COUPON_INSERT_HOLES) + len(p.COUPON_CLEARANCE_HOLES)
     assert len(coupon.faces().filter_by(lambda f: f.geom_type.name == "CYLINDER")) == expected
+
+
+def test_shell_halves_split_into_a_black_body_and_two_colour_stripes(parts):
+    for name in ("shell_left", "shell_right"):
+        part = parts[name]
+        expected = [(f"{name}_body", 1), (f"{name}_stripe_1", 2), (f"{name}_stripe_2", 3)]
+        if name == "shell_right":  # the name sits under the LED panel
+            expected.append(("shell_right_name", p.NAME_FILAMENT))
+        assert [(b.name, b.filament) for b in part.bands] == expected
+        # Together the bands are exactly the shell half.
+        assert sum(b.body.volume for b in part.bands) == pytest.approx(part.body.volume, rel=1e-6)
+        for band, (y0, y1) in zip(part.bands[1:], shell.stripe_slabs()):
+            box = band.body.bounding_box()
+            assert (box.min.Y, box.max.Y) == pytest.approx((y0, y1), abs=1e-6), band.name
+
+
+def test_colour_stripes_are_whole_layers_on_the_bed(parts):
+    """Front face down, stripe depth is print height: 10-20 mm and 30-40 mm up."""
+    for name in ("shell_left", "shell_right"):
+        bed = parts[name].bands_on_bed()
+        assert bed[0].body.bounding_box().min.Z == pytest.approx(0.0, abs=1e-6)
+        for band, start in zip(bed[1:], (p.STRIPE_1_FROM_FRONT.v, p.STRIPE_2_FROM_FRONT.v)):
+            box = band.body.bounding_box()
+            assert (box.min.Z, box.max.Z) == pytest.approx((start, start + p.STRIPE_WIDTH.v), abs=1e-6)
+
+
+def _read_3mf(path):
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    ns = {"m": "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"}
+    with zipfile.ZipFile(path) as package:
+        model = ET.fromstring(package.read("3D/3dmodel.model"))
+        config = ET.fromstring(package.read("Metadata/model_settings.config"))
+    return model, config, ns
+
+
+def _signed_volume(mesh, ns):
+    import numpy as np
+
+    points = np.array([[float(v.get(a)) for a in "xyz"] for v in mesh.find("m:vertices", ns)])
+    triangles = np.array([[int(t.get(k)) for k in ("v1", "v2", "v3")] for t in mesh.find("m:triangles", ns)])
+    a, b, c = points[triangles[:, 0]], points[triangles[:, 1]], points[triangles[:, 2]]
+    return float(np.einsum("ij,ij->i", a, np.cross(b, c)).sum() / 6)
+
+
+def _open_edges(mesh, ns):
+    """Edges not shared by exactly two triangles, each way round once: slicers report them as non-manifold."""
+    from collections import Counter
+
+    edges = Counter()
+    for t in mesh.find("m:triangles", ns):
+        a, b, c = (int(t.get(k)) for k in ("v1", "v2", "v3"))
+        edges.update([(a, b), (b, c), (c, a)])
+    return sum(1 for (a, b), n in edges.items() if n != 1 or edges[(b, a)] != 1)
+
+
+def test_shell_3mf_is_one_object_of_three_parts_with_their_filaments(parts, tmp_path):
+    part = parts["shell_left"]
+    export_printed_parts([part], tmp_path)
+    model, config, ns = _read_3mf(tmp_path / "3mf" / f"{printed_part_stem(part)}.3mf")
+    objects = {o.get("id"): o for o in model.find("m:resources", ns)}
+    (item,) = model.find("m:build", ns)
+    parent = objects[item.get("objectid")]
+    assert parent.get("name") == "shell_left"
+    meshes = [objects[c.get("objectid")] for c in parent.find("m:components", ns)]
+    assert [m.get("name") for m in meshes] == [b.name for b in part.bands]
+    # Outward-facing triangles: each mesh encloses its band's volume.
+    for mesh, band in zip(meshes, part.bands):
+        assert _signed_volume(mesh.find("m:mesh", ns), ns) == pytest.approx(band.body.volume, rel=1e-3), band.name
+        assert _open_edges(mesh.find("m:mesh", ns), ns) == 0, band.name
+    filaments = {pt.find("metadata[@key='name']").get("value"): pt.find("metadata[@key='extruder']").get("value")
+                 for pt in config.iter("part")}
+    assert filaments == {b.name: str(b.filament) for b in part.bands}
+
+
+def test_name_is_a_flush_white_inlay_in_the_first_layers(parts):
+    """The lettering is cut into the front face and filled, so the front prints flat."""
+    right = parts["shell_right"]
+    name = right.bands_on_bed()[-1]
+    box = name.body.bounding_box()
+    assert name.filament == p.NAME_FILAMENT
+    assert (box.min.Z, box.max.Z) == pytest.approx((0.0, p.BRAND_DEPTH.v), abs=1e-6)
+    assert name.body.volume == pytest.approx(shell.brand_name().volume, rel=1e-6)
+    # Filled: the bed face of the shell has no recess where the name is.
+    assert right.on_bed().bounding_box().min.Z == pytest.approx(0.0, abs=1e-6)
+    assert all(b.filament != p.NAME_FILAMENT for b in parts["shell_left"].bands)
+
+
+def test_screen_top_clips_keep_clear_of_the_p4_sockets_and_microphones():
+    """The 12-pin GPIO plugs go in from behind on the top edge, beside both microphones."""
+    tops = [site for site in clips.clip_sites() if site.name.startswith("clip_screen_top_")]
+    assert len(tops) == 3
+    blocked = list(p.P4_GPIO_SOCKETS) + list(p.P4_MICS)
+    for site in tops:
+        x0, x1 = site.x - site.width / 2, site.x + site.width / 2
+        for start, end in blocked:
+            assert x1 <= lcd.edge_x(start) - 1.0 or x0 >= lcd.edge_x(end) + 1.0, (site.name, start, end)
+
+
+def test_old_clip_positions_would_block_the_gpio_plugs():
+    """The collision check catches a clip over a socket: the original 35 mm inset did."""
+    from waveform_one.geometry import box_between
+
+    keepouts = lcd.gpio_plug_keepouts()
+    x, _, z = layout.screen_origin()
+    rear = layout.screen_rear_y()
+    old_clip = box_between((x + 30, rear, z + p.SCREEN_H.v - 4), (x + 40, rear + 3, z + p.SCREEN_H.v + 6))
+    assert (old_clip & keepouts["GpioPlug1"]).volume > 1.0
