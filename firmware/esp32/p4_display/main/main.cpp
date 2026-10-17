@@ -27,6 +27,7 @@
 #include "search_waveform.h"
 #include "album_palette.h"
 #include "usb_controller.h"
+#include "music_detector.h"
 #include "p4_led.h"
 
 namespace {
@@ -1115,6 +1116,7 @@ extern "C" void app_main()
 
     ESP_LOGI(kTag, "Display and touch initialized");
     recognition_start(update_recognition);
+    music_detector_start();
     if (p4_led_enabled()) p4_led_start(update_controller_status);
     else usb_controller_start(update_controller_status);
     RemoteCallbacks remote{};

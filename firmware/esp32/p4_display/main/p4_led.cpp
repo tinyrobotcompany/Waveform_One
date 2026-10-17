@@ -3,6 +3,7 @@
 #if CONFIG_WAVEFORM_P4_LED
 #include "p4_hub75.h"
 #include "p4_led_spectrum.h"
+#include "music_detector.h"
 #include "recognition.h"
 #include "recognition_input.h"
 #include "styles.h"
@@ -132,8 +133,9 @@ void run(void *) {
     int64_t last_audio = 0, last_log = 0;
     unsigned analyses = 0;
     float peak_rms = 0;
-    // Room noise is not music: the panel shows the spectrum only while the
-    // recognition detector hears sound. While it does, levels are unchanged.
+    // Room noise and talk are not music: the panel shows the spectrum only
+    // while the level detector hears sound and the classifier calls it music
+    // (or has no model). While it does, levels are unchanged.
     float gate = 0;
     unsigned updates = 0;
     unsigned applied_request = 0;
@@ -174,7 +176,9 @@ void run(void *) {
                     if (!read.skipped && read.count == window) {
                         const float elapsed = last_audio ? float(now - last_audio) / 1000000 : 0.02f;
                         auto frame = work->spectrum.process(work->samples, elapsed);
-                        const bool heard = recognition_sound_heard();
+                        const auto verdict = music_detector_verdict();
+                        const bool heard = recognition_sound_heard()
+                            && (verdict == MusicVerdict::Music || verdict == MusicVerdict::Unavailable);
                         gate += (1 - std::exp(-elapsed / (heard ? 0.1f : 0.4f))) * (float(heard) - gate);
                         if (gate > 0.999f) gate = 1;
                         for (auto &level : frame.levels) level *= gate;

@@ -82,6 +82,19 @@ printf '%s\n' 'PASS: sound start and silence detection against the learnt room b
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
+    "$esp_dir/common/music_policy_test.cpp" -o "$build_dir/music_policy"
+"$build_dir/music_policy"
+
+"${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/common/music_model" \
+    "$esp_dir/common/music_features_test.cpp" "$esp_dir/common/music_features.cpp" \
+    -o "$build_dir/music_features"
+"$build_dir/music_features"
+printf '%s\n' 'PASS: native classifier features, PCM bounds and bounded level normalization'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/audio_presence_test.cpp" -o "$build_dir/p4_presence"
 "$build_dir/p4_presence"

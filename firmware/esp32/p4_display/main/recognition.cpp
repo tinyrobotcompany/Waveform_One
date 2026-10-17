@@ -16,6 +16,7 @@
 #include "audio_presence.h"
 #include "fingerprint.h"
 #include "listening.h"
+#include "music_detector.h"
 #include "usb_controller.h"
 
 #include <algorithm>
@@ -587,6 +588,10 @@ void recognition_task(void *)
             show_now(current.audio.sound ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
         }
         if (paid && !current.audio.sound) planner.observe_quiet(heard, quiet_hop);
+        // Sound the classifier has heard for 10 s without anything music-like
+        // (talk, a vacuum cleaner): one try, then one every two minutes. Never
+        // none, so music the classifier misses is still identified.
+        planner.set_cautious(music_detector_verdict() == MusicVerdict::NotMusic);
         // Retry a busy display using still-owned track/artwork. A session
         // change above cancels/replaces this before any retry can publish.
         flush_display();
