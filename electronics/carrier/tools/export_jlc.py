@@ -27,7 +27,13 @@ LAYERS = "F.Cu,B.Cu,F.Paste,B.Paste,F.Silkscreen,B.Silkscreen,F.Mask,B.Mask,Edge
 # JLCPCB's part models sit at a different rotation from KiCad's footprints for
 # some packages: degrees to add, by footprint name prefix (checked against
 # JLCPCB's placement preview, 2026-10-14).
-ROTATION_FIX = {"TSSOP-": -90, "SOT-23-": -90, "IDC-Header_": -90, "JST_GH_BM": 180}
+ROTATION_FIX = {"TSSOP-": -90, "SOT-23-": -90, "IDC-Header_": -90, "JST_GH_BM": 180,
+                # Checked against JLCPCB's preview of the LED adapter, 2026-10-17: the
+                # PH sockets, the Phoenix terminal (JLCPCB also turned the carrier's J6
+                # by hand) and the plain 3-pin SOT-23 sit 180 degrees from KiCad's.
+                "JST_PH_B": 180, "TerminalBlock_Phoenix_MKDS": 180}
+# Whole footprint names, where a prefix would also catch other packages.
+ROTATION_FIX_EXACT = {"SOT-23": 180}
 # Parts placed from KiCad's origin rather than their courtyard (the S3
 # module's courtyard includes its antenna keep-out), plus an offset in the
 # footprint's own frame (mm, Y up, before rotation): JLCPCB centres the module
@@ -100,6 +106,7 @@ def cpl(parts):
                     x = float(row["PosX"]) + dx * math.cos(turn) - dy * math.sin(turn)
                     y = float(row["PosY"]) + dx * math.sin(turn) + dy * math.cos(turn)
             rotation = float(row["Rot"]) + sum(fix for prefix, fix in ROTATION_FIX.items() if name.startswith(prefix))
+            rotation += ROTATION_FIX_EXACT.get(name, 0)
             layer = "Top" if row["Side"] == "top" else "Bottom"
             writer.writerow([part.ref, f"{x:.3f}mm", f"{y:.3f}mm", layer, f"{rotation % 360:.0f}"])
     return len(parts)
