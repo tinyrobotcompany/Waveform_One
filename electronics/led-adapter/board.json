@@ -1,0 +1,216 @@
+{
+  "_comment": "Single source for the LED adapter board's outline, holes and part positions. Read by tools/build_board.py (KiCad). Board coordinates: millimetres, origin at the top-left corner, x to the right, y down. labels: [text, x, y, size] on the top silkscreen.",
+  "board": {
+    "width": 72.0,
+    "depth": 44.0,
+    "thickness": 1.6,
+    "corner_radius": 3.0
+  },
+  "mounting_holes": {
+    "footprint": "MountingHole:MountingHole_3.2mm_M3",
+    "positions": [
+      [
+        4.0,
+        4.0
+      ],
+      [
+        68.0,
+        4.0
+      ],
+      [
+        4.0,
+        40.0
+      ],
+      [
+        68.0,
+        40.0
+      ]
+    ]
+  },
+  "parts": [
+    {
+      "ref": "J1",
+      "role": "Cable to the P4's P3 socket",
+      "footprint": "Connector_JST:JST_PH_B12B-PH-K_1x12_P2.00mm_Vertical",
+      "x": 11.5,
+      "y": 6.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 6.0
+    },
+    {
+      "ref": "J2",
+      "role": "Cable to the P4's P1 socket",
+      "footprint": "Connector_JST:JST_PH_B12B-PH-K_1x12_P2.00mm_Vertical",
+      "x": 38.5,
+      "y": 6.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 6.0
+    },
+    {
+      "ref": "U1",
+      "role": "Buffer: R1 G1 B1 R2 G2 B2 A B",
+      "footprint": "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
+      "x": 24.0,
+      "y": 20.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "U2",
+      "role": "Buffer: C D CLK LAT OE",
+      "footprint": "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
+      "x": 48.0,
+      "y": 20.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C1",
+      "role": "U1 decoupling",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 24.0,
+      "y": 25.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C2",
+      "role": "U2 decoupling",
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "x": 48.0,
+      "y": 25.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R1",
+      "role": "P4 OE pull-up",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 58.0,
+      "y": 15.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "Q1",
+      "role": "Buffer enable",
+      "footprint": "Package_TO_SOT_SMD:SOT-23",
+      "x": 12.0,
+      "y": 20.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R2",
+      "role": "Q1 gate pull-down",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 8.0,
+      "y": 20.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R3",
+      "role": "Buffer enable pull-up",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 16.0,
+      "y": 20.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R4",
+      "role": "Panel OE pull-up",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 58.0,
+      "y": 25.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C3",
+      "role": "5 V bulk",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 12.0,
+      "y": 27.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "J3",
+      "role": "HUB75 to the LED panel",
+      "footprint": "Connector_IDC:IDC-Header_2x08_P2.54mm_Vertical",
+      "x": 30.0,
+      "y": 38.5,
+      "rotation": 90,
+      "edge": null,
+      "height": 9.0
+    },
+    {
+      "ref": "J4",
+      "role": "5 V in from the LED supply",
+      "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal",
+      "x": 17.0,
+      "y": 36.5,
+      "rotation": 180,
+      "edge": "front",
+      "height": 10.0
+    }
+  ],
+  "labels": [
+    [
+      "to P4 socket P3",
+      22.5,
+      11.0,
+      1.2
+    ],
+    [
+      "to P4 socket P1",
+      49.5,
+      11.0,
+      1.2
+    ],
+    [
+      "+5V",
+      17.0,
+      29.0,
+      1.2
+    ],
+    [
+      "GND",
+      11.5,
+      29.0,
+      1.2
+    ],
+    [
+      "to LED panel (HUB75)",
+      39.0,
+      31.0,
+      1.2
+    ],
+    [
+      "WAVEFORM ONE",
+      61.0,
+      30.0,
+      1.0
+    ],
+    [
+      "LED ADAPTER r1",
+      61.0,
+      32.0,
+      1.0
+    ]
+  ]
+}

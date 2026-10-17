@@ -194,7 +194,7 @@ def main():
             elif number in pin_labels:
                 # Same name KiCad gives an unconnected pin when updating from the schematic.
                 pad.SetNet(raw_net(f"unconnected-({pin_labels[number]})"))
-    output = ROOT / "carrier.kicad_pcb"
+    output = ROOT / f"{ROOT.name}.kicad_pcb"
     board.Save(str(output))
     print(f"Wrote {output.relative_to(ROOT.parents[1])}")
     write_placement(board, spec)

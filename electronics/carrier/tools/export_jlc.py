@@ -52,7 +52,7 @@ def gerbers():
         subprocess.run([KICAD_CLI, "pcb", "export", "drill", "--format", "excellon", "--excellon-units", "mm",
                         "--excellon-separate-th", "-o", work, str(BOARD)], check=True, capture_output=True)
         files = sorted(Path(work).iterdir())
-        with zipfile.ZipFile(OUT / "carrier-gerbers.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(OUT / f"{ROOT.name}-gerbers.zip", "w", zipfile.ZIP_DEFLATED) as archive:
             for path in files:
                 archive.write(path, path.name)
         return [path.name for path in files]
@@ -67,7 +67,7 @@ def bom(parts):
             raise SystemExit(f"{part.ref}: no LCSC part number in netlist.LCSC")
         line = lines.setdefault(code, {"Comment": part.value, "Designator": [], "Footprint": part.footprint.split(":", 1)[1]})
         line["Designator"].append(part.ref)
-    with open(OUT / "carrier-bom.csv", "w", newline="") as handle:
+    with open(OUT / f"{ROOT.name}-bom.csv", "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["Comment", "Designator", "Footprint", "LCSC Part #"])
         for code, line in lines.items():
@@ -85,7 +85,7 @@ def cpl(parts):
                         "--exclude-dnp", "-o", str(pos), str(BOARD)], check=True, capture_output=True)
         rows = {row["Ref"]: row for row in csv.DictReader(pos.open())}
     courtyards = {item["ref"]: item["courtyard"] for item in json.loads((ROOT / "placement.json").read_text())["parts"]}
-    with open(OUT / "carrier-cpl.csv", "w", newline="") as handle:
+    with open(OUT / f"{ROOT.name}-cpl.csv", "w", newline="") as handle:
         writer = csv.writer(handle)
         writer.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])
         for part in parts:
