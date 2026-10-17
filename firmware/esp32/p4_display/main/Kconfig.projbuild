@@ -1,4 +1,12 @@
 menu "Waveform recognition audio"
+    config WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
+        bool "Compare one failed recognition sample at 16 kHz (bench only)"
+        default n
+        help
+            After one no-match, send the exact original PCM and an amplitude-
+            normalized copy to ACRCloud. At most two extra requests per boot.
+            Does not publish diagnostic matches. Alters request timing during
+            the comparison; never enable for normal latency acceptance.
     config WAVEFORM_CONTINUOUS_RECOGNITION
         bool "Run recognition independently of acoustic loudness"
         default n

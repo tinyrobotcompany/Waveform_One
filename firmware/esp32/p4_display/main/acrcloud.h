@@ -118,7 +118,7 @@ inline void downsample(const int16_t *input, size_t count, int16_t *output)
 
 // The complete multipart body: form fields, then the WAV file.
 inline std::vector<uint8_t> body(const Credentials &credentials, const std::string &timestamp,
-                                 const int16_t *samples_8k, size_t count, const std::string &boundary)
+                                 const int16_t *samples_8k, size_t count, const std::string &boundary, uint32_t sample_rate = 8000)
 {
     const uint32_t data = uint32_t(count * 2);
     std::vector<uint8_t> wav(44 + data);
@@ -126,7 +126,7 @@ inline std::vector<uint8_t> body(const Credentials &credentials, const std::stri
     const auto put16 = [&](size_t at, uint16_t value) { wav[at] = uint8_t(value); wav[at + 1] = uint8_t(value >> 8); };
     const auto text = [&](size_t at, std::string_view value) { for (char c : value) wav[at++] = uint8_t(c); };
     text(0, "RIFF"); put32(4, 36 + data); text(8, "WAVEfmt ");
-    put32(16, 16); put16(20, 1); put16(22, 1); put32(24, 8000); put32(28, 16000); put16(32, 2); put16(34, 16);
+    put32(16, 16); put16(20, 1); put16(22, 1); put32(24, sample_rate); put32(28, sample_rate * 2); put16(32, 2); put16(34, 16);
     text(36, "data"); put32(40, data);
     for (size_t i = 0; i < count; ++i) put16(44 + i * 2, uint16_t(samples_8k[i]));
 

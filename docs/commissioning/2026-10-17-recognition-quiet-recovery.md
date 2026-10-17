@@ -39,3 +39,113 @@ other genres/volumes, stop-to-landing timing, and reconnects remain to test.
 
 LED behaviour was explicitly accepted and must remain unchanged. Future
 recognition optimizations should be measured separately from this checkpoint.
+
+
+## Subsequent failure: Joshua Redman, Mack the Knife (Trios Live)
+
+The successful Beatles trials did not establish general reliability. User
+reported over a minute without recognition, then identified the playing track
+and confirmed volume was increased only afterwards. Serial requests continued
+about every 2.5 seconds with five-second PCM clips. Lookup 109 last matched
+Girl at 11:14:01; lookups 110–198 returned no_match. Lookup 199 finally matched
+Mack the Knife at 11:17:47 (1064 ms request), selected Trios Live at 11:17:48,
+and cached seven tracks at 11:17:50. Subsequent requests again returned
+no_match. The exact playback-start time is unknown; this is not a measured
+226-second recognition latency. No firmware change occurred during recovery.
+
+The live match shows the service can identify this recording but does not
+establish adequate matching reliability. Existing no_match logging conflates
+provider codes 1001 and 2004, so their contribution cannot be recovered from
+this capture. A recognition-only follow-up now logs the exact code and expands
+five-second verification windows to the retained eight seconds after two
+misses, returning to five seconds on a match. It preserves cadence, display
+policy, LED processing, and calibration. Host regressions and native build
+pass; this follow-up is uncommitted and not flashed. Its effectiveness on
+this recording is unverified.
+
+## Same-sample root-cause diagnostics
+
+The recovery-window experiment was removed from working production policy;
+its patch is retained in build/p4-led-startup/unflashed-recovery-window.patch.
+The current bench-only diagnostic flag compares the first >=5-second no-match
+with original 16 kHz PCM and a normalized 16 kHz copy, at most two additional
+requests per boot. Diagnostic matches never update the screen. Normal LED and
+recognition policy files are unchanged from the pushed checkpoint.
+
+Evidence in primary build/p4-led-test-2026-10-17/:
+- Failed run ids 110–198: 89 no_match responses; median response 779 ms,
+  minimum 501 ms, maximum 2321 ms.
+- pcm-evidence-serial.log: service codes 1001 and 2004 both observed.
+  A 7.184-second 8 kHz sample (code 1001) exported with verified SHA1
+  85863ad5787c76fdd1b13e574170b8fdbcfe1375. RMS -65.30 dBFS,
+  peak 159 counts, RMS 17.80 counts. Original 16 kHz export lost serial
+  data and cannot be treated as a complete verified recording.
+- Mac replay of that exact 8 kHz WAV, amplitude-normalized copy, and original
+  again: all code 1001. No recognition improvement from amplification.
+- A second serial export also lost data; abandoned export-based comparison.
+- pcm-comparison-serial.log: on-device comparison completed 11:46:53.
+  Same 99,840-sample / 6.24-second input: submitted 8 kHz code 1001,
+  original 16 kHz code 1001, normalized 16 kHz code 1001.
+  Original peak 263 counts, RMS 71.124 counts. Conversion bypass and
+  amplitude normalization did not recover this sample's recognition.
+- Subsequent ordinary requests identified Mata Zyklek by Angine de Poitrine.
+  Current playback identity requires user confirmation; do not attribute this
+  second comparison to the earlier Joshua Redman track without confirmation.
+
+These results do not establish a final root cause. They refute conversion
+bypass or amplitude normalization as sufficient fixes for the compared samples.
+A clean reference of the same musical passage is still needed to distinguish
+acoustic capture quality from service coverage/matching limitations. Diagnostic
+firmware is currently flashed; the flag defaults off and is locally enabled.
+This is not a production acceptance checkpoint or a validated recognition fix.
+
+## Handoff at Simon's request — investigation stopped
+
+Simon confirmed Mata Zyklek was playing. He subsequently reported same-album
+track identification taking up to 15 seconds and considers both recognition
+and the cache experience unacceptable. No final root cause or reliable fix
+has been established. Earlier four-/three-second trials must not be presented
+as overall acceptance. Stop-to-landing behaviour is also unverified.
+
+Branch: fix/p4-led-dma-startup
+Worktree: /Users/simonholmes/Projects/Applications/Waveform_One/.worktrees/p4-led-dma-startup
+
+Hardware: P4 onboard ES7210 microphone and directly wired HUB75, port
+/dev/cu.usbmodem101. The accepted LED implementation and its NVS room reference
+must remain unchanged. Main contains PR #9's album colours; this branch also
+contains the earlier P4 microphone, album-cache recovery, and HUB75 commits.
+
+Current flashed firmware: the direct on-device PCM comparison build, NOT a
+verified recognition fix. Local sdkconfig enables
+CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM=y. This defaults off in source and
+should be disabled for ordinary performance testing: it adds up to two
+synchronous service requests and waits once per boot after a qualifying miss.
+No diagnostic match is published. The previously proposed eight-second
+recovery change is NOT included in the current source or flash.
+
+Local build command: sh build/p4-led-startup/build.sh (installed ESP-IDF 6.1;
+network proxies intentionally disabled). Build output:
+firmware/esp32/p4_display/build/waveform_p4_display.bin. Flash application only
+at 0x10000; retain NVS/calibration and storage. Original pre-test application
+backup: primary checkout build/p4-led-test-2026-10-17/previous-app.bin.
+Validated LED/cooldown checkpoint binary in this worktree:
+build/p4-led-startup/recognition-2004.bin.
+
+Evidence directory (local, not committed):
+/Users/simonholmes/Projects/Applications/Waveform_One/build/p4-led-test-2026-10-17/
+It includes serial logs, flash logs, verified 8 kHz WAV, normalized WAV,
+replay JSON results, and diagnostic capture/decode/replay scripts. Raw 16 kHz
+serial captures are incomplete and must not be represented as verified files.
+Credentials remain in the existing untracked acrcloud.local symlink;
+managed_components is a local symlink to installed dependencies. Neither is
+part of the commit. Do not overwrite local sdkconfig or credentials blindly.
+
+Validation: firmware host tests passed with ASan/UBSan; the native diagnostic
+P4 build passed; firmware flash hash verified. The direct comparison confirms
+that conversion bypass and digital amplification did not rescue that sample,
+not that microphone quality or service matching is adequate. A separate issue
+also appears in logs: Soul Dance was resolved to Wish during the live-album
+session; investigate album-version selection independently of recognition.
+
+Do not resume tests, flash, or play music without Simon's instruction. He
+requested stopping and handing the task to Claude.

@@ -64,6 +64,15 @@ int main()
     assert(uint8_t(all[wav + 44]) == 1 && uint8_t(all[wav + 50]) == 0x00 && uint8_t(all[wav + 51]) == 0x80);
     assert(all.substr(all.size() - 16) == "\r\n--BOUNDARY--\r\n");
 
+    // Diagnostic raw PCM preserves sample bytes and declares the actual rate.
+    const auto raw16 = body(credentials, "1791800000", samples, 4, "BOUNDARY", 16000);
+    const std::string all16(raw16.begin(), raw16.end());
+    const auto wav16 = all16.find("RIFF");
+    assert(wav16 != std::string::npos);
+    assert(uint8_t(all16[wav16 + 24]) == 0x80 && uint8_t(all16[wav16 + 25]) == 0x3e);
+    assert(uint8_t(all16[wav16 + 28]) == 0x00 && uint8_t(all16[wav16 + 29]) == 0x7d);
+    assert(all16.substr(wav16 + 44, 8) == all.substr(wav + 44, 8));
+
     // Responses. The longest match wins over a short chance match.
     RecognitionTrack track{};
     cJSON *root = cJSON_Parse(R"J({"status":{"code":0,"msg":"Success"},"metadata":{"music":[

@@ -156,6 +156,46 @@ Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track, 
 
 constexpr acrcloud::Credentials kAcrcloud{ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET};
 
+#if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
+void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection)
+{
+    static bool tested = false;
+    if (tested || original_code != 1001 || count < 5 * 16000) return;
+    tested = true;
+    ESP_LOGI(kTag, "PCM comparison: same sample count=%u submitted_8k_code=%d", unsigned(count), original_code);
+    std::vector<int16_t> normalized(pcm, pcm + count);
+    int peak = 0;
+    double squares = 0;
+    for (auto value : normalized) { peak = std::max(peak, std::abs(int(value))); squares += double(value) * value; }
+    ESP_LOGI(kTag, "PCM comparison original peak=%d rms_counts=%.3f", peak, std::sqrt(squares / count));
+    if (peak) for (auto &value : normalized) value = int16_t(std::lround(double(value) * 12000 / peak));
+    for (unsigned variant = 0; variant < 2; ++variant) {
+        const std::string timestamp = std::to_string(static_cast<long long>(std::time(nullptr)));
+        const std::string boundary = "evidence" + uuid();
+        const auto body = acrcloud::body(kAcrcloud, timestamp, variant ? normalized.data() : pcm, count, boundary, 16000);
+        const std::string type = "multipart/form-data; boundary=" + boundary;
+        const std::string url = std::string("https://") + kAcrcloud.host + "/v1/identify";
+        Response response;
+        if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false},
+                   64 * 1024, response, &connection)) {
+            ESP_LOGW(kTag, "PCM comparison variant=%s transport_failed; stopping", variant ? "normalized_16k" : "original_16k");
+            break;
+        }
+        Json result(cJSON_ParseWithLengthOpts(response.bytes.get(), response.size + 1, nullptr, true));
+        const auto *code = recognition_metadata::field(recognition_metadata::field(result.get(), "status"), "code");
+        auto candidate = std::make_unique<RecognitionTrack>();
+        const auto outcome = acrcloud::parse(result.get(), *candidate);
+        ESP_LOGI(kTag, "PCM comparison variant=%s code=%d title=\"%s\" artist=\"%s\" score=%.0f",
+            variant ? "normalized_16k" : "original_16k", cJSON_IsNumber(code) ? code->valueint : -1,
+            candidate->title, candidate->artist, candidate->match_score);
+        // Do not continue diagnostics after a service error or rate limit.
+        if (outcome == acrcloud::Result::Failed || outcome == acrcloud::Result::Limited) break;
+        vTaskDelay(pdMS_TO_TICKS(2500));
+    }
+    ESP_LOGI(kTag, "PCM comparison complete; diagnostic results do not update display");
+}
+#endif
+
 // Identifies a stretch of audio with ACRCloud. pcm holds 16 kHz samples.
 Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64_t &service_delay)
 {
@@ -180,9 +220,17 @@ Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64
     }
     Json result(cJSON_ParseWithLengthOpts(response.bytes.get(), response.size + 1, nullptr, true));
     if (!result) return Lookup::Failed;
+#if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
+    const auto *response_code = recognition_metadata::field(recognition_metadata::field(result.get(), "status"), "code");
+    compare_pcm(pcm, count, cJSON_IsNumber(response_code) ? response_code->valueint : -1, connection);
+#endif
     switch (acrcloud::parse(result.get(), track)) {
     case acrcloud::Result::Matched: return Lookup::Matched;
-    case acrcloud::Result::NoMatch: return Lookup::NoMatch;
+    case acrcloud::Result::NoMatch: {
+        const auto *code = recognition_metadata::field(recognition_metadata::field(result.get(), "status"), "code");
+        ESP_LOGI(kTag, "Recognition sample outcome code=%d", code->valueint);
+        return Lookup::NoMatch;
+    }
     case acrcloud::Result::Limited:
         ESP_LOGW(kTag, "Recognition quota or rate limit reached");
         service_delay = 60000000;
