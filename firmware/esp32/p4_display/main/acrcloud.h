@@ -161,7 +161,11 @@ inline Result parse(const cJSON *root, RecognitionTrack &track)
     track = {};
     const cJSON *code = field(field(root, "status"), "code");
     if (!cJSON_IsNumber(code)) return Result::Failed;
-    if (code->valueint == 1001) return Result::NoMatch;
+    // 2004 means this audio could not produce a fingerprint (e.g. silence).
+    // Treat it as no usable match, not a service outage: otherwise a quiet
+    // sample blocks subsequent music behind the worker's 60-second backoff.
+    // https://docs.acrcloud.com/sdk-reference/error-codes
+    if (code->valueint == 1001 || code->valueint == 2004) return Result::NoMatch;
     if (code->valueint == 3003 || code->valueint == 3015) return Result::Limited;
     if (code->valueint != 0) return Result::Failed;
     const cJSON *best = nullptr;

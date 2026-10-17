@@ -107,10 +107,17 @@ int main()
     root = cJSON_Parse(R"({"status":{"code":1001,"msg":"No result"}})");
     assert(parse(root, track) == Result::NoMatch && track.title[0] == '\0');
     cJSON_Delete(root);
+    // Quiet PCM must not enter the service-failure retry path. Also clear
+    // any prior match so this response cannot fabricate a successful match.
+    std::strcpy(track.title, "Previous song");
+    root = cJSON_Parse(R"({"status":{"code":2004,"msg":"Unable to generate fingerprint"}})");
+    assert(parse(root, track) == Result::NoMatch && track.title[0] == '\0');
+    cJSON_Delete(root);
     for (const char *limited : {R"({"status":{"code":3003}})", R"({"status":{"code":3015}})"}) {
         root = cJSON_Parse(limited); assert(parse(root, track) == Result::Limited); cJSON_Delete(root);
     }
-    for (const char *bad : {R"({"status":{"code":3001}})", R"({"status":{}})", R"({"metadata":{}})"}) {
+    for (const char *bad : {R"({"status":{"code":3001}})", R"({"status":{"code":3010}})",
+                            R"({"status":{"code":3000}})", R"({"status":{}})", R"({"metadata":{}})"}) {
         root = cJSON_Parse(bad); assert(parse(root, track) == Result::Failed); cJSON_Delete(root);
     }
     // Real ACRCloud response: the primary original recording and a sampled
