@@ -123,7 +123,20 @@ POCKET_HEIGHT = Param(6.0, "mm", P, "Pocket wall height behind the front plate."
 CLIP_WIDTH = Param(10.0, "mm", P, "Clip bar width.")
 CLIP_THICKNESS = Param(3.0, "mm", P, "Clip bar thickness.")
 CLIP_OVERLAP = Param(4.0, "mm", P, "How far a clip reaches over the component edge.")
-CLIP_INSET = Param(35.0, "mm", P, "Clip centres from each component's left and right edges.")
+CLIP_INSET = Param(35.0, "mm", P, "Clip centres from each component's left and right edges (LED panel; screen bottom edge).")
+# The P4 board's top edge carries its two PH2.0 12-pin GPIO sockets (plugged
+# from behind, for the LED panel) and both microphones, so the screen's top
+# clips sit in the gaps between them. Positions along that edge are measured
+# from the board's outer end (the end with the 4-pin sockets), from Waveshare's
+# dimension drawing (about +/- 1 mm); confirm against the board.
+P4_PCB_W = Param(164.0, "mm", D, "Waveshare ESP32-P4-WIFI6-Touch-LCD-7B board width (drawing).")
+P4_GPIO_SOCKETS = ((29.4, 58.9), (106.1, 135.7))  # DATASHEET: housing extents of the two 12-pin sockets
+P4_MICS = ((12.4, 16.3), (148.3, 152.3))  # DATASHEET: MIC1 and MIC2; keep uncovered
+SCREEN_TOP_CLIP_X = (23.5, 82.5, 142.0)  # POLICY: centres of the gaps around the sockets and microphones
+SCREEN_TOP_CLIP_WIDTH = Param(8.0, "mm", POL, "Narrower top clips: at least 1.5 mm clear of sockets and microphones.")
+GPIO_PLUG_KEEPOUT_DEPTH = Param(25.0, "mm", P, "Behind the board: mated 12-pin plug plus its wires' bend.")
+GPIO_PLUG_MARGIN = Param(1.0, "mm", P, "Each side of a socket: room for the plug's fingers.")
+GPIO_PLUG_KEEPOUT_HEIGHT = Param(11.0, "mm", P, "Down from the screen's top edge: socket (~8 mm) plus margin.")
 BOSS_DIAMETER = Param(8.0, "mm", P, "Heat-set insert bosses.")
 KEEPOUT_EDGE_INSET = Param(6.0, "mm", P, "Rear keep-outs stop short of edges where clips sit.")
 

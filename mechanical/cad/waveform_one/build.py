@@ -33,7 +33,7 @@ REFERENCE_ONLY = frozenset({ENVELOPE_NAME, ELECTRONICS_NAME, ALBUM_NAME})
 
 
 def _clip_names(component: str) -> tuple[str, ...]:
-    return tuple(f"clip_{component}_{side}_{edge}" for side in ("left", "right") for edge in ("top", "bottom"))
+    return tuple(site.name for site in clips.clip_sites() if site.name.startswith(f"clip_{component}_"))
 
 
 # Print jobs, in the order to print them. Each becomes one ready-to-open 3MF.

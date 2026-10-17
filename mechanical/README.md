@@ -73,7 +73,9 @@ Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
   half. A tongue on the left half fits a groove in the right; the halves are
   glued. Printed **front face down**: no supports, smooth front.
 - **Inside the front:** shallow pockets locate the screen and the LED panel
-  (with your diffuser in front of it). Four clips per component hold them in.
+  (with your diffuser in front of it). Clips hold them in: five for the screen
+  (the three top ones sit between the P4's 12-pin sockets and microphones, so
+  the plugs fit), four for the LED panel.
 - **Floor:** the Raspberry Pi sits on a screwed-in tray with room for a
   fan-heatsink. Vents in the floor beside it; feet seats underneath.
 - **Rear panel (2 halves):** vents, a notch for the Pi and LED power cables,
@@ -104,7 +106,7 @@ profiles, slice, print.
 | 1 | `1_calibration_coupon_revB_PETG.3mf` | hole-size coupon | 48 m |
 | 2 | `2_shell_left_revB_PETG.3mf` | left shell half | 19 h |
 | 3 | `3_shell_right_revB_PETG.3mf` | right shell half | 20 h |
-| 4 | `4_small_parts_a_revB_PETG.3mf` | left rear panel, Pi tray, 4 screen clips | 4 h 31 m |
+| 4 | `4_small_parts_a_revB_PETG.3mf` | left rear panel, Pi tray, 5 screen clips | 4 h 31 m |
 | 5 | `5_small_parts_b_revB_PETG.3mf` | right rear panel, 4 LED clips | not yet sliced |
 | 6 | `6_record_holders_optional_revB_PETG.3mf` | 2 record holders (optional) | not yet sliced |
 
@@ -132,8 +134,8 @@ slides through; the model is rebuilt with those values before the big parts.
 
 | Item | Qty | Where |
 |---|---|---|
-| M3 heat-set inserts, ~5.7 mm long | 22 | clip bosses 8, rear bosses 10, tray pads 4 |
-| M3 × 8 screws | 22 | clips 8, rear panel 10, tray 4 |
+| M3 heat-set inserts, ~5.7 mm long | 23 | clip bosses 9, rear bosses 10, tray pads 4 |
+| M3 × 8 screws | 23 | clips 9, rear panel 10, tray 4 |
 | Neodymium disc magnets, 10 × 3 mm (N52) | 8 | record holders, optional: 2 per holder, 4 under the top |
 | M2.5 × 6 screws | 4 | Pi onto the tray standoffs |
 | Stick-on rubber feet, ≤ 12 mm | 4 | seats under the case |
@@ -145,7 +147,7 @@ Fit inserts with a soldering iron (a dedicated insert tip helps).
 
 1. Glue the shell halves (tongue into groove) on a flat surface; let it cure.
 2. Press heat-set inserts into all bosses and pads.
-3. Screen into its pocket, glass forward; screw on its four clips.
+3. Screen into its pocket, glass forward; screw on its five clips.
 4. Diffuser then LED panel into the right pocket; screw on its four clips.
 5. Pi onto the tray (M2.5), tray onto the floor pads.
 6. ESP32 behind the LED panel with foam tape; connect HUB75, USB and mic wires.

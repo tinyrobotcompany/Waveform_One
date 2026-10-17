@@ -25,7 +25,8 @@ def parts():
 def test_expected_parts(parts):
     names = list(parts)
     assert names[:2] == ["shell_left", "shell_right"]
-    assert sum(n.startswith("clip_") for n in names) == 8
+    assert sum(n.startswith("clip_led_") for n in names) == 4
+    assert sum(n.startswith("clip_screen_") for n in names) == 5
     assert names[-4:] == ["rear_panel_left", "rear_panel_right", "record_holder_left", "record_holder_right"]
 
 
@@ -83,9 +84,9 @@ def test_name_is_centred_on_the_strip_below_the_led_window():
     assert box.min.Z == pytest.approx(visible_edge - box.max.Z, abs=0.5)
 
 
-def test_four_clips_per_component_each_over_a_component_edge(parts):
+def test_clips_each_reach_over_a_component_edge(parts):
     sites = clips.clip_sites()
-    assert len(sites) == 8
+    assert len(sites) == 9
     for site in sites:
         clip = parts[site.name].body.bounding_box()
         assert clip.min.Y == pytest.approx(site.rear_y)
@@ -283,3 +284,25 @@ def test_name_is_a_flush_white_inlay_in_the_first_layers(parts):
     # Filled: the bed face of the shell has no recess where the name is.
     assert right.on_bed().bounding_box().min.Z == pytest.approx(0.0, abs=1e-6)
     assert all(b.filament != p.NAME_FILAMENT for b in parts["shell_left"].bands)
+
+
+def test_screen_top_clips_keep_clear_of_the_p4_sockets_and_microphones():
+    """The 12-pin GPIO plugs go in from behind on the top edge, beside both microphones."""
+    tops = [site for site in clips.clip_sites() if site.name.startswith("clip_screen_top_")]
+    assert len(tops) == 3
+    blocked = list(p.P4_GPIO_SOCKETS) + list(p.P4_MICS)
+    for site in tops:
+        x0, x1 = site.x - site.width / 2, site.x + site.width / 2
+        for start, end in blocked:
+            assert x1 <= lcd.edge_x(start) - 1.0 or x0 >= lcd.edge_x(end) + 1.0, (site.name, start, end)
+
+
+def test_old_clip_positions_would_block_the_gpio_plugs():
+    """The collision check catches a clip over a socket: the original 35 mm inset did."""
+    from waveform_one.geometry import box_between
+
+    keepouts = lcd.gpio_plug_keepouts()
+    x, _, z = layout.screen_origin()
+    rear = layout.screen_rear_y()
+    old_clip = box_between((x + 30, rear, z + p.SCREEN_H.v - 4), (x + 40, rear + 3, z + p.SCREEN_H.v + 6))
+    assert (old_clip & keepouts["GpioPlug1"]).volume > 1.0
