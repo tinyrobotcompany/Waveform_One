@@ -56,13 +56,13 @@ won't fit the printer. Outputs (regenerated each run, not committed):
 
 ## The design
 
-Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
+Case **401 × 150 × 132 mm** (W × D × H), derived from the components:
 
 ```text
  ╭──────────────────────────────────────────────────────╮
  │ ┌──────────────────┐ ┊ ┌──────────────────────────┐  │
  │ │   7" screen      │ ┊ │      LED panel           │  │
- │ │   165 × 100      │ ┊ │      195 × 95            │  │
+ │ │   165 × 100      │ ┊ │      192 × 96            │  │
  │ └──────────────────┘ ┊ └──────────────────────────┘  │
  │                      ┊      W A V E F O R M  O N E  │
  ╰──────────────────────┊───────────────────────────────╯
@@ -85,8 +85,9 @@ Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
 - **Top (optional):** two holders hold a 12-inch sleeve, leaning back 8°.
   They attach with magnets: two in each holder's base, over two glued into
   blind pockets under the top wall. Without the holders, the top is plain.
-- The ESP32 sits behind the LED panel; for now fix it with foam tape or Velcro
-  (the dev board has no mounting holes).
+- No ESP32: the P4 drives the LED panel itself (owner, 2026-10-17), through
+  the LED adapter board. The panel's size and depth come from Waveshare's
+  drawing, so the LED clips press on its back.
 
 ## Printing
 
@@ -151,7 +152,8 @@ Fit inserts with a soldering iron (a dedicated insert tip helps).
 3. Screen into its pocket, glass forward; screw on its five clips.
 4. Diffuser then LED panel into the right pocket; screw on its four clips.
 5. Pi onto the tray (M2.5), tray onto the floor pads.
-6. ESP32 behind the LED panel with foam tape; connect HUB75, USB and mic wires.
+6. Connect the LED panel: the P4 drives it through the LED adapter board
+   (`electronics/led-adapter`), whose mount is still to come.
 7. Microphone into the frame on the rear panel (dab of hot glue), facing the hole.
 8. Feed the power cables through the rear notch; screw on both rear panel halves.
 9. Feet underneath.

@@ -23,8 +23,14 @@ def test_every_parameter_is_classified_and_valid():
 
 
 def test_owner_measurements_are_marked_measured():
-    for name in ("SCREEN_W", "SCREEN_H", "LED_W", "LED_H"):
+    for name in ("SCREEN_W", "SCREEN_H"):
         assert p.all_params()[name].status is p.Status.MEASURED
+
+
+def test_led_panel_follows_the_waveshare_drawing():
+    assert (p.LED_W.v, p.LED_H.v, p.LED_D.v) == (191.8, 95.8, 10.0)
+    for name in ("LED_W", "LED_H", "LED_D"):
+        assert p.all_params()[name].status is p.Status.DATASHEET
 
 
 def test_insert_hole_is_required_for_the_enclosure():

@@ -106,9 +106,14 @@ SCREEN_REAR_KEEPOUT = Param(30.0, "mm", P, "HDMI and USB plugs plus cable bends 
 
 # --- Waveshare RGB-Matrix-P3-64x32 and the owner's diffuser -------------------
 
-LED_W = Param(195.0, "mm", M, "Owner measurement (2026-10-10), outer width.")
-LED_H = Param(95.0, "mm", M, "Owner measurement (2026-10-10), outer height.")
-LED_D = Param(12.0, "mm", M, "Owner rough measurement (2026-09-26); excludes connectors.")
+# From Waveshare's own 2D drawing (RGB-Matrix-P3-64x32-2D.zip on the product
+# wiki), which supersedes the owner's rough 195 x 95 x 12 mm. The 12 mm depth
+# left the clip bosses 2 mm proud of the panel's back, so the clips could not
+# press on it.
+LED_W = Param(191.8, "mm", D, "Outer width of the plastic frame (Waveshare drawing).")
+LED_H = Param(95.8, "mm", D, "Outer height of the plastic frame (Waveshare drawing).")
+LED_D = Param(10.0, "mm", D, "LED face to the back of the frame, where the clips press (Waveshare drawing). "
+              "Magnet posts stand 2.7 mm further back, clear of the clips and inside LED_REAR_KEEPOUT.")
 LED_WINDOW_LIP = Param(1.0, "mm", P, "Front overlaps the panel edge by this much.")
 LED_REAR_KEEPOUT = Param(25.0, "mm", P, "HUB75 plugs, ribbon bend and 5 V lead behind the panel.")
 DIFFUSER_THICKNESS = Param(3.0, "mm", P, "Owner's diffuser, assumed panel-sized; measure.")
