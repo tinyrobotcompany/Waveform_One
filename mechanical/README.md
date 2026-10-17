@@ -79,7 +79,8 @@ Case **404 × 150 × 132 mm** (W × D × H), derived from the components:
 - **Floor:** the Raspberry Pi sits on a screwed-in tray with room for a
   fan-heatsink. Vents in the floor beside it; feet seats underneath.
 - **Rear panel (2 halves):** vents, a notch for the Pi and LED power cables,
-  the microphone frame and sound hole. Its split is offset from the shell's so
+  the microphone frame and sound hole. "N°1 · MARK I" and "tinyrobotcompany" are
+  lettered 0.6 mm into the outer face of the left half, in the body colour. Its split is offset from the shell's so
   it ties the two shell halves together.
 - **Top (optional):** two holders hold a 12-inch sleeve, leaning back 8°.
   They attach with magnets: two in each holder's base, over two glued into

@@ -102,6 +102,20 @@ def test_rear_panel_halves_bridge_the_shell_seam(parts):
     assert left.max.X == pytest.approx(p.REAR_SEAM_X.v, abs=1e-3)
 
 
+def test_back_lettering_is_recessed_in_the_left_panel_clear_of_vents_and_split(parts):
+    (_, _, z_lo), (_, y_inner, _) = layout.interior_bounds()
+    outer = y_inner + p.REAR_PANEL_THICKNESS.v
+    box = rear_panel.back_lettering().bounding_box()
+    assert box.min.Y == pytest.approx(outer - p.BACK_TEXT_DEPTH.v, abs=1e-3)
+    assert box.max.Y == pytest.approx(outer, abs=1e-3)
+    assert box.max.X < p.REAR_SEAM_X.v
+    assert box.min.X > p.CABLE_PORT_X.v + p.CABLE_PORT_W.v / 2
+    assert box.max.Z < rear_panel.vent_centre_z() - p.VENT_SLOT_LENGTH.v / 2
+    assert box.min.Z > z_lo + p.REAR_BOSS_PROTRUSION.v
+    left = parts["rear_panel_left"].body
+    assert not (left & rear_panel.back_lettering()).volume > 1e-3
+
+
 def test_rear_panel_screws_line_up_with_wall_bosses():
     (_, _, z_lo), (_, _, z_hi) = layout.interior_bounds()
     for x, z in rear_panel.boss_sites():
