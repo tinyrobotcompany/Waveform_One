@@ -3,6 +3,7 @@
 #if CONFIG_WAVEFORM_P4_LED
 #include "p4_hub75.h"
 #include "p4_led_spectrum.h"
+#include "recognition.h"
 #include "recognition_input.h"
 #include "styles.h"
 #include "driver/parlio_tx.h"
@@ -15,6 +16,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include <atomic>
+#include <cmath>
 #include <new>
 #include <cstdio>
 
@@ -130,6 +132,9 @@ void run(void *) {
     int64_t last_audio = 0, last_log = 0;
     unsigned analyses = 0;
     float peak_rms = 0;
+    // Room noise is not music: the panel shows the spectrum only while the
+    // recognition detector hears sound. While it does, levels are unchanged.
+    float gate = 0;
     unsigned updates = 0;
     unsigned applied_request = 0;
     bool first = true;
@@ -168,7 +173,11 @@ void run(void *) {
                     }
                     if (!read.skipped && read.count == window) {
                         const float elapsed = last_audio ? float(now - last_audio) / 1000000 : 0.02f;
-                        const auto frame = work->spectrum.process(work->samples, elapsed);
+                        auto frame = work->spectrum.process(work->samples, elapsed);
+                        const bool heard = recognition_sound_heard();
+                        gate += (1 - std::exp(-elapsed / (heard ? 0.1f : 0.4f))) * (float(heard) - gate);
+                        if (gate > 0.999f) gate = 1;
+                        for (auto &level : frame.levels) level *= gate;
                         work->renderer.render(frame, now / 1000);
                         peak_rms = std::max(peak_rms, frame.rms);
                         for (unsigned b = 0; b < audio::kBandCount; ++b) {

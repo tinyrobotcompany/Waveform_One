@@ -29,4 +29,7 @@ using RecognitionCallback = bool (*)(RecognitionStatus status, const Recognition
 void recognition_start(RecognitionCallback callback);
 void recognition_set_network(bool online, const char *address);
 void recognition_set_controller(bool connected);
+// The room's level detector currently hears sound (music, or anything as
+// loud). Safe to call from any task; false until recognition has started.
+bool recognition_sound_heard();
 

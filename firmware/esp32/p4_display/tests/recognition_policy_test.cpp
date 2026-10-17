@@ -42,15 +42,15 @@ int main()
     planner.attempted(14 * s);
     assert(!planner.missed() && !planner.unidentified());
     assert(!planner.due(20 * s - 1, window));
-    assert(planner.due(20 * s, window) && window.first == 12 * s && window.last == 20 * s);
+    assert(planner.due(20 * s, window) && window.first == 10 * s && window.last == 20 * s);
     planner.attempted(20 * s);
     assert(planner.unidentified());
     // Then the latest eight seconds every 30 s.
     assert(!planner.due(50 * s - 1, window));
-    assert(planner.due(50 * s, window) && window.first == 42 * s && window.last == 50 * s);
+    assert(planner.due(50 * s, window) && window.first == 40 * s && window.last == 50 * s);
     planner.attempted(50 * s);
     // A late lookup (service limits) still takes at most eight seconds.
-    assert(planner.due(90 * s, window) && window.last - window.first == 8 * s);
+    assert(planner.due(90 * s, window) && window.last - window.first == 10 * s);
 
     // A paid service allows three quick tries: 3, 5 and 8 s.
     Planner fast{3, 5, 8};
@@ -99,7 +99,7 @@ int main()
     song.attempted(424 * s);
     assert(song.missed() && !song.matched());
     // ...and identification carries on for the next one.
-    assert(song.due(430 * s, window) && window.first == 422 * s);
+    assert(song.due(430 * s, window) && window.first == 420 * s);
 
     // Without a length, check once a minute; two misses clear the song.
     Planner unknown;
@@ -109,7 +109,7 @@ int main()
     unknown.matched(window, 4 * s, -1, 0);
     assert(unknown.expected_end() == 0);
     assert(!unknown.due(64 * s - 1, window));
-    assert(unknown.due(64 * s, window) && window.last - window.first == 8 * s);
+    assert(unknown.due(64 * s, window) && window.last - window.first == 10 * s);
     unknown.attempted(64 * s);
     assert(!unknown.missed() && unknown.matched());
     assert(unknown.due(124 * s, window));
@@ -209,10 +209,11 @@ int main()
     periodic.attempted(3 * s);
     periodic.matched(window, 3 * s, 0, 600);
     assert(!periodic.due(8 * s - 1, window));
-    assert(periodic.due(8 * s, window) && window.last - window.first == 5 * s);
+    // Checks send the same 10 s clips as acquisition, not shorter ones.
+    assert(periodic.due(8 * s, window) && window.last - window.first == 8 * s);
     periodic.attempted(8 * s);
     assert(!periodic.due(8 * s + 1, window));
-    assert(periodic.due(13 * s, window));
+    assert(periodic.due(13 * s, window) && window.last - window.first == 10 * s);
     Planner faster({3, 5, 8}, 313, 313);
     faster.sound_started(0);
     assert(faster.due(3 * s, window));
@@ -239,11 +240,13 @@ int main()
     continuous.observe_quiet(6 * s, 6 * s);
     continuous.resume_sound(6 * s + 100, 6 * s);
     assert(continuous.due(8 * s, window) && window.first == 0);
-    continuous.observe_quiet(20 * s, 12 * s);
+    continuous.observe_quiet(21 * s, 12 * s);
+    assert(continuous.active());
+    continuous.observe_quiet(22 * s, 12 * s);
     assert(!continuous.active());
-    continuous.resume_sound(21 * s, 12 * s);
-    assert(!continuous.due(23 * s, window));
-    assert(continuous.due(24 * s, window) && window.first == 21 * s);
+    continuous.resume_sound(23 * s, 12 * s);
+    assert(!continuous.due(25 * s, window));
+    assert(continuous.due(26 * s, window) && window.first == 23 * s);
     const auto physical = music_session.transport_epoch();
     music_session.set_sound(false); music_session.set_sound(true);
     assert(music_session.transport_epoch() == physical);
@@ -269,9 +272,9 @@ int main()
     }
     // Finish the bounded acquisition; do not keep querying a quiet room.
     assert(!request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
-    acquisition.observe_quiet(10 * s, 2 * s);
+    acquisition.observe_quiet(12 * s, 2 * s);
     assert(!acquisition.active());
-    acquisition.resume_sound(11 * s, 2 * s);
+    acquisition.resume_sound(13 * s, 2 * s);
     acquisition_session.set_sound(true);
     assert(request_allowed(true, acquisition_session.snapshot(), acquisition.acquiring()));
     acquisition_session.set_controller(false);

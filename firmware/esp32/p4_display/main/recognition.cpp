@@ -59,6 +59,7 @@ recognition_policy::Sessions sessions;
 RecognitionCallback show = nullptr;
 audio_presence::Snapshot sound_state;
 std::atomic_bool track_visible{false};
+std::atomic_bool sound_heard{false};
 struct SoundSession { Session session; audio_presence::Snapshot audio; uint64_t transport_epoch; };
 SoundSession sound_session() {
     std::lock_guard<std::mutex> lock(session_mutex);
@@ -460,12 +461,14 @@ void presence_task(void *)
                 }
                 tracker.set_patient(track_visible.load());
                 tracker.feed(buffer.get(), count, read.position, read.segment, changed);
+                sound_heard.store(tracker.snapshot().sound);
                 position = read.position + count;
                 last_audio = esp_timer_get_time(); missing = false;
             }
         }
         if (!missing && esp_timer_get_time() - last_audio >= 3000000) {
             tracker.reset(changed); missing = true;
+            sound_heard.store(false);
             if (kContinuousRecognition) {
                 std::lock_guard<std::mutex> lock(session_mutex);
                 recognition_activity::missing(sessions, sound_state);
@@ -752,6 +755,8 @@ void recognition_start(RecognitionCallback callback)
     ESP_ERROR_CHECK(xTaskCreatePinnedToCore(recognition_task, "recognition", 24576,
         nullptr, 4, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }
+
+bool recognition_sound_heard() { return sound_heard.load(); }
 
 void recognition_set_network(bool available, const char *address)
 {
