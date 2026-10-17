@@ -304,7 +304,7 @@ def stitching_vias(board, sites):
 
 
 def autoroute(board, work):
-    dsn, ses = work / "carrier.dsn", work / "carrier.ses"
+    dsn, ses = work / f"{ROOT.name}.dsn", work / f"{ROOT.name}.ses"
     if not pcbnew.ExportSpecctraDSN(board, str(dsn)):
         raise SystemExit("DSN export failed")
     result = subprocess.run([JAVA, "-jar", str(JAR), "-de", str(dsn), "-do", str(ses), "-mp", "30",
@@ -358,7 +358,7 @@ def route_once(work, reuse=False):
     power_paths(board)
     fixed_escapes(board)
     if reuse:
-        pcbnew.ImportSpecctraSES(board, str(work / "carrier.ses"))
+        pcbnew.ImportSpecctraSES(board, str(work / f"{ROOT.name}.ses"))
     else:
         autoroute(board, work)
     ground_pours(board)
@@ -368,7 +368,7 @@ def route_once(work, reuse=False):
 def main():
     work = ROOT / "build"
     work.mkdir(exist_ok=True)
-    if os.environ.get("REUSE_SES") and (work / "carrier.ses").exists():
+    if os.environ.get("REUSE_SES") and (work / f"{ROOT.name}.ses").exists():
         route_once(work, reuse=True)
         print(f"Routed {BOARD.name} from the saved session: {unconnected(work)} unconnected")
         return
