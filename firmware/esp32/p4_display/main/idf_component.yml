@@ -10,3 +10,5 @@ dependencies:
     version: "==1.4.7"
   espressif/esp-dsp:
     version: "==1.8.2"
+  espressif/esp-tflite-micro:
+    version: "==1.4.1"

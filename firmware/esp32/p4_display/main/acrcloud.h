@@ -118,7 +118,7 @@ inline void downsample(const int16_t *input, size_t count, int16_t *output)
 
 // The complete multipart body: form fields, then the WAV file.
 inline std::vector<uint8_t> body(const Credentials &credentials, const std::string &timestamp,
-                                 const int16_t *samples_8k, size_t count, const std::string &boundary)
+                                 const int16_t *samples_8k, size_t count, const std::string &boundary, uint32_t sample_rate = 8000)
 {
     const uint32_t data = uint32_t(count * 2);
     std::vector<uint8_t> wav(44 + data);
@@ -126,7 +126,7 @@ inline std::vector<uint8_t> body(const Credentials &credentials, const std::stri
     const auto put16 = [&](size_t at, uint16_t value) { wav[at] = uint8_t(value); wav[at + 1] = uint8_t(value >> 8); };
     const auto text = [&](size_t at, std::string_view value) { for (char c : value) wav[at++] = uint8_t(c); };
     text(0, "RIFF"); put32(4, 36 + data); text(8, "WAVEfmt ");
-    put32(16, 16); put16(20, 1); put16(22, 1); put32(24, 8000); put32(28, 16000); put16(32, 2); put16(34, 16);
+    put32(16, 16); put16(20, 1); put16(22, 1); put32(24, sample_rate); put32(28, sample_rate * 2); put16(32, 2); put16(34, 16);
     text(36, "data"); put32(40, data);
     for (size_t i = 0; i < count; ++i) put16(44 + i * 2, uint16_t(samples_8k[i]));
 
@@ -161,7 +161,11 @@ inline Result parse(const cJSON *root, RecognitionTrack &track)
     track = {};
     const cJSON *code = field(field(root, "status"), "code");
     if (!cJSON_IsNumber(code)) return Result::Failed;
-    if (code->valueint == 1001) return Result::NoMatch;
+    // 2004 means this audio could not produce a fingerprint (e.g. silence).
+    // Treat it as no usable match, not a service outage: otherwise a quiet
+    // sample blocks subsequent music behind the worker's 60-second backoff.
+    // https://docs.acrcloud.com/sdk-reference/error-codes
+    if (code->valueint == 1001 || code->valueint == 2004) return Result::NoMatch;
     if (code->valueint == 3003 || code->valueint == 3015) return Result::Limited;
     if (code->valueint != 0) return Result::Failed;
     const cJSON *best = nullptr;
