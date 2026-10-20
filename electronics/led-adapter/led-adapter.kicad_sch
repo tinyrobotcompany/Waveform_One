@@ -5431,7 +5431,7 @@
 				(hide yes)
 			)
 		)
-		(property "Note" "From the LED panel's 5 V supply; the buffers draw a few mA."
+		(property "Note" "From the LED panel's 5 V supply; the buffers draw a few mA. Wire entries face the board's front edge."
 			(at 411.48 215.9 0)
 			(effects
 				(font
@@ -5466,7 +5466,7 @@
 		)
 		(uuid "bb077d70-34d2-550f-a78c-84cb2fe42801")
 	)
-	(label "+5V"
+	(label "GND"
 		(at 403.86 215.9 180)
 		(effects
 			(font
@@ -5487,7 +5487,7 @@
 		)
 		(uuid "f134c7d7-ece1-5214-9e29-2437c577bdaa")
 	)
-	(label "GND"
+	(label "+5V"
 		(at 403.86 218.44 180)
 		(effects
 			(font

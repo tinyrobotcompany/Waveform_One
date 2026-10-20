@@ -101,7 +101,8 @@ hub = {"1": "HUB_R1", "2": "HUB_G1", "3": "HUB_B1", "4": "GND", "5": "HUB_R2", "
 add(Part("J3", "Connector_Generic:Conn_02x08_Odd_Even", "HUB75", "Connector_IDC:IDC-Header_2x08_P2.54mm_Vertical", hub, "panel",
          note="The panel's own ribbon. Standard HUB75 order; pin 8 (E) grounded: the 64x32 panel scans 1/16."))
 add(Part("J4", "Connector:Screw_Terminal_01x02", "5V in", "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal",
-         {"1": "+5V", "2": "GND"}, "panel", note="From the LED panel's 5 V supply; the buffers draw a few mA."))
+         {"1": "GND", "2": "+5V"}, "panel",
+         note="From the LED panel's 5 V supply; the buffers draw a few mA. Wire entries face the board's front edge."))
 add(C("C3", "22uF 10V", "+5V", "GND", "panel", C1206))
 
 # --- Mounting: four M3 holes ----------------------------------------------------------
