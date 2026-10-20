@@ -165,9 +165,13 @@
       "ref": "J4",
       "role": "5 V in from the LED supply",
       "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal",
-      "x": 17.0,
+      "x": 11.92,
       "y": 36.5,
-      "rotation": 180,
+      "rotation": 0,
+      "ref_at": [
+        14.46,
+        42.82
+      ],
       "edge": "front",
       "height": 10.0
     }

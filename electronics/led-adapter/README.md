@@ -77,10 +77,13 @@ This writes `fab/`. On jlcpcb.com, follow the carrier board's steps
 4. In the placement preview, check that each part sits the right way round.
    Compare it with KiCad's render (`kicad-cli pcb render --side top`):
    - pin 1 of U1, U2, Q1, J1, J2 and J3;
-   - the wire entries of J4.
+   - the wire entries of J4, which face the board's front edge (away from the
+     "+5V" and "GND" text), so the wires come in from the front as the case
+     expects.
 
-   Rotate any part that is wrong in JLCPCB's preview. The PH sockets and the
-   screw terminal have not been through JLCPCB's preview before.
+   Rotate any part that is wrong in JLCPCB's preview. Revision 1 was ordered
+   with J4 turned the other way, and JLCPCB was asked to turn it 180° (2026-10-20);
+   these files now have it the right way round.
 
 ## Regenerate
 
