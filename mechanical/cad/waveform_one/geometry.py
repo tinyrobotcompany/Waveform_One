@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 from build123d import Align, Box, Color, Compound, Cylinder, Location, Part, Plane, Polygon, Pos, RectangleRounded, Rot, extrude
 
+from waveform_one import colours
+
 Vec3 = tuple[float, float, float]
 
 MIN_ALIGN = (Align.MIN, Align.MIN, Align.MIN)
@@ -86,9 +88,8 @@ class Placeholder:
         return Compound(label=self.name, children=children)
 
 
-PRINT_BLACK = Color(0.12, 0.12, 0.13)
-# Preview only: the real colours are chosen in the slicer (filament 1, 2, 3).
-BAND_PREVIEW_COLOURS = (PRINT_BLACK, Color(0.85, 0.12, 0.12), Color(0.15, 0.4, 0.9), Color(0.97, 0.97, 0.97))
+# The colours.toml colours, by filament slot (Band.filament 1..4).
+BAND_PREVIEW_COLOURS = tuple(colours.preview(c) for c in colours.load())
 
 
 @dataclass
@@ -136,10 +137,10 @@ class PrintedPart:
         return [Band(band.name, band.filament, location * band.body) for band in self.bands]
 
     def compound(self) -> Part | Compound:
-        """For the assembly and previews: black, with any colour bands in placeholder colours."""
+        """For the assembly and previews: in the body colour, with any colour bands in theirs."""
         if not self.bands:
             self.body.label = self.name
-            self.body.color = PRINT_BLACK
+            self.body.color = BAND_PREVIEW_COLOURS[0]
             return self.body
         for band in self.bands:
             band.body.label = band.name

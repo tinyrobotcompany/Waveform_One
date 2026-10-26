@@ -16,6 +16,7 @@ import numpy as np
 from build123d import Compound, Location, Part, Pos, Shape, export_step, export_stl
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
+from waveform_one import colours, slicer
 from waveform_one import parameters as p
 from waveform_one.geometry import Band, PrintedPart
 
@@ -93,7 +94,7 @@ def render_views(model: Compound, path: Path) -> None:
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")
-    fig.suptitle(f"Waveform One {REVISION.upper()} layout — orange = keep-out space; red, blue = colour stripes (placeholder colours)")
+    fig.suptitle(f"Waveform One {REVISION.upper()} layout — orange = keep-out space; printed parts in the colours.toml colours")
     fig.tight_layout()
     fig.savefig(path, dpi=110)
     plt.close(fig)
@@ -252,9 +253,10 @@ def arrange_plate(parts: list[PrintedPart]) -> list[tuple[PrintedPart, Part]]:
 
 
 def export_print_job(name: str, parts: list[PrintedPart], root: Path) -> Path:
-    """One 3MF per print job: every part as its own object, already laid out on the bed.
+    """One ElegooSlicer project per print job: every part as its own object, already laid out on the bed.
 
-    Parts with colour bands keep them as named parts, each with its filament.
+    Parts with colour bands keep them as named parts, each on its filament
+    slot, and the slots carry the colours from colours.toml (see slicer.py).
     """
     path = root / "print_jobs" / f"{name}_rev{p.PRINT_REVISION}_{p.PRINT_MATERIAL}.3mf"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -262,5 +264,7 @@ def export_print_job(name: str, parts: list[PrintedPart], root: Path) -> Path:
     for part, location in plate_locations(parts):
         bands = part.bands or (Band(part.name, 1, part.body),)
         objects.append((part.name, [Band(band.name, band.filament, location * band.body) for band in bands]))
-    write_3mf(path, objects)
+    template = slicer.load_template()
+    settings = slicer.project_settings(template, colours.load())
+    slicer.write_project(path, objects, settings, template, _mesh_xml)
     return path
