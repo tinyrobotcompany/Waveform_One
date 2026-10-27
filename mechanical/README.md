@@ -115,11 +115,14 @@ and colours are already set. Slice, print.
 
 About 600 cm³ in total (~750 g of PETG). Single-part files are also in
 `exports/3mf/` and `exports/stl/` if a part ever needs reprinting on its own.
+For an online print service, upload the print jobs in `exports/print_shop/` (colours painted on)
+([choosing the case colours](docs/choosing-colours.md#print-at-an-online-service)).
 
 **Colours.** Step by step: [choosing the case colours](docs/choosing-colours.md). Choose them in [`colours.toml`](colours.toml): the body, the two
 stripes and the WAVEFORM ONE name, as `"#RRGGBB"`. Then rebuild
 (`uv run python -m waveform_one.build` in `cad/`). Every print job then opens
-with those colours in filament slots 1–4, each part already on its slot, and
+with one filament per colour it uses, each part already on its colour's
+filament (parts of the same colour share one spool), and
 the purge volumes between the colours worked out as ElegooSlicer does. Load
 the CANVAS with matching filaments. Nothing needs colouring in the slicer.
 

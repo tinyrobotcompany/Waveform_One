@@ -14,9 +14,9 @@ applied only to the outer skin would need two colours in every layer, and so a
 filament change on every layer.
 
 Each shell half's print job holds one object made of these parts, each on
-its filament slot, with the slot colours from `mechanical/colours.toml`:
+its `colours.toml` colour (parts of the same colour share one filament):
 
-| Part | Filament slot | `colours.toml` | Owner's choice (2026-10-26) |
+| Part | Template slot | `colours.toml` | Owner's choice (2026-10-26) |
 |---|---|---|---|
 | `shell_…_body` | 1 | `body` | black `#000000` |
 | `shell_…_stripe_1` | 2 | `stripe_1` | white `#FFFFFF` |
@@ -27,7 +27,8 @@ its filament slot, with the slot colours from `mechanical/colours.toml`:
 1.0 mm into the front face and filled with a white inlay, so the front stays
 flat. It occupies the first five layers, the only layers that mix two colours.
 Five layers rather than three keep the black behind from greying the white.
-All four CANVAS slots are used; printing both bands in one colour frees one.
+Colours, not parts, take CANVAS slots: parts of the same colour share one
+filament (2026-10-27). Black with white stripes and name uses two slots.
 
 Colours are chosen in `colours.toml`, not in the slicer (2026-10-26): the
 build writes each print job as an ElegooSlicer project with those colours in

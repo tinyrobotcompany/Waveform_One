@@ -28,6 +28,7 @@ import numpy as np
 from waveform_one import colours
 
 TEMPLATE_FILE = Path(__file__).resolve().parents[2] / "slicer" / "ElegooSlicer" / "template.json"
+FILAMENT_KEYS_FILE = TEMPLATE_FILE.with_name("filament_keys.txt")
 # Purge data shipped with ElegooSlicer; FLUSH_DATA names the file per nozzle_flush_dataset.
 RESOURCES = Path("/Applications/ElegooSlicer.app/Contents/Resources")
 FLUSH_DATA = {0: "flush_data_standard.txt", 1: "flush_data_dual_standard.txt", 2: "flush_data_dual_highflow.txt"}
@@ -65,14 +66,45 @@ def load_template(path: Path = TEMPLATE_FILE) -> dict:
     return json.loads(path.read_text())
 
 
-def project_settings(template: dict, filament_colours: tuple[str, ...], resources: Path = RESOURCES) -> dict:
-    """The template's settings with these filament colours and their purge volumes."""
-    settings = dict(template["project_settings"])
-    if len(filament_colours) != len(settings["filament_colour"]):
-        raise ValueError(f"{len(filament_colours)} colours for {len(settings['filament_colour'])} template filament slots")
-    settings["filament_colour"] = list(filament_colours)
-    settings["filament_multi_colour"] = list(filament_colours)
-    settings["flush_volumes_matrix"] = [str(v) for v in flush_matrix(settings, filament_colours, resources)]
+def filament_keys(path: Path = FILAMENT_KEYS_FILE) -> list[str]:
+    return [line.strip() for line in path.read_text().splitlines() if line.strip() and not line.startswith("#")]
+
+
+def project_settings(template: dict, slot_colours: tuple[str, ...], used: set[int] | None = None,
+                     resources: Path = RESOURCES) -> dict:
+    """The template's settings for one filament per distinct colour, with their purge volumes.
+
+    Slots of the same colour share a filament (colours.filaments): two
+    colours need two spools, however many slots use them. Only the colours of
+    the `used` slots (all slots if None) get a filament. Each filament keeps
+    the template settings of the first slot of its colour.
+    """
+    source = template["project_settings"]
+    count = len(source["filament_colour"])
+    if len(slot_colours) != count:
+        raise ValueError(f"{len(slot_colours)} colours for {count} template filament slots")
+    distinct, slot_filament = colours.filaments(slot_colours, used)
+    kept = [min(slot for slot, f in slot_filament.items() if f == n) - 1 for n in range(1, len(distinct) + 1)]
+    settings = dict(source)
+    for key in filament_keys():
+        if key not in settings:
+            continue
+        if not isinstance(settings[key], list) or len(settings[key]) != count:
+            raise ValueError(f"Template setting {key} has no value per filament")
+        settings[key] = [settings[key][i] for i in kept]
+    # [process, one per filament..., printer]
+    for key in ("different_settings_to_system", "inherits_group"):
+        if key in settings:
+            values = settings[key]
+            if len(values) != count + 2:
+                raise ValueError(f"Template setting {key} is not [process, filaments..., printer]")
+            settings[key] = [values[0]] + [values[1 + i] for i in kept] + [values[-1]]
+    if len(settings.get("flush_volumes_vector", [])) == 2 * count:  # a load and an unload volume per filament
+        settings["flush_volumes_vector"] = [settings["flush_volumes_vector"][2 * i + j] for i in kept for j in (0, 1)]
+    settings["filament_self_index"] = [str(n) for n in range(1, len(distinct) + 1)]
+    settings["filament_colour"] = list(distinct)
+    settings["filament_multi_colour"] = list(distinct)
+    settings["flush_volumes_matrix"] = [str(v) for v in flush_matrix(settings, tuple(distinct), resources)]
     return settings
 
 

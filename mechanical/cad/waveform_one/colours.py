@@ -29,6 +29,18 @@ def load(path: Path = COLOURS_FILE) -> tuple[str, ...]:
     return tuple(values[slot].upper() for slot in SLOTS)
 
 
+def filaments(slot_colours: tuple[str, ...], used: set[int] | None = None) -> tuple[list[str], dict[int, int]]:
+    """One filament per distinct colour: (their colours, slot -> filament), both numbered from 1.
+
+    Slots of the same colour share a filament, so the printer needs one spool
+    per colour, not one per slot. Only the `used` slots (all if None) count.
+    Filaments follow slot order, so the body's comes first.
+    """
+    slots = [slot for slot in range(1, len(slot_colours) + 1) if used is None or slot in used]
+    distinct = list(dict.fromkeys(slot_colours[slot - 1] for slot in slots))
+    return distinct, {slot: distinct.index(slot_colours[slot - 1]) + 1 for slot in slots}
+
+
 def preview(hex_colour: str) -> Color:
     """A build123d colour for previews and the STEP assembly."""
     return Color(*(int(hex_colour[i : i + 2], 16) / 255 for i in (1, 3, 5)))
