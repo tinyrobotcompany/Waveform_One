@@ -1,11 +1,11 @@
 {
-  "_comment": "Single source for the LED adapter board's outline, holes and part positions. Read by tools/build_board.py (KiCad) and by the casing CAD, which places the board flat on four floor posts behind the P4 screen (case_left_x, case_rear_y: the board's left and rear edges in case coordinates; the sockets J1/J2 face the rear). Board coordinates: millimetres, origin at the top-left corner, x to the right, y down. labels: [text, x, y, size] on the top silkscreen.",
+  "_comment": "Single source for the LED adapter board's outline, holes and part positions. Read by tools/build_board.py (KiCad) and by the casing CAD, which places the board flat on four floor posts behind the P4 screen (case_left_x, case_rear_y: the board's left and rear edges in case coordinates; the sockets J1/J2 face the rear, the barrel socket J5 opens to the rear and the USB-C socket J6 to the left). Board coordinates: millimetres, origin at the top-left corner, x to the right, y down. labels: [text, x, y, size] on the top silkscreen.",
   "board": {
-    "width": 72.0,
+    "width": 94.0,
     "depth": 44.0,
     "thickness": 1.6,
     "corner_radius": 3.0,
-    "case_left_x": -130.0,
+    "case_left_x": -152.0,
     "case_rear_y": 68.0,
     "standoff_height": 5.0
   },
@@ -17,7 +17,7 @@
         4.0
       ],
       [
-        68.0,
+        90.0,
         4.0
       ],
       [
@@ -25,7 +25,7 @@
         40.0
       ],
       [
-        68.0,
+        90.0,
         40.0
       ]
     ]
@@ -35,7 +35,7 @@
       "ref": "J1",
       "role": "Cable to the P4's P3 socket",
       "footprint": "Connector_JST:JST_PH_B12B-PH-K_1x12_P2.00mm_Vertical",
-      "x": 11.5,
+      "x": 33.5,
       "y": 6.0,
       "rotation": 0,
       "edge": null,
@@ -45,7 +45,7 @@
       "ref": "J2",
       "role": "Cable to the P4's P1 socket",
       "footprint": "Connector_JST:JST_PH_B12B-PH-K_1x12_P2.00mm_Vertical",
-      "x": 38.5,
+      "x": 60.5,
       "y": 6.0,
       "rotation": 0,
       "edge": null,
@@ -55,7 +55,7 @@
       "ref": "U1",
       "role": "Buffer: R1 G1 B1 R2 G2 B2 A B",
       "footprint": "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
-      "x": 24.0,
+      "x": 46.0,
       "y": 20.0,
       "rotation": 90,
       "edge": null,
@@ -65,7 +65,7 @@
       "ref": "U2",
       "role": "Buffer: C D CLK LAT OE",
       "footprint": "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
-      "x": 48.0,
+      "x": 70.0,
       "y": 20.0,
       "rotation": 90,
       "edge": null,
@@ -75,7 +75,7 @@
       "ref": "C1",
       "role": "U1 decoupling",
       "footprint": "Capacitor_SMD:C_0603_1608Metric",
-      "x": 24.0,
+      "x": 46.0,
       "y": 25.5,
       "rotation": 0,
       "edge": null,
@@ -85,7 +85,7 @@
       "ref": "C2",
       "role": "U2 decoupling",
       "footprint": "Capacitor_SMD:C_0603_1608Metric",
-      "x": 48.0,
+      "x": 70.0,
       "y": 25.5,
       "rotation": 0,
       "edge": null,
@@ -95,7 +95,7 @@
       "ref": "R1",
       "role": "P4 OE pull-up",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
-      "x": 58.0,
+      "x": 80.0,
       "y": 15.0,
       "rotation": 90,
       "edge": null,
@@ -105,7 +105,7 @@
       "ref": "Q1",
       "role": "Buffer enable",
       "footprint": "Package_TO_SOT_SMD:SOT-23",
-      "x": 12.0,
+      "x": 34.0,
       "y": 20.0,
       "rotation": 0,
       "edge": null,
@@ -115,7 +115,7 @@
       "ref": "R2",
       "role": "Q1 gate pull-down",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
-      "x": 8.0,
+      "x": 30.0,
       "y": 20.0,
       "rotation": 90,
       "edge": null,
@@ -125,7 +125,7 @@
       "ref": "R3",
       "role": "Buffer enable pull-up",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
-      "x": 16.0,
+      "x": 38.0,
       "y": 20.0,
       "rotation": 90,
       "edge": null,
@@ -135,7 +135,7 @@
       "ref": "R4",
       "role": "Panel OE pull-up",
       "footprint": "Resistor_SMD:R_0603_1608Metric",
-      "x": 58.0,
+      "x": 80.0,
       "y": 25.0,
       "rotation": 90,
       "edge": null,
@@ -145,7 +145,7 @@
       "ref": "C3",
       "role": "5 V bulk",
       "footprint": "Capacitor_SMD:C_1206_3216Metric",
-      "x": 12.0,
+      "x": 34.0,
       "y": 27.0,
       "rotation": 0,
       "edge": null,
@@ -155,7 +155,7 @@
       "ref": "J3",
       "role": "HUB75 to the LED panel",
       "footprint": "Connector_IDC:IDC-Header_2x08_P2.54mm_Vertical",
-      "x": 30.0,
+      "x": 52.0,
       "y": 38.5,
       "rotation": 90,
       "edge": null,
@@ -163,60 +163,196 @@
     },
     {
       "ref": "J4",
-      "role": "5 V in from the LED supply",
+      "role": "5 V out to the LED panel's power cable",
       "footprint": "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2-5.08_1x02_P5.08mm_Horizontal",
-      "x": 11.92,
+      "x": 33.92,
       "y": 36.5,
       "rotation": 0,
       "ref_at": [
-        14.46,
+        36.46,
         42.82
       ],
       "edge": "front",
       "height": 10.0
+    },
+    {
+      "ref": "J5",
+      "role": "5 V supply in (barrel); plug opening at the board's rear edge",
+      "footprint": "Connector_BarrelJack:BarrelJack_CUI_PJ-063AH_Horizontal",
+      "x": 15.0,
+      "y": 12.3,
+      "rotation": 180,
+      "edge": "rear",
+      "height": 11.0,
+      "ref_at": [
+        22.6,
+        8.0
+      ]
+    },
+    {
+      "ref": "J6",
+      "role": "5 V out to the P4 (USB-C); mouth on the board's left edge",
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4105-xx-A_16P_TopMnt_Horizontal",
+      "x": 3.675,
+      "y": 30.0,
+      "rotation": 270,
+      "edge": "left",
+      "height": 3.3,
+      "ref_at": [
+        6.0,
+        23.4
+      ]
+    },
+    {
+      "ref": "D1",
+      "role": "TVS",
+      "footprint": "Diode_SMD:D_SMA",
+      "x": 15.0,
+      "y": 17.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.5
+    },
+    {
+      "ref": "C4",
+      "role": "5 V bulk",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 15.0,
+      "y": 21.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "C5",
+      "role": "5 V bulk",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 15.0,
+      "y": 24.5,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "F1",
+      "role": "P4 feed fuse",
+      "footprint": "Fuse:Fuse_1812_4532Metric",
+      "x": 13.0,
+      "y": 30.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 1.5
+    },
+    {
+      "ref": "C6",
+      "role": "P4 feed bulk",
+      "footprint": "Capacitor_SMD:C_1206_3216Metric",
+      "x": 18.5,
+      "y": 30.0,
+      "rotation": 90,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R5",
+      "role": "USB-C CC1 pull-up",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 11.5,
+      "y": 36.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R6",
+      "role": "USB-C CC2 pull-up",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 15.5,
+      "y": 36.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "R7",
+      "role": "Power LED resistor",
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "x": 22.0,
+      "y": 38.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
+    },
+    {
+      "ref": "D2",
+      "role": "Power LED",
+      "footprint": "LED_SMD:LED_0603_1608Metric",
+      "x": 26.0,
+      "y": 38.0,
+      "rotation": 0,
+      "edge": null,
+      "height": 2.0
     }
   ],
   "labels": [
     [
       "to P4 socket P3",
-      22.5,
+      44.5,
       11.0,
       1.2
     ],
     [
       "to P4 socket P1",
-      49.5,
+      71.5,
       11.0,
       1.2
     ],
     [
       "+5V",
-      17.0,
+      39.0,
       29.0,
       1.2
     ],
     [
       "GND",
-      11.5,
+      33.5,
       29.0,
       1.2
     ],
     [
       "to LED panel (HUB75)",
-      39.0,
+      61.0,
       31.0,
       1.2
     ],
     [
       "WAVEFORM ONE",
-      61.0,
+      83.0,
       30.0,
       1.0
     ],
     [
-      "LED ADAPTER r1",
-      61.0,
+      "LED ADAPTER r2",
+      83.0,
       32.0,
+      1.0
+    ],
+    [
+      "5V IN",
+      5.0,
+      14.5,
+      1.2
+    ],
+    [
+      "to P4 USB-C",
+      6.5,
+      21.8,
+      1.0
+    ],
+    [
+      "POWER",
+      26.0,
+      40.2,
       1.0
     ]
   ]

@@ -325,6 +325,10 @@
       {
         "netclass": "Supply",
         "pattern": "/P4_3V3"
+      },
+      {
+        "netclass": "Supply",
+        "pattern": "/P4_5V"
       }
     ]
   },

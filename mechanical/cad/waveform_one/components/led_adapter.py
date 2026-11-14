@@ -1,7 +1,9 @@
 """LED adapter board placeholder: the PCB, its parts and room for its cables.
 
 The two cables from the P4's GPIO sockets plug into J1 and J2 from above; the
-panel's ribbon plugs into J3 from above; the 5 V wires enter J4 from the front.
+panel's ribbon plugs into J3 from above; the panel's power wires enter J4 from
+the front. The 5 V supply's plug enters J5 from the rear, and the USB-C cable
+to the P4 leaves J6 to the left.
 """
 
 from build123d import Color
@@ -26,4 +28,8 @@ def build() -> Placeholder:
         keepouts[name] = box_between((lx, ly, hz), (hx, hy, hz + p.CARRIER_PLUG_KEEPOUT.v))
     (lx, ly, lz), (hx, _, hz) = board.part_box(board.part("J4"))
     keepouts["PowerWires"] = box_between((lx, ly - p.ADAPTER_WIRE_KEEPOUT.v, lz), (hx, ly, hz))
+    (lx, _, lz), (hx, hy, hz) = board.part_box(board.part("J5"))
+    keepouts["SupplyPlug"] = box_between((lx, hy, lz), (hx, hy + p.ADAPTER_SUPPLY_PLUG_KEEPOUT.v, hz))
+    (lx, ly, lz), (_, hy, hz) = board.part_box(board.part("J6"))
+    keepouts["UsbToP4"] = box_between((lx - p.ADAPTER_USB_PLUG_KEEPOUT.v, ly, lz), (lx, hy, hz))
     return Placeholder(NAME, body, Color(0.1, 0.3, 0.25), keepouts=keepouts)

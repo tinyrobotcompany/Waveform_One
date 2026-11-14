@@ -91,7 +91,7 @@ def test_led_adapter_follows_its_kicad_placement():
     assert len(holes) == 4
     assert min(x for x, _ in holes) == pytest.approx(board["case_left_x"] + 4.0)
     assert max(y for _, y in holes) == pytest.approx(board["case_rear_y"] - 4.0)
-    assert {item["ref"] for item in LED_ADAPTER.parts()} >= {"J1", "J2", "J3", "J4", "U1", "U2"}
+    assert {item["ref"] for item in LED_ADAPTER.parts()} >= {"J1", "J2", "J3", "J4", "J5", "J6", "U1", "U2"}
 
 
 def test_microphone_sits_on_the_rear_panel(parts):
