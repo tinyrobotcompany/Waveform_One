@@ -99,9 +99,10 @@ Clean the plate with warm soapy water first. Times below use ElegooSlicer's
 **Elegoo PETG** profile. The **Elegoo PETG PRO** profile limits flow and
 roughly doubles the shell times (~37 h per half).
 
-Each print is **one file** in `exports/print_jobs/`, with all its parts already
-laid out on the bed. Open it (**File → Import**, **Load model only**), check the
-profiles, slice, print.
+Each print is **one ElegooSlicer project** in `exports/print_jobs/`, with all
+its parts already laid out on the bed. Open it with **File → Open Project**
+(if asked, **Load Whole File**): the printer, print profile, filament presets
+and colours are already set. Slice, print.
 
 | Print | File | Parts | Time |
 |---|---|---|---|
@@ -114,18 +115,28 @@ profiles, slice, print.
 
 About 600 cm³ in total (~750 g of PETG). Single-part files are also in
 `exports/3mf/` and `exports/stl/` if a part ever needs reprinting on its own.
+For an online print service, upload the print jobs in `exports/print_shop/` (colours painted on)
+([choosing the case colours](docs/choosing-colours.md#print-at-an-online-service)).
 
-**Colour stripes.** The two shell halves come split into a black body and two
-coloured bands, each band 20 mm wide, starting 10 mm and 40 mm behind the
-front ([colour plan](docs/colour-plan.md)). In ElegooSlicer, check that each
-shell is **one object with three parts** in the object list. Parts set to
-filament 1 print in the body colour; set filament slots 2 and 3 to the band
-colours. The right shell has a fourth part, `shell_right_name`: WAVEFORM
-ONE inlaid in the front face, on filament 4 (white). If the slicer shows the
-parts on filament 1, set `…_stripe_1` to filament 2, `…_stripe_2` to 3 and
-`shell_right_name` to 4. If
-it asks whether to load the file as a single object with multiple parts,
-answer **Yes**.
+**Colours.** Step by step: [choosing the case colours](docs/choosing-colours.md). Choose them in [`colours.toml`](colours.toml): the body, the two
+stripes and the WAVEFORM ONE name, as `"#RRGGBB"`. Then rebuild
+(`uv run python -m waveform_one.build` in `cad/`). Every print job then opens
+with one filament per colour it uses, each part already on its colour's
+filament (parts of the same colour share one spool), and
+the purge volumes between the colours worked out as ElegooSlicer does. Load
+the CANVAS with matching filaments. Nothing needs colouring in the slicer.
+
+The two shell halves are each one object made of a body and two 20 mm bands
+(10 mm and 40 mm behind the front, [colour plan](docs/colour-plan.md)); the
+right shell has a fourth part, `shell_right_name`, the name inlaid in the
+front face.
+
+The printer, print profile and filament presets come from a project saved
+once in ElegooSlicer (`slicer/ElegooSlicer/template.json`: Centauri Carbon
+0.4 nozzle, 0.16 mm Optimal, Elegoo PETG @BLACK in slot 1 and @WHITE in
+slots 2–4). To change them, save any project in ElegooSlicer with the new
+choices and four filament slots, then run
+`uv run python -m waveform_one.slicer path/to/saved.3mf` in `cad/` and rebuild.
 
 **Print the coupon first.** Front row: heat-set insert holes 3.8 → 4.2 mm;
 back row: M3 screw holes 3.0 → 3.4 mm; the cut-off corner marks the smallest
@@ -179,9 +190,13 @@ mechanical/
 │       ├── validation.py   design rules, fit, collisions, print envelope
 │       ├── geometry.py     shared shape helpers
 │       ├── export.py       STEP, 3MF/STL and preview writers
+│       ├── colours.py      reads colours.toml
+│       ├── slicer.py       ElegooSlicer projects: template, colours, purge volumes
 │       ├── components/     electronics placeholders
 │       ├── enclosure/      shell, clips, tray, rear panel, record holders
 │       └── calibration/    hole-size coupon
+├── colours.toml            the case colours (edit these)
+├── slicer/ElegooSlicer/    the ElegooSlicer settings template
 ├── docs/                   decisions and colour plan
 ├── reference/measurements/ real-hardware measurements and checklist
 └── exports/                generated files only

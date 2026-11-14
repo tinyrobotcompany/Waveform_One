@@ -5,6 +5,7 @@ a rebuild overwrites the previous output instead of accumulating copies.
 """
 
 import zipfile
+from collections import Counter
 from pathlib import Path
 from xml.sax.saxutils import quoteattr
 
@@ -14,8 +15,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from build123d import Compound, Location, Part, Pos, Shape, export_step, export_stl
+from OCP.BOPAlgo import BOPAlgo_Builder
+from OCP.BRepMesh import BRepMesh_IncrementalMesh
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
+from waveform_one import colours, slicer
 from waveform_one import parameters as p
 from waveform_one.geometry import Band, PrintedPart
 
@@ -93,7 +97,7 @@ def render_views(model: Compound, path: Path) -> None:
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")
-    fig.suptitle(f"Waveform One {REVISION.upper()} layout — orange = keep-out space; red, blue = colour stripes (placeholder colours)")
+    fig.suptitle(f"Waveform One {REVISION.upper()} layout — orange = keep-out space; printed parts in the colours.toml colours")
     fig.tight_layout()
     fig.savefig(path, dpi=110)
     plt.close(fig)
@@ -196,6 +200,147 @@ def write_3mf(path: Path, objects: list[tuple[str, list[Band]]]) -> None:
         )
 
 
+def paint_code(filament: int) -> str:
+    """A whole triangle painted with `filament`, as Bambu Studio, OrcaSlicer and PrusaSlicer store it.
+
+    Their TriangleSelector serialisation: states 1-2 are one hex digit
+    (state << 2); higher states are the marker C plus (state - 3), written
+    last digit first.
+    """
+    if not 1 <= filament <= 18:
+        raise ValueError(f"filament {filament} cannot be painted")
+    return f"{filament << 2:X}" if filament < 3 else f"{filament - 3:X}C"
+
+
+def painted_mesh(bands: list[Band]) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
+    """The bands glued into one closed mesh, each triangle tagged with its band's filament.
+
+    A plain fuse can merge faces of neighbouring bands into one face that
+    crosses a colour boundary. The general fuse (BOPAlgo_Builder) instead
+    keeps every band's faces apart and shares the faces where bands touch;
+    those shared faces are inside the part and left out, and the remaining
+    faces are meshed together so neighbouring bands share their edge points.
+    """
+    if len(bands) == 1:  # one colour: nothing to glue
+        vertices, faces = bands[0].body.tessellate(MESH_TOLERANCE, ANGULAR_TOLERANCE)
+        return _welded(vertices, faces, bands[0].filament)
+    builder = BOPAlgo_Builder()
+    for band in bands:
+        for solid in band.body.solids():
+            builder.AddArgument(solid.wrapped)
+    builder.Perform()
+    if builder.HasErrors():
+        raise RuntimeError("Could not glue the colour bands together")
+    pieces = Compound(builder.Shape()).solids()
+    filament_of = {}
+    for band in bands:
+        for solid in band.body.solids():
+            images = list(builder.Modified(solid.wrapped)) or [solid.wrapped]
+            for image in images:
+                for piece in pieces:
+                    if piece.wrapped.IsSame(image):
+                        filament_of[piece] = band.filament
+    if len(filament_of) != len(pieces):
+        raise RuntimeError("A glued piece belongs to no colour band")
+    BRepMesh_IncrementalMesh(builder.Shape(), MESH_TOLERANCE, False, ANGULAR_TOLERANCE, True)
+    faces = Counter(face for piece in pieces for face in piece.faces())
+    index_of, points, triangles = {}, [], []
+    for piece in pieces:
+        for face in piece.faces():
+            if faces[face] > 1:  # where two bands touch: inside the part
+                continue
+            vertices, face_triangles = face.tessellate(MESH_TOLERANCE, ANGULAR_TOLERANCE)
+            remap = []
+            for v in vertices:
+                key = (round(v.X, WELD_DECIMALS), round(v.Y, WELD_DECIMALS), round(v.Z, WELD_DECIMALS))
+                if key not in index_of:
+                    index_of[key] = len(points)
+                    points.append(key)
+                remap.append(index_of[key])
+            for a, b, c in face_triangles:
+                a, b, c = remap[a], remap[b], remap[c]
+                if a != b and b != c and a != c:
+                    triangles.append((a, b, c, filament_of[piece]))
+    return points, triangles
+
+
+def _welded(vertices, faces, filament: int):
+    index_of, points, remap = {}, [], []
+    for v in vertices:
+        key = (round(v.X, WELD_DECIMALS), round(v.Y, WELD_DECIMALS), round(v.Z, WELD_DECIMALS))
+        if key not in index_of:
+            index_of[key] = len(points)
+            points.append(key)
+        remap.append(index_of[key])
+    triangles = [(remap[a], remap[b], remap[c], filament) for a, b, c in faces
+                 if len({remap[a], remap[b], remap[c]}) == 3]
+    return points, triangles
+
+
+def write_painted_3mf(path: Path, objects: list[tuple[str, list[Band]]]) -> None:
+    """One closed mesh per printed part with its colours painted on, for print services.
+
+    Online print services (PrintYourModel, Zbotic and others) read colours
+    painted on the triangles, as Bambu Studio and OrcaSlicer save them, not
+    the colour parts that the slicer projects use. Each triangle carries its
+    filament as paint_color (Bambu Studio, OrcaSlicer) and
+    slic3rpe:mmu_segmentation (PrusaSlicer).
+
+    Slots with the same colours.toml colour share one filament, and every
+    triangle is painted, the body's too: PrintYourModel (order.js) counts
+    the distinct characters of the paint_color values, so an unpainted body
+    is not counted and each two-character code ("0C") counts twice. With
+    black and white, the codes "4" and "8" count as the two colours they are.
+    The shapes are already laid out on the bed.
+    """
+    slot_colours = colours.load()
+    distinct, shop_filament = colours.filaments(slot_colours)
+
+    def paint(filament: int) -> str:
+        code = paint_code(shop_filament[filament])
+        return f' paint_color="{code}" slic3rpe:mmu_segmentation="{code}"'
+
+    resources, items, settings, used = [], [], [], set()
+    for object_id, (name, bands) in enumerate(objects, start=1):
+        points, triangles = painted_mesh(bands)
+        used |= {shop_filament[f] for *_, f in triangles}
+        vertex_xml = "".join(f'<vertex x="{x:.5f}" y="{y:.5f}" z="{z:.5f}"/>' for x, y, z in points)
+        triangle_xml = "".join(f'<triangle v1="{a}" v2="{b}" v3="{c}"{paint(f)}/>' for a, b, c, f in triangles)
+        resources.append(f'<object id="{object_id}" type="model" name={quoteattr(name)}><mesh><vertices>{vertex_xml}</vertices>'
+                         f'<triangles>{triangle_xml}</triangles></mesh></object>')
+        items.append(f'<item objectid="{object_id}"/>')
+        settings.append(f'<object id="{object_id}"><metadata key="name" value={quoteattr(name)}/>'
+                        '<metadata key="extruder" value="1"/></object>')
+    model = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
+        'xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" xmlns:slic3rpe="http://schemas.slic3r.org/3mf/2017/06">'
+        '<metadata name="Application">Waveform One CAD (build123d)</metadata>'
+        '<metadata name="slic3rpe:MmPaintingVersion">1</metadata>'
+        f'<metadata name="Description">Filaments: {"; ".join(f"{f} = {distinct[f - 1]}" for f in sorted(used))}</metadata>'
+        f'<resources>{"".join(resources)}</resources><build>{"".join(items)}</build></model>'
+    )
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as package:
+        package.writestr(
+            "[Content_Types].xml",
+            '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            '<Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>'
+            '<Default Extension="config" ContentType="text/xml"/></Types>',
+        )
+        package.writestr(
+            "_rels/.rels",
+            '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            '<Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>'
+            "</Relationships>",
+        )
+        package.writestr("3D/3dmodel.model", model)
+        package.writestr(
+            "Metadata/model_settings.config",
+            f'<?xml version="1.0" encoding="UTF-8"?>\n<config>{"".join(settings)}</config>',
+        )
+
+
 def export_printed_parts(parts: list[PrintedPart], root: Path) -> list[Path]:
     """3MF and STL per part, already in print orientation and sitting on the bed."""
     written = []
@@ -252,15 +397,33 @@ def arrange_plate(parts: list[PrintedPart]) -> list[tuple[PrintedPart, Part]]:
 
 
 def export_print_job(name: str, parts: list[PrintedPart], root: Path) -> Path:
-    """One 3MF per print job: every part as its own object, already laid out on the bed.
+    """One ElegooSlicer project per print job: every part as its own object, already laid out on the bed.
 
-    Parts with colour bands keep them as named parts, each with its filament.
+    Parts with colour bands keep them as named parts, each on the filament
+    of its colours.toml colour: one filament per distinct colour, so bands of
+    the same colour share one spool (see slicer.py).
     """
     path = root / "print_jobs" / f"{name}_rev{p.PRINT_REVISION}_{p.PRINT_MATERIAL}.3mf"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    slot_colours = colours.load()
+    placed = [(part, location, part.bands or (Band(part.name, 1, part.body),)) for part, location in plate_locations(parts)]
+    used = {band.filament for _, _, bands in placed for band in bands}
+    _, filament = colours.filaments(slot_colours, used)
+    objects = [(part.name, [Band(band.name, filament[band.filament], location * band.body) for band in bands])
+               for part, location, bands in placed]
+    template = slicer.load_template()
+    settings = slicer.project_settings(template, slot_colours, used)
+    slicer.write_project(path, objects, settings, template, _mesh_xml)
+    return path
+
+
+def export_print_shop_job(name: str, parts: list[PrintedPart], root: Path) -> Path:
+    """The print job for online print services: same name and layout as in print_jobs/, colours painted on."""
+    path = root / "print_shop" / f"{name}_rev{p.PRINT_REVISION}_{p.PRINT_MATERIAL}.3mf"
     path.parent.mkdir(parents=True, exist_ok=True)
     objects = []
     for part, location in plate_locations(parts):
         bands = part.bands or (Band(part.name, 1, part.body),)
         objects.append((part.name, [Band(band.name, band.filament, location * band.body) for band in bands]))
-    write_3mf(path, objects)
+    write_painted_3mf(path, objects)
     return path

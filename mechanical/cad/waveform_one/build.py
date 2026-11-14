@@ -16,7 +16,7 @@ from waveform_one import parameters as p
 from waveform_one.calibration.coupon import build_coupon
 from waveform_one.components import build_all
 from waveform_one.enclosure import clips, rear_panel, record_holder, shell
-from waveform_one.export import EXPORT_ROOT, export_model, export_print_job, export_printed_parts
+from waveform_one.export import EXPORT_ROOT, export_model, export_print_job, export_print_shop_job, export_printed_parts
 from waveform_one.geometry import Placeholder, PrintedPart, box
 from waveform_one.validation import require_printable, require_valid_layout, require_valid_parameters
 
@@ -108,6 +108,7 @@ def main() -> None:
     by_name = {pp.name: pp for pp in printed}
     for job, names in print_jobs(by_name):
         paths.append(export_print_job(job, names, EXPORT_ROOT))
+        paths.append(export_print_shop_job(job, names, EXPORT_ROOT))
     for path in paths:
         log.info("Wrote %s", path)
 

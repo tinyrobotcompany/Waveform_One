@@ -1,0 +1,16 @@
+# Colours of the printed case. Change a colour here, then rebuild:
+#
+#     cd mechanical/cad && uv run python -m waveform_one.build
+#
+# Every print job in exports/print_jobs/ then opens in ElegooSlicer with one
+# filament per colour it uses, each part on the filament of its colour, and
+# the purge volumes between the colours worked out the way ElegooSlicer does.
+# Lines with the same colour share one filament, so one spool: black and white
+# need two spools, however many lines are white.
+#
+# Colours are "#RRGGBB", as in the slicer's colour picker.
+
+body = "#000000"      # the cabinet, the record holders and all small parts
+stripe_1 = "#FFFFFF"  # the first band, 10 mm behind the front
+stripe_2 = "#FFFFFF"  # the second band, 40 mm behind the front
+name = "#FFFFFF"      # WAVEFORM ONE on the front
