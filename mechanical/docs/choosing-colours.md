@@ -66,9 +66,10 @@ model**, as Bambu Studio and OrcaSlicer save them. The rebuild also writes
 those, in `mechanical/exports/print_shop/`.
 
 `print_shop/` holds the same six print jobs as `print_jobs/`, with the same
-names and layout. Each part is one closed mesh. Filament 1 (the body
-colour) is left unpainted, as Bambu Studio saves it; every other colour is
-painted on, and slots that share a colour share one filament. With black and
+names and layout. Each part is one closed mesh. Every colour is painted on,
+the body colour (filament 1) too, so services that count the painted colours
+(PrintYourModel) count all of them; slots that share a colour share one
+filament. With black and
 white, the shells (files 2 and 3) use filament 1 = black and filament 2 =
 white; all other files are black only. Upload these and, on the service's
 colour step, set filament 1 to black and filament 2 to white.
