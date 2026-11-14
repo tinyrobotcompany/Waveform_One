@@ -168,7 +168,9 @@ $K pcb drc --schematic-parity electronics/led-adapter/led-adapter.kicad_pcb
   delivered. Designed, routed and checked: no design-rule violations,
   nothing unconnected, and the board matches the schematic. Every panel
   signal was traced from the P4 pin, through an as-delivered cable, to the
-  HUB75 pin. **Not yet ordered.**
+  HUB75 pin. **Ordered 2026-11-14** from JLCPCB, 5 assembled boards
+  (order Y4-13817483A). J6 was fitted as LCSC C3020560, the same GCT
+  USB4105-GF-A, because C3025063 was out of stock.
 - **Revision 1** (ordered 2026-10-20, in use): needs the 12-pin cables
   reworked to run pin 1 to pin 1, takes 5 V for the buffers only on J4, and
   the P4 is powered separately by USB-C.

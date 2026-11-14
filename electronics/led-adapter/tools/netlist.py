@@ -197,7 +197,7 @@ LCSC = {
     "D2": "C12624",                        # KT-0603G green
     "F1": "C19078727",                     # 1812L250/16GR, 2.5 A hold
     "J5": "C22434582",                     # CUI PJ-063AH barrel socket
-    "J6": "C3025063",                      # GCT USB4105-GF-A-060
+    "J6": "C3020560",                      # GCT USB4105-GF-A (the -060 was out of stock at order time)
     "J1": "C158028", "J2": "C158028",      # JST B12B-PH-K-S(LF)(SN), vertical
     "J3": "C492443",                       # BH254V-16P box header
     "J4": "C480516",                       # Phoenix 1715721 (MKDS 1,5/2-5,08)
