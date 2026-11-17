@@ -115,6 +115,8 @@ jobs:
         shell: bash
         env:
           APP: ${{ matrix.app }}
+          # CI has no recognition keys; the build uses the fallback service.
+          WAVEFORM_ALLOW_NO_ACRCLOUD: "1"
           WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
         run: |
           . "$IDF_PATH/export.sh"
