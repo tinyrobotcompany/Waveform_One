@@ -93,7 +93,7 @@ def main():
             raise ValueError('UPDATE_SIGNING_KEY is required')
         with tempfile.TemporaryDirectory() as temp:
             private = Path(temp) / 'signing.pem'
-            with private.open('w', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
+            with open(private, 'w', opener=lambda path, flags: os.open(path, flags, 0o600)) as output:
                 output.write(key)
             package(args.dist, json.loads(args.plan.read_text()), os.environ['GITHUB_SHA'], private,
                     APP / 'main/ota_public.pem')
