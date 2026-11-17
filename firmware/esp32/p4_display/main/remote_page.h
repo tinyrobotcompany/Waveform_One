@@ -26,9 +26,20 @@ body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:b
 <fieldset id="controls" disabled style="border:0;padding:0;margin:0;min-width:0"><label for="name">Your name</label><input id="name" type="text" maxlength="40" autocomplete="given-name"><button class="save" id="save-name">Save name</button>
 <div class="section"><h3>LED STYLE</h3><div class="styles"><button data-style="classic" aria-pressed="false">Classic</button><button data-style="mirrored" aria-pressed="false">Mirrored</button><button data-style="waterfall" aria-pressed="false">Waterfall</button></div></div>
 <div class="section"><h3>APPEARANCE</h3><div class="styles"><button data-appearance="album" aria-pressed="true">Album colours</button><button data-appearance="classic" aria-pressed="false">Classic black</button></div></div>
-<div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"></div></fieldset><p class="feedback" id="feedback" role="status"></p></section></div>
+<div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"></div>
+<div class="section"><h3>SOFTWARE UPDATES</h3>
+<p id="update-version"></p><p id="update-message" role="status">Checking update status…</p>
+<progress id="update-progress" max="100" value="0" aria-label="Download progress"></progress>
+<p><a id="update-notes" target="_blank" rel="noopener noreferrer" hidden>What’s new</a></p>
+<div class="styles"><button data-update="check">Check now</button><button data-update="install">Install</button><button data-update="postpone">Postpone 24h</button></div>
+<p><label><input id="update-auto" type="checkbox"> Install automatically</label></p>
+<label>Check frequency <select id="update-hours"><option value="720">Every 30 days</option><option value="1">Hourly (testing)</option></select></label>
+<p><label>Installation window starts <input id="update-start" type="time" value="03:00"></label><label>Ends <input id="update-end" type="time" value="04:00"></label></p>
+<button id="save-updates">Save update settings</button><p id="update-next"></p>
+</div></fieldset><p class="feedback" id="feedback" role="status"></p></section></div>
 <script>
 const $=id=>document.getElementById(id);
+let updateSettingsLoaded=false;
 let csrf='',pollTimer,artworkUrl='',requestActive=false,settingsOpen=false,failures=0,fieldKey='',fieldFront=false;
 function pairedMessage(){return 'Scan the QR code on Waveform One to connect.'}
 function loseSession(){csrf='';$('controls').disabled=true;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required'}
@@ -62,7 +73,35 @@ $('save-name').onclick=()=>{const name=$('name').value.trim();if(name)post('/api
 document.querySelectorAll('[data-appearance]').forEach(button=>button.onclick=async()=>{if(await post('/api/appearance',{value:button.dataset.appearance}))poll()});
 // Commit a slider change once; dragging never creates overlapping device requests.
 $('brightness').oninput=()=>{$('brightness-value').textContent=$('brightness').value+'%'};$('brightness').onchange=()=>post('/api/brightness',{value:$('brightness').value});
-async function poll(){clearTimeout(pollTimer);if(requestActive||document.hidden||!csrf)return;requestActive=true;try{const response=await fetch('/api/state',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});if(response.status===401){loseSession();return}if(!response.ok)throw Error();render(await response.json());failures=0;$('connection').textContent=''}catch{failures++;$('connection').textContent='Reconnecting to Waveform One…'}finally{requestActive=false;if(csrf&&!document.hidden)pollTimer=setTimeout(poll,Math.min(10000,2000*(failures+1)))}}
+function renderUpdates(value){
+ $('update-version').textContent='Installed: '+value.installed+(value.available?' · Available: '+value.available:'');
+ $('update-message').textContent=value.message;
+ $('update-progress').value=value.progress;
+ const notes=$('update-notes');
+ const safe=/^https:\/\/github\.com\/tinyrobotcompany\/Waveform_One\/releases\/tag\/v[0-9]+\.[0-9]+\.[0-9]+$/.test(value.notes_url||'');
+ notes.hidden=!safe;if(safe)notes.href=value.notes_url;else notes.removeAttribute('href');
+ $('update-next').textContent=value.next_check?'Next check: '+new Date(value.next_check*1000).toLocaleString():'';
+ if(!updateSettingsLoaded){
+  const clock=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+  $('update-auto').checked=value.automatic;$('update-hours').value=String(value.interval_hours);
+  $('update-start').value=clock(value.window_start);$('update-end').value=clock(value.window_end);updateSettingsLoaded=true;
+ }
+ document.querySelector('[data-update="install"]').disabled=!value.available||value.state!==2||value.countdown_seconds>0;
+}
+async function pollUpdates(){
+ if(!csrf)return;
+ try{const response=await fetch('/api/updates',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});
+  if(response.status===401){loseSession();return}if(!response.ok)throw Error();renderUpdates(await response.json());
+ }catch{$('update-message').textContent='Update status unavailable. Reconnecting…'}
+}
+document.querySelectorAll('[data-update]').forEach(button=>button.onclick=async()=>{if(await post('/api/updates/action',{action:button.dataset.update})){$('feedback').textContent='Request queued…';pollUpdates()}});
+$('save-updates').onclick=async()=>{
+ const minutes=id=>{const parts=$(id).value.split(':').map(Number);return parts.length===2?parts[0]*60+parts[1]:NaN};
+ const start=minutes('update-start'),end=minutes('update-end');
+ if(!Number.isInteger(start)||!Number.isInteger(end)||start===end){$('feedback').textContent='Choose different start and end times.';return}
+ if(await post('/api/updates/config',{value:[$('update-hours').value,$('update-auto').checked?1:0,start,end].join(',')}))$('feedback').textContent='Update settings queued…';
+};
+async function poll(){clearTimeout(pollTimer);if(requestActive||document.hidden||!csrf)return;requestActive=true;try{const response=await fetch('/api/state',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});if(response.status===401){loseSession();return}if(!response.ok)throw Error();render(await response.json());await pollUpdates();failures=0;$('connection').textContent=''}catch{failures++;$('connection').textContent='Reconnecting to Waveform One…'}finally{requestActive=false;if(csrf&&!document.hidden)pollTimer=setTimeout(poll,Math.min(10000,2000*(failures+1)))}}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();else clearTimeout(pollTimer)});
 async function connect(){try{const response=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});if(!response.ok)throw Error();csrf=await response.text();$('controls').disabled=false;poll();post('/api/time',{epoch:Math.floor(Date.now()/1000)})}catch{$('title').textContent='Welcome to Waveform One';loseSession()}}connect();
 </script></body></html>)HTML";

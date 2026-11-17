@@ -97,3 +97,6 @@ electronics/gerbers/*
 
 # Local recognition-service credentials
 acrcloud.local*
+
+# Isolated local feature worktrees
+/worktree/

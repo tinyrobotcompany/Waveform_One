@@ -1,3 +1,4 @@
+#include "cJSON.h"
 #include "network.h"
 
 #include <algorithm>
@@ -25,6 +26,8 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "remote_auth.h"
+#include "update_service.h"
+#include "update_platform.h"
 #include "remote_page.h"
 #include "remote_state.h"
 
@@ -43,6 +46,7 @@ char acquired_host[16]{}; // guarded by auth_mutex
 remote_auth::RemoteAuth auth{esp_fill_random};
 RemoteState remote_state;
 std::atomic_bool wifi_ready{false};
+std::atomic_bool update_local_ready{false};
 std::atomic_bool scanning{false};
 std::atomic_bool attempting_home{false};
 // True while the device should stay on its saved home network and rejoin it
@@ -318,6 +322,45 @@ esp_err_t state_handler(httpd_req_t *request)
     return httpd_resp_send(request, state.data(), state.size());
 }
 
+esp_err_t update_status_handler(httpd_req_t *request)
+{
+    RequestHeaders headers;
+    read_headers(request, headers);
+    char csrf[remote_auth::kTokenSize]{};
+    bool valid = false;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
+    }
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
+    if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
+    waveform_update_status_t value{};
+    waveform_update_status(&value);
+    cJSON *j = cJSON_CreateObject();
+    if (!j) return service_unavailable(request, "Update status unavailable");
+    cJSON_AddNumberToObject(j, "state", value.state);
+    cJSON_AddStringToObject(j, "installed", value.installed);
+    cJSON_AddStringToObject(j, "available", value.available);
+    cJSON_AddStringToObject(j, "message", value.message);
+    cJSON_AddStringToObject(j, "notes_url", value.notes_url);
+    cJSON_AddNumberToObject(j, "progress", value.progress);
+    cJSON_AddNumberToObject(j, "countdown_seconds", value.countdown_seconds);
+    cJSON_AddNumberToObject(j, "interval_hours", value.interval_hours);
+    cJSON_AddBoolToObject(j, "automatic", value.automatic);
+    cJSON_AddNumberToObject(j, "window_start", value.window_start);
+    cJSON_AddNumberToObject(j, "window_end", value.window_end);
+    cJSON_AddNumberToObject(j, "last_check", (double)value.last_check);
+    cJSON_AddNumberToObject(j, "next_check", (double)value.next_check);
+    char *encoded = cJSON_PrintUnformatted(j);
+    const std::string state = encoded ? encoded : "";
+    cJSON_free(encoded);
+    cJSON_Delete(j);
+    if (state.empty()) return service_unavailable(request, "State temporarily unavailable");
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_send(request, state.data(), state.size());
+}
+
 esp_err_t pair_handler(httpd_req_t *request)
 {
     if (!request_host_valid(request)) {
@@ -426,6 +469,33 @@ esp_err_t time_handler(httpd_req_t *request)
     }
     if (controls.set_time != nullptr) controls.set_time(static_cast<std::time_t>(epoch));
     return reply(request);
+}
+
+esp_err_t update_action_handler(httpd_req_t *request)
+{
+    if (!require_authorized(request)) return ESP_OK;
+    std::string action;
+    if (!read_form_field(request, "action", action)) return ESP_OK;
+    if (action != "check" && action != "install" && action != "postpone")
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid update action");
+    if (!waveform_update_request(action.c_str())) return service_unavailable(request, "Update service busy");
+    return reply(request, "Request queued");
+}
+
+esp_err_t update_config_handler(httpd_req_t *request)
+{
+    if (!require_authorized(request)) return ESP_OK;
+    std::string value;
+    if (!read_form_field(request, "value", value)) return ESP_OK;
+    unsigned hours, automatic, start, end;
+    char extra;
+    if (value.find_first_not_of("0123456789,") != std::string::npos || value.size() > 24 ||
+        sscanf(value.c_str(), "%u,%u,%u,%u%c", &hours, &automatic, &start, &end, &extra) != 4 ||
+        (hours != 1 && hours != 720) || automatic > 1 || start >= 1440 || end >= 1440 || start == end)
+        return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid update settings");
+    if (!waveform_update_configure(hours, automatic != 0, start, end))
+        return service_unavailable(request, "Update service busy");
+    return reply(request, "Request queued");
 }
 
 void register_uri(httpd_handle_t server, const char *uri, httpd_method_t method,
@@ -604,6 +674,7 @@ void network_task(void *)
         return;
     }
     ESP_ERROR_CHECK(result);
+    ESP_ERROR_CHECK(waveform_update_start());
     nvs_handle_t appearance_handle{};
     uint8_t album_colours = 1;
     if (nvs_open("waveform", NVS_READONLY, &appearance_handle) == ESP_OK) {
@@ -648,18 +719,22 @@ void network_task(void *)
     network_request_scan();
 
     httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
-    server_config.max_uri_handlers = 12;
+    server_config.max_uri_handlers = 16;
     httpd_handle_t server = nullptr;
     ESP_ERROR_CHECK(httpd_start(&server, &server_config));
     register_uri(server, "/", HTTP_GET, page_handler);
     register_uri(server, "/pair", HTTP_GET, pair_handler);
     register_uri(server, "/api/session", HTTP_GET, session_handler);
     register_uri(server, "/api/state", HTTP_GET, state_handler);
+    register_uri(server, "/api/updates", HTTP_GET, update_status_handler);
+    register_uri(server, "/api/updates/action", HTTP_POST, update_action_handler);
+    register_uri(server, "/api/updates/config", HTTP_POST, update_config_handler);
     register_uri(server, "/api/style", HTTP_POST, style_handler);
     register_uri(server, "/api/brightness", HTTP_POST, brightness_handler);
     register_uri(server, "/api/name", HTTP_POST, name_handler);
     register_uri(server, "/api/appearance", HTTP_POST, appearance_handler);
     register_uri(server, "/api/time", HTTP_POST, time_handler);
+    update_local_ready.store(true);
     if (connected) {
         ESP_LOGI(kTag, "Phone remote ready on home Wi-Fi: http://%s", acquired_host);
     } else {
@@ -789,4 +864,16 @@ bool network_set_appearance(bool album_colours)
     if (result != ESP_OK) return false;
     remote_state.appearance(album_colours);
     return true;
+}
+
+extern "C" void waveform_update_network(waveform_update_network_t *out)
+{
+    const std::lock_guard<std::mutex> lock(auth_mutex);
+    out->connected = auth.connected();
+    out->time_ready = std::time(nullptr) >= 1700000000;
+}
+
+extern "C" bool waveform_update_local_ready(void)
+{
+    return update_local_ready.load();
 }

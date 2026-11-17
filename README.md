@@ -19,10 +19,12 @@ ESP32-S3 audio and HUB75 engine remains intact during this migration.
 - [ESP32-P4 controller architecture decision](docs/architecture/0001-esp32-p4-display-controller.md)
 - [Contributing and local tests](CONTRIBUTING.md)
 - [Release notes](CHANGELOG.md)
-- [Over-the-air updates: development and production](pi/updater/README.md)
+- [Native P4 over-the-air updates](docs/p4-ota.md)
+- [Legacy Pi over-the-air updates](pi/updater/README.md)
 - [CI and releases](docs/delivery.md)
 - [Pi setup and visual-style controls](pi/README.md)
 
-Signed releases support Pi application and ESP firmware updates on commissioned devices.
-Development devices install automatically; production devices ask the user to install.
-Existing factory-layout ESP boards need a one-time USB migration before OTA updates.
+Native P4 signed updates follow Tempo: monthly checks, an overnight installation
+window, countdown and postponement, with controls on the touchscreen and paired phone.
+The P4 needs a one-time USB bootstrap into the A/B layout before OTA updates.
+Legacy commissioned Pi/S3 devices retain their existing updater.

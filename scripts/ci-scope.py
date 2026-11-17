@@ -33,6 +33,8 @@ def select(paths):
             pi = tests = True
         if path.startswith(('scripts/', '.github/scripts/', '.githooks/')):
             tests = True
+        if path == 'scripts/package-p4-update.py':
+            apps.add('p4_display')
         if path == 'scripts/package-firmware.py':
             apps.add('visualizer')
     return {'firmware': [app for app in APPS if app in apps], 'pi': pi, 'tests': tests}

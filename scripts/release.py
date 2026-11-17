@@ -70,7 +70,7 @@ def plan(root):
         return None
     tag = latest if rerun else 'v' + bump(base[1:] if base else '0.0.0', [e[0] for e in entries])
     notes = f'# Waveform One {tag}\n\n' + '\n\n'.join(e[1] for e in entries)
-    notes += f'\n\nCommit: `{head}`\n\nESP32 downloads are USB installation bundles, not OTA updates.\n'
+    notes += f'\n\nCommit: `{head}`\n\nSigned P4 application updates require the one-time A/B USB bootstrap. Pi/S3 update assets remain available for commissioned legacy devices.\n'
     return {'tag': tag, 'commit': head, 'notes': notes}
 
 

@@ -242,3 +242,14 @@ printf '%s\n' 'PASS: album colours: edge background, vivid accent, text readable
     "$esp_dir/p4_display/tests/p4_led_test.cpp" -o "$build_dir/p4_led"
 "$build_dir/p4_led"
 printf '%s\n' 'PASS: P4 HUB75 blanking, DMA buffer ownership and 16 kHz LED spectrum'
+
+# Tempo OTA policy and actual worker, with deterministic IDF/network/persistence doubles.
+for suite in policy service; do
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror \
+        -I "$esp_dir/p4_display/tests/ota_stubs" -I "$esp_dir/p4_display/main" \
+        -I "$esp_dir/p4_display/third_party" \
+        "$esp_dir/p4_display/tests/update_${suite}_test.c" \
+        "$esp_dir/p4_display/main/update_policy.c" "$esp_dir/p4_display/third_party/cJSON.c" \
+        -lm -o "$build_dir/p4_update_$suite"
+    "$build_dir/p4_update_$suite"
+done

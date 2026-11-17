@@ -16,6 +16,7 @@ const albumPalette={background:'#f7dc72',panel:'#e3c85e',line:'#ba8826',text:'#4
 let state = { appearance:'album', status: 'capturing', track: null, name: 'Simon', brightness: 65, style: 'classic' };
 let unauthorized = false, failing = false;
 const posts = [];
+let update = {state:2,installed:'0.0.0',available:'1.2.3',message:'Update available',progress:0,countdown_seconds:0,interval_hours:720,automatic:true,window_start:180,window_end:240,next_check:1800000000,notes_url:'https://github.com/tinyrobotcompany/Waveform_One/releases/tag/v1.2.3'};
 const server = http.createServer((req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (req.url === '/pair') {
@@ -36,6 +37,10 @@ const server = http.createServer((req, res) => {
         res.writeHead(!paired || unauthorized ? 401 : failing ? 503 : 200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({...state,palette:state.track&&state.appearance!=='classic'?albumPalette:standard}));
     }
+    if (req.url === '/api/updates') {
+        res.writeHead(!paired || unauthorized ? 401 : 200, {'Content-Type':'application/json'});
+        return res.end(JSON.stringify(update));
+    }
     if (req.method === 'POST') {
         if (!paired || req.headers['x-waveform-csrf'] !== 'fixture-csrf') { res.writeHead(403); return res.end(); }
         let body = '';
@@ -47,6 +52,8 @@ const server = http.createServer((req, res) => {
             if (req.url === '/api/name') state.name = form.get('name');
             if (req.url === '/api/style') state.style = form.get('style');
             if (req.url === '/api/appearance') state.appearance = form.get('value');
+            if(req.url==='/api/updates/action' && form.get('action')==='install') update={...update,countdown_seconds:60,message:'Installing in 60 seconds. Choose Postpone to cancel.'};
+            if(req.url==='/api/updates/action' && form.get('action')==='postpone') update={...update,countdown_seconds:0,message:'Installation postponed for 24 hours.'};
             res.end('OK');
         });
         return;
@@ -115,6 +122,24 @@ const server = http.createServer((req, res) => {
         await page.waitForFunction(() => document.querySelector('#feedback').textContent === 'Saved');
         assert(posts.some(post => post.path === '/api/brightness' && post.body === 'value=42'));
         await page.screenshot({ path: path.join(output, 'phone-settings.png'), fullPage: true });
+        await page.waitForFunction(()=>document.querySelector('#update-version').textContent.includes('1.2.3'));
+        assert.equal(await page.locator('#update-hours').inputValue(),'720');
+        assert.equal(await page.locator('#update-notes').getAttribute('href'), update.notes_url);
+        await page.locator('[data-update=install]').click();
+        await page.getByText('Installing in 60 seconds. Choose Postpone to cancel.',{exact:true}).waitFor();
+        assert(await page.locator('[data-update=install]').isDisabled());
+        await page.locator('[data-update=postpone]').click();
+        await page.getByText('Installation postponed for 24 hours.',{exact:true}).waitFor();
+        await page.locator('#update-hours').selectOption('1');
+        await page.locator('#update-auto').uncheck();
+        await page.locator('#save-updates').click();
+        await page.waitForFunction(()=>document.querySelector('#feedback').textContent==='Update settings queued…');
+        assert(posts.some(post=>post.path==='/api/updates/config'&&post.body==='value=1%2C0%2C180%2C240'));
+        update={...update,notes_url:'javascript:alert(1)',message:'<img src=x onerror=alert(1)>'};
+        await page.waitForFunction(()=>document.querySelector('#update-message').textContent.includes('<img'));
+        assert(await page.locator('#update-notes').isHidden());
+        assert.equal(await page.locator('#update-message img').count(),0);
+        await page.screenshot({path:path.join(output,'phone-updates.png'),fullPage:true});
         await page.keyboard.press('Escape');
         assert(await page.locator('#settings').isHidden());
         assert(await page.locator('#open-settings').evaluate(el => el === document.activeElement));

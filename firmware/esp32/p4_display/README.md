@@ -220,3 +220,8 @@ The board configuration and API usage follow Waveshare's official
 `9fcd49a8c927a00f5583c22d568b3448addbe51c` and managed BSP
 `waveshare/esp32_p4_wifi6_touch_lcd_7b` version `3.0.1`. Hardware settings are
 consumed through that BSP rather than copied into this repository.
+
+## Signed OTA updates
+
+See the [P4 OTA guide](../../../docs/p4-ota.md) for the Tempo-based update service,
+release pipeline, one-time USB bootstrap and hardware acceptance steps.

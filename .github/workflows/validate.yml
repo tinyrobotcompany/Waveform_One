@@ -2,6 +2,9 @@ name: Validate
 on:
   workflow_call:
     inputs:
+      release-version:
+        type: string
+        default: '0.0.0'
       changed-only:
         type: boolean
         default: false
@@ -112,10 +115,23 @@ jobs:
         shell: bash
         env:
           APP: ${{ matrix.app }}
+          WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
         run: |
           . "$IDF_PATH/export.sh"
           cd "firmware/esp32/$APP"
           idf.py build
+      - name: Package validated P4 application
+        if: matrix.app == 'p4_display'
+        env:
+          WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
+        run: python3 scripts/package-p4-update.py record --build firmware/esp32/p4_display/build --dist p4-dist --version "$WAVEFORM_RELEASE_VERSION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: matrix.app == 'p4_display'
+        with:
+          name: esp32-p4-ota
+          path: p4-dist/*
+          if-no-files-found: error
+          retention-days: 14
       - name: Package production firmware
         if: matrix.app == 'visualizer'
         run: python3 scripts/package-firmware.py firmware/esp32/visualizer/build dist

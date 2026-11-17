@@ -29,6 +29,11 @@
 #include "usb_controller.h"
 #include "music_detector.h"
 #include "p4_led.h"
+#include "update_service.h"
+#include "update_platform.h"
+#include "esp_ota_ops.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 namespace {
 
@@ -640,6 +645,95 @@ void remote_set_wifi_configuration(WifiConfigurationState state)
     bsp_display_unlock();
 }
 
+lv_obj_t *updates_panel = nullptr, *updates_status = nullptr, *updates_version = nullptr;
+lv_obj_t *updates_progress = nullptr;
+int64_t update_feedback_until = 0;
+std::atomic<unsigned> ui_health_ticks{0};
+
+void update_boot_guard(void *)
+{
+    esp_ota_img_states_t state;
+    const bool trial = esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK
+        && state == ESP_OTA_IMG_PENDING_VERIFY;
+    if (trial) {
+        for (unsigned seconds = 0; seconds < 120; ++seconds) {
+            // Local rendering and the initialized OTA worker are sufficient; internet is optional.
+            if (ui_health_ticks.load() >= 10 && waveform_update_local_ready() && waveform_update_validate_trial()) {
+                vTaskDelete(nullptr);
+                return;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        ESP_LOGE(kTag, "Trial boot did not complete local health checks; restarting for rollback");
+        esp_restart();
+    }
+    vTaskDelete(nullptr);
+}
+
+void refresh_updates(lv_timer_t *)
+{
+    ++ui_health_ticks;
+    waveform_update_status_t value{};
+    waveform_update_status(&value);
+    lv_label_set_text_fmt(updates_version, "Installed: %s    Available: %s",
+        value.installed[0] ? value.installed : "Starting", value.available[0] ? value.available : "None");
+    if (esp_timer_get_time() >= update_feedback_until)
+        lv_label_set_text(updates_status, value.message);
+    lv_bar_set_value(updates_progress, value.progress, LV_ANIM_OFF);
+}
+
+void on_update_action(lv_event_t *event)
+{
+    const char *action = static_cast<const char *>(lv_event_get_user_data(event));
+    const bool queued = waveform_update_request(action);
+    lv_label_set_text(updates_status, queued ? "Request queued…" : "Update service busy");
+    update_feedback_until = esp_timer_get_time() + 5000000;
+}
+
+void create_updates_screen(lv_obj_t *screen)
+{
+    auto *open = lv_button_create(settings_panel);
+    lv_obj_set_size(open, 220, 52);
+    lv_obj_align(open, LV_ALIGN_TOP_RIGHT, -180, 26);
+    lv_obj_center(make_label(open, "Software updates", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(open, [](lv_event_t *) { lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
+    updates_panel = lv_obj_create(screen);
+    lv_obj_set_size(updates_panel, 1024, 600);
+    lv_obj_center(updates_panel);
+    lv_obj_set_style_bg_color(updates_panel, kBackground, 0);
+    lv_obj_set_style_bg_opa(updates_panel, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_SCROLLABLE);
+    auto *title = make_label(updates_panel, "Software updates", &lv_font_montserrat_48, kForeground);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 32, 30);
+    auto *close = lv_button_create(updates_panel);
+    lv_obj_set_size(close, 120, 52);
+    lv_obj_align(close, LV_ALIGN_TOP_RIGHT, -32, 26);
+    lv_obj_center(make_label(close, "Done", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(close, [](lv_event_t *) { lv_obj_add_flag(updates_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
+    updates_version = make_label(updates_panel, "Starting…", &lv_font_montserrat_20, kMuted);
+    lv_obj_align(updates_version, LV_ALIGN_TOP_LEFT, 32, 120);
+    updates_status = make_label(updates_panel, "", &lv_font_montserrat_24, kForeground);
+    lv_obj_set_width(updates_status, 900);
+    lv_label_set_long_mode(updates_status, LV_LABEL_LONG_WRAP);
+    lv_obj_align(updates_status, LV_ALIGN_TOP_LEFT, 32, 175);
+    updates_progress = lv_bar_create(updates_panel);
+    lv_obj_set_size(updates_progress, 900, 20);
+    lv_obj_align(updates_progress, LV_ALIGN_TOP_LEFT, 32, 290);
+    const char *labels[] = {"Check now", "Install update", "Postpone 24 hours"};
+    static const char *actions[] = {"check", "install", "postpone"};
+    for (unsigned i = 0; i < 3; ++i) {
+        auto *button = lv_button_create(updates_panel);
+        lv_obj_set_size(button, 280, 60);
+        lv_obj_align(button, LV_ALIGN_TOP_LEFT, 32 + 310 * i, 350);
+        lv_obj_center(make_label(button, labels[i], &lv_font_montserrat_20, kForeground));
+        lv_obj_add_event_cb(button, on_update_action, LV_EVENT_CLICKED, const_cast<char *>(actions[i]));
+    }
+    auto *help = make_label(updates_panel, "Keep power connected while installing.\nRelease notes and schedule settings are on your paired phone.", &lv_font_montserrat_20, kMuted);
+    lv_obj_align(help, LV_ALIGN_TOP_LEFT, 32, 450);
+    lv_obj_add_flag(updates_panel, LV_OBJ_FLAG_HIDDEN);
+    lv_timer_create(refresh_updates, 1000, nullptr);
+}
+
 void create_product_screen()
 {
     lv_obj_t *screen = lv_screen_active();
@@ -1016,6 +1110,7 @@ void create_product_screen()
 
     lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(update_clock, 1000, nullptr);
+    create_updates_screen(screen);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
@@ -1094,6 +1189,8 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
 
 extern "C" void app_main()
 {
+    ESP_ERROR_CHECK(xTaskCreate(update_boot_guard, "ota_boot", 4096, nullptr, 5, nullptr) == pdPASS
+        ? ESP_OK : ESP_ERR_NO_MEM);
     log_board_identity();
 
     bsp_display_cfg_t config = {

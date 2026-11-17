@@ -8,13 +8,31 @@ concurrency:
   group: main-release
   cancel-in-progress: false
 jobs:
+  plan:
+    name: Allocate release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: plan
+        run: |
+          python3 scripts/release.py plan --output /tmp/release-plan.json
+          echo "version=$(jq -r 'if . == null then "0.0.0" else .tag[1:] end' /tmp/release-plan.json)" >> "$GITHUB_OUTPUT"
   validate:
+    needs: plan
     uses: ./.github/workflows/validate.yml
+    with:
+      release-version: ${{ needs.plan.outputs.version }}
   release:
     name: Publish validated release
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: production-ota
     permissions:
       contents: write
     steps:
@@ -35,6 +53,10 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: pi-controller
+          path: ${{ steps.staging.outputs.directory }}
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: esp32-p4-ota
           path: ${{ steps.staging.outputs.directory }}
       - name: Verify complete validated artifacts before signing
         env:
@@ -58,6 +80,7 @@ jobs:
             exit 0
           fi
           python3 scripts/package-update.py "$RELEASE_DIST" /tmp/release-plan.json
+          python3 scripts/package-p4-update.py package --dist "$RELEASE_DIST" --plan /tmp/release-plan.json
           tag=$(jq -r .tag /tmp/release-plan.json)
           jq -r .notes /tmp/release-plan.json > /tmp/release-notes.md
           if ! gh release view "$tag" >/dev/null 2>&1; then
@@ -66,7 +89,16 @@ jobs:
           # Only resume our draft for this commit; never overwrite published assets.
           if [ "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true ]; then
             test "$(gh release view "$tag" --json targetCommitish --jq .targetCommitish)" = "$GITHUB_SHA"
-            gh release upload "$tag" "$RELEASE_DIST"/* --clobber
+            # Tempo publication contract: replace drafts only, then download and verify every asset.
+            verification=$(mktemp -d "$RUNNER_TEMP/waveform-verify.XXXXXX")
+            gh release view "$tag" --json assets --jq '.assets[].name' > "$verification/existing"
+            while IFS= read -r asset; do
+              gh release delete-asset "$tag" "$asset" --yes
+            done < "$verification/existing"
+            gh release upload "$tag" "$RELEASE_DIST"/*
+            mkdir "$verification/downloaded"
+            gh release download "$tag" --pattern '*' --dir "$verification/downloaded"
+            python3 scripts/package-p4-update.py verify-assets --dist "$RELEASE_DIST" --downloaded "$verification/downloaded"
             gh release edit "$tag" --draft=false --latest
           else
             test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)" = "$GITHUB_SHA"
