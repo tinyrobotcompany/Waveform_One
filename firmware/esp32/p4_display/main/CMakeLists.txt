@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
+    SRCS "update_service.c" "update_policy.c" "main.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
          "recognition.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
          "music_detector.cpp" "../../common/music_features.cpp"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
@@ -8,11 +8,12 @@ idf_component_register(
     INCLUDE_DIRS "." "../third_party" "../../visualizer/main" "../../mic_test/main"
                  "../../common" "../../common/music_model"
     EMBED_FILES "fonts/waveform_unicode.bin"
+    EMBED_TXTFILES "ota_public.pem"
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif
                   esp_http_server esp_timer nvs_flash esp_driver_sdmmc heap
                   esp_http_client mbedtls esp_new_jpeg esp-dsp esp_codec_dev esp_driver_parlio
-                  espressif__esp-tflite-micro esp_partition)
+                  espressif__esp-tflite-micro esp_partition app_update)
 
 # Optimise the continuously running fingerprint only; retain IEEE floating-point semantics.
 set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-O3")
@@ -39,7 +40,7 @@ set(acrcloud_file "${CMAKE_CURRENT_LIST_DIR}/../../../../acrcloud.local")
 set(ACRCLOUD_HOST "")
 set(ACRCLOUD_ACCESS_KEY "")
 set(ACRCLOUD_ACCESS_SECRET "")
-if(EXISTS "${acrcloud_file}")
+if(EXISTS "${acrcloud_file}" AND NOT DEFINED ENV{WAVEFORM_RELEASE_VERSION})
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${acrcloud_file}")
     file(STRINGS "${acrcloud_file}" acrcloud_lines)
     foreach(line IN LISTS acrcloud_lines)
