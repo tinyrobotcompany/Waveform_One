@@ -59,7 +59,9 @@ provisions the repository secret without rotating an existing key.
 P4 assets are `waveform-p4.bin`, `waveform-p4-manifest.json`,
 `waveform-p4-manifest.sig`, `P4-SHA256SUMS`, `p4-dependencies.lock`,
 `p4-update-build.json`, `p4-release.json`, and `p4-notes.md`. Draft retries replace
-the draft's complete asset set. Every uploaded asset is downloaded and compared
+the draft's complete asset set. `scripts/verify-release-assets.py` checks an explicit
+Pi/S3/P4 filename contract before any draft mutation, rejecting missing files,
+extra files, directories and symlinks. Every uploaded asset is downloaded and compared
 with the validated local file before publication. Published releases are immutable.
 
 The device reads public GitHub metadata and verifies the signature, target,

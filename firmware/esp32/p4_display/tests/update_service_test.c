@@ -1,3 +1,5 @@
+// Expose POSIX localtime_r before any libc header in strict C11 Linux builds.
+#define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <time.h>
 #include <setjmp.h>
@@ -17,6 +19,7 @@ static esp_partition_t part={.size=0x800000};
 static int open_error,read_error=ESP_ERR_NVS_NOT_FOUND,write_error,commit_error,crypto_error,ota_error,end_error,begin_error,boot_error,http_code=200;
 static bool namespace_missing,queue_fail,task_fail,active_pending,trial_aborted,no_partition,truncated,read_failed,init_failed,connect_failed,has_redirect;
 static const char *redirect_to="https://release-assets.githubusercontent.com/test";
+static unsigned release_checks;
 static unsigned accepted;static int accept_error;static bool cleanup_fails;
 static unsigned writes,begins,activated,boot_calls,aborted,restarted,cleanup_count,loops,stop_loop,md_frees;
 static int md_setup_error;
@@ -58,7 +61,7 @@ int esp_ota_set_boot_partition(const esp_partition_t *p){(void)p;boot_calls++;if
 int esp_ota_mark_app_valid_cancel_rollback(void){if(accept_error)return accept_error;accepted++;active_pending=false;if(cleanup_fails)commit_error=-1;return 0;}
 void esp_restart(void){restarted++;}
 void esp_crt_bundle_attach(void){}
-void *esp_http_client_init(esp_http_client_config_t *c){assert(c->crt_bundle_attach&&c->disable_auto_redirect);offset=0;client_url=c->url;
+void *esp_http_client_init(esp_http_client_config_t *c){assert(c->crt_bundle_attach&&c->disable_auto_redirect);offset=0;client_url=c->url;if(!strcmp(c->url,LATEST))release_checks++;
  if(has_redirect&&strstr(c->url,"github.com")){esp_http_client_event_t e={.event_id=HTTP_EVENT_ON_HEADER,.header_key="Location",.header_value=redirect_to,.user_data=c->user_data};c->event_handler(&e);}
  if(!strstr(c->url,"release-assets.githubusercontent.com"))response=strstr(c->url,"/latest")?latest_body:strstr(c->url,"manifest.json")?manifest_text:strstr(c->url,"manifest.sig")?"signature":image;
  response_size=response==image?(size_t)(1024+body_delta):strlen(response);return init_failed?NULL:(void *)1;}
@@ -89,7 +92,21 @@ int main(void){
  waveform_update_status_t s;waveform_update_status(&s);assert(s.interval_hours==720&&s.automatic);
  assert(!waveform_update_request(NULL));assert(!waveform_update_request("bad"));assert(!waveform_update_configure(2,true,180,240));assert(!waveform_update_configure(1,true,180,180));
  assert(waveform_update_request("check"));run(1);assert(status.state==UPDATE_AVAILABLE&&saved.next>test_clock);assert(candidate.size==1024);
- assert(waveform_update_configure(1,false,10,20));run(1);assert(saved.hours==1&&!saved.automatic);
+ /* A successful scheduled check sets a future deadline. Manual checks bypass it. */
+ saved.automatic=false;saved.next=0;
+ unsigned checks=release_checks;run(32);assert(release_checks==checks+1&&saved.next>test_clock);
+ checks=release_checks;run(1);assert(release_checks==checks);
+ assert(waveform_update_request("check"));run(1);assert(release_checks==checks+1&&saved.next>test_clock);
+ /* Settings queued after Check must not overwrite its immediate intent. */
+ checks=release_checks;assert(waveform_update_request("check"));
+ assert(waveform_update_configure(1,false,10,20));run(1);
+ assert(release_checks==checks+1&&saved.hours==1&&!saved.automatic);
+ /* Manual bypass must still honour the provider's rate limit. */
+ checks=release_checks;rate_limited_until=test_clock+600;
+ assert(waveform_update_request("check"));run(1);
+ assert(release_checks==checks&&saved.next>=rate_limited_until);
+ rate_limited_until=0;
+
  assert(waveform_update_request("postpone"));run(1);assert(saved.postponed>test_clock);
  net.connected=false;assert(waveform_update_request("check"));run(1);assert(status.state==UPDATE_ERROR);assert(waveform_update_request("install"));run(1);net.connected=true;
  http_code=404;assert(check_release());http_code=500;assert(!check_release());http_code=200;

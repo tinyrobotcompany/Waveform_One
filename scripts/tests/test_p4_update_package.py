@@ -9,6 +9,9 @@ import unittest
 spec = importlib.util.spec_from_file_location('p4_package', Path(__file__).parents[1] / 'package-p4-update.py')
 p4 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(p4)
+release_spec = importlib.util.spec_from_file_location('release_assets', Path(__file__).parents[1] / 'verify-release-assets.py')
+release_assets = importlib.util.module_from_spec(release_spec)
+release_spec.loader.exec_module(release_assets)
 
 
 def image(version='1.2.3'):
@@ -49,14 +52,18 @@ class P4PackageTests(unittest.TestCase):
             self.assertEqual(manifest['layout'], p4.LAYOUT)
             self.assertEqual(manifest['version'], '1.2.3')
             self.assertTrue(manifest['url'].endswith('/v1.2.3/waveform-p4.bin'))
+            # The workflow combines P4 output and legacy assets into a single flat release.
+            self.assertEqual({p.name for p in dist.iterdir()}, release_assets.P4_ASSETS)
+            for name in release_assets.LEGACY_ASSETS:
+                (dist / name).write_bytes(('legacy fixture: ' + name).encode())
             downloaded = root / 'downloaded'
             shutil.copytree(dist, downloaded)
-            p4.verify_assets(dist, downloaded)
+            release_assets.verify_assets(dist, downloaded)
             (downloaded / p4.IMAGE).write_bytes(b'corrupt upload')
-            with self.assertRaises(ValueError): p4.verify_assets(dist, downloaded)
+            with self.assertRaises(ValueError): release_assets.verify_assets(dist, downloaded)
             shutil.copyfile(dist / p4.IMAGE, downloaded / p4.IMAGE)
             (downloaded / 'stale.bin').write_bytes(b'leftover draft')
-            with self.assertRaises(ValueError): p4.verify_assets(dist, downloaded)
+            with self.assertRaises(ValueError): release_assets.verify_assets(dist, downloaded)
             with self.assertRaises(ValueError): p4.package(dist, plan, 'b'*40, private, public)
             (dist / p4.IMAGE).write_bytes(image('1.2.4'))
             with self.assertRaises(ValueError): p4.package(dist, plan, 'a'*40, private, public)

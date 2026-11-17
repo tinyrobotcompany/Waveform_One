@@ -73,33 +73,18 @@ def package(dist, plan, commit, key, public_key):
     (dist / 'P4-SHA256SUMS').write_text(''.join(f'{digest(dist / name)}  {name}\n' for name in names))
 
 
-def verify_assets(expected, downloaded):
-    names = {p.name for p in expected.iterdir()}
-    if {p.name for p in downloaded.iterdir()} != names:
-        raise ValueError('Draft asset set does not match the validated release')
-    for name in names:
-        actual = downloaded / name
-        if actual.is_symlink() or not actual.is_file() or digest(actual) != digest(expected / name):
-            raise ValueError('Draft asset differs from validated artifact: ' + name)
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['record', 'package', 'verify-assets'])
+    parser.add_argument('action', choices=['record', 'package'])
     parser.add_argument('--dist', required=True, type=Path)
     parser.add_argument('--build', type=Path)
     parser.add_argument('--version')
     parser.add_argument('--plan', type=Path)
-    parser.add_argument('--downloaded', type=Path)
     args = parser.parse_args()
     if args.action == 'record':
         if not args.build or not args.version:
             parser.error('record requires --build and --version')
         record(args.build, args.dist, args.version, os.environ['GITHUB_SHA'])
-    elif args.action == 'verify-assets':
-        if not args.downloaded:
-            parser.error('verify-assets requires --downloaded')
-        verify_assets(args.dist, args.downloaded)
     else:
         if not args.plan:
             parser.error('package requires --plan')

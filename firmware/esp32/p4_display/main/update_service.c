@@ -267,14 +267,14 @@ static void worker(void *unused)
   command_t cmd;
   while(xQueueReceive(commands,&cmd,0)==pdTRUE){
    if(cmd.action==5)accept_trial();
-   if(cmd.action==1){if(ready){saved.next=0;force_check=true;}else message(UPDATE_ERROR,"Connect to Wi-Fi and synchronise time to check updates.");}
+   if(cmd.action==1){if(ready){force_check=true;}else message(UPDATE_ERROR,"Connect to Wi-Fi and synchronise time to check updates.");}
    if(cmd.action==2){if(ready&&candidate.version[0]){manual_install=true;countdown=mono+60000000;message(UPDATE_AVAILABLE,"Installing in 60 seconds. Choose Postpone to cancel.");}else message(UPDATE_ERROR,"Check for an available update while connected first.");}
    if(cmd.action==3){countdown=0;manual_install=false;postponed_until=now+86400;saved.postponed=postponed_until;if(!persist())message(UPDATE_ERROR,"Postponed, but saving failed. This may not survive a restart.");else message(candidate.version[0]?UPDATE_AVAILABLE:UPDATE_IDLE,"Installation postponed for 24 hours.");}
    if(cmd.action==4){saved_t old=saved;saved.hours=cmd.hours;saved.automatic=cmd.automatic;saved.start=cmd.start;saved.end=cmd.end;
     saved.next=waveform_update_next(now,saved.hours,esp_random());if(!persist()){saved=old;message(UPDATE_ERROR,"Could not save update settings.");}else message(candidate.version[0]?UPDATE_AVAILABLE:UPDATE_IDLE,"Update settings saved.");publish();}
   }
-  if(ready&&!countdown&&(force_check||mono-connected_since>=30000000)&&(!saved.next||now>=saved.next)){
-   force_check=false;bool ok=check_release();saved.last=now;failures=ok?0:failures+1;saved.next=ok?waveform_update_next(now,saved.hours,esp_random()):now+waveform_update_retry(failures);
+  if(ready&&!countdown&&(force_check||(mono-connected_since>=30000000&&(!saved.next||now>=saved.next)))){
+   bool ok=check_release();force_check=false;saved.last=now;failures=ok?0:failures+1;saved.next=ok?waveform_update_next(now,saved.hours,esp_random()):now+waveform_update_retry(failures);
    if(rate_limited_until>saved.next)saved.next=rate_limited_until;
    if(!persist())message(UPDATE_ERROR,"Could not save update check history.");
    publish();
