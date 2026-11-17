@@ -94,11 +94,27 @@ black, brown, grey, purple, blue, green, orange, yellow, white, red, black.
 At revision 1's J1, from pin 1 (the end nearest J4) to pin 12, they ran in
 exactly the opposite order. The P1 cable is the same.
 
-**Check before plugging in.** Plug the cable into the P4's P3 socket and
-look at the wire next to the **3V3** label: it is black. At the green board,
-that same black wire must go into **J1's pin 1**, the end of J1 nearest the
-board's left edge (the USB-C and power sockets). For the P1 cable: the wire at
-the P4's **BAT** label goes into **J2's pin 1**, the end of J2 nearest J1.
+**Check before plugging in: follow each cable, don't go by colour.** The two
+cables are identical, with the same colours, so a cable plugged into the
+wrong board socket looks just like a right one. Trace each cable by hand from
+end to end:
+
+- from the P4's **P3** socket (pins labelled 3V3, GND, IO2 … IO36) to **J1**,
+  printed "to P4 socket P3";
+- from the P4's **P1** socket (pins labelled BAT, GND, 3V3, VO4 … IO52) to
+  **J2**, printed "to P4 socket P1".
+
+The cables themselves are never modified. In the working setup (photo,
+2026-11-17) the two cables cross over each other between the P4 and the
+green board: that crossing is what puts each cable in its own socket. If the
+two cables run side by side without crossing, check them again.
+
+If the two cables are in each other's sockets at the green board, the POWER
+LED lights and the P4 starts, but the panel stays dark. Swap the two plugs at
+the green board, without changing the cables. (This happened at the first revision 2 bring-up,
+2026-11-17; after the swap the panel worked with the cables as delivered.)
+Don't leave them swapped: J1 pin 1, the board's 3.3 V input, then gets the
+P4's BAT pin.
 
 The two cables reworked by hand for revision 1 (wires moved to run pin 1 to
 pin 1) do **not** work on revision 2. Keep them with the revision 1 board.
@@ -171,6 +187,8 @@ $K pcb drc --schematic-parity electronics/led-adapter/led-adapter.kicad_pcb
   HUB75 pin. **Ordered 2026-11-14** from JLCPCB, 5 assembled boards
   (order Y4-13817483A). J6 was fitted as LCSC C3020560, the same GCT
   USB4105-GF-A, because C3025063 was out of stock.
+  **Working on hardware 2026-11-17**: P4 powered from J6 and the panel
+  lit, with both 12-pin cables as delivered.
 - **Revision 1** (ordered 2026-10-20, in use): needs the 12-pin cables
   reworked to run pin 1 to pin 1, takes 5 V for the buffers only on J4, and
   the P4 is powered separately by USB-C.
