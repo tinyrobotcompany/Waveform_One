@@ -96,7 +96,7 @@ including the page itself, answers only requests whose `Host` is that address
 under another name.
 
 Loading the page does not grant control. The QR contains a random 128-bit
-one-time pairing code. The P4 exchanges it for a RAM-only session, sets an
+one-time pairing code. The P4 exchanges it for a session, sets an
 `HttpOnly`, `SameSite=Strict` cookie, and rotates the QR immediately so the same
 code cannot be replayed. An unused code is replaced every ten minutes and the QR
 on screen is updated to match. Sessions expire after one hour, at most four
@@ -132,9 +132,13 @@ pairing/session loss and settings requests, and saves screenshots under
 `/tmp/waveform-phone-preview`. Its album image and recognition responses are
 fixtures; real paired-phone acceptance is a separate hardware check.
 
-Sessions are bound to the address they were paired on. Losing Wi-Fi, losing or
-changing the IP address, choosing another network, or rebooting revokes every
-session and pairing code. Phones must scan the new QR afterwards.
+Sessions are bound to the address they were paired on. A temporary Wi-Fi/IP loss
+suspends access and the same-address reconnect resumes unexpired sessions. Pairing
+sessions are persisted in the `waveform_remote` NVS namespace with absolute expiry;
+reboot restoration waits for time synchronization and does not extend the one-hour
+lifetime. Changing IP, choosing another network or expiry requires scanning a new QR.
+The phone retries connection failures, clears stale update values when unauthorized,
+and resumes live polling after the session becomes available again.
 
 Mutating requests must declare `Content-Type: application/x-www-form-urlencoded`
 (other types receive 415) and are parsed strictly. Malformed escapes, control characters, duplicate fields and oversized values

@@ -61,7 +61,9 @@ static void accept_trial(void)
  }else if(state!=ESP_OTA_IMG_VALID||!trial_accepted)return;
  char pending[32];memcpy(pending,saved.pending,32);saved.pending[0]=0;
  if(!persist()){memcpy(saved.pending,pending,32);return;}
- portENTER_CRITICAL(&lock);trial_validated=true;portEXIT_CRITICAL(&lock);
+ portENTER_CRITICAL(&lock);trial_validated=true;
+ snprintf(status.last_install_message,sizeof(status.last_install_message),"Version %s installed and startup checks passed.",status.installed);
+ portEXIT_CRITICAL(&lock);
 }
 bool waveform_update_validate_trial(void)
 {
@@ -203,12 +205,14 @@ static const char *write_image(const esp_partition_t *partition)
  if(!h||http!=200){if(h)esp_http_client_cleanup(h);return "Download unavailable. Current firmware is unchanged.";}
  /* Require the signed size before erasing flash. */
  if(body_length<=0||(uint64_t)body_length!=candidate.size){esp_http_client_cleanup(h);return "Download size mismatch or unknown. Current firmware is unchanged.";}
- esp_ota_handle_t ota=0;bool begun=esp_ota_begin(partition,candidate.size,&ota)==ESP_OK;
+ esp_ota_handle_t ota=0;esp_err_t begin_error=esp_ota_begin(partition,candidate.size,&ota);
+ bool begun=begin_error==ESP_OK;
  mbedtls_md_context_t hash;mbedtls_md_init(&hash);
  bool ok=begun&&mbedtls_md_setup(&hash,mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),0)==0&&mbedtls_md_starts(&hash)==0;
+ const char *failure=begun?"Firmware checksum verification failed. Current firmware is unchanged.":"Could not prepare update slot. Current firmware is unchanged. Try Install now again.";
  size_t total=0;unsigned char buffer[4096],digest[32]={0};int64_t deadline=esp_timer_get_time()+300000000;
  while(ok&&total<candidate.size){size_t wanted=candidate.size-total;if(wanted>sizeof(buffer))wanted=sizeof(buffer);
-  int n=esp_http_client_read(h,(char *)buffer,(int)wanted);if(n<=0||esp_timer_get_time()>deadline){ok=false;break;}
+  int n=esp_http_client_read(h,(char *)buffer,(int)wanted);if(n<=0||esp_timer_get_time()>deadline){failure="Download interrupted. Current firmware is unchanged. Try Install now again.";ok=false;break;}
   ok=mbedtls_md_update(&hash,buffer,(size_t)n)==0&&esp_ota_write(ota,buffer,(size_t)n)==ESP_OK;total+=(size_t)n;
   portENTER_CRITICAL(&lock);status.progress=(unsigned)(total*100/candidate.size);portEXIT_CRITICAL(&lock);
  }
@@ -223,15 +227,15 @@ static const char *write_image(const esp_partition_t *partition)
  /* esp_ota_end() only finalises and validates the written image; it never changes the boot
     selection (otadata). On any failure we return before esp_ota_set_boot_partition(),
     so the running image stays the boot image. tests/test_update_service.c pins this. */
- if(ok){ok=esp_ota_end(ota)==ESP_OK;begun=false;}
+ if(ok){ok=esp_ota_end(ota)==ESP_OK;begun=false;if(!ok)failure="Downloaded firmware failed device validation. Current firmware is unchanged.";}
  /* Single cleanup: every path after the size check reaches here. */
  if(begun)esp_ota_abort(ota);
  mbedtls_md_free(&hash);
  esp_http_client_cleanup(h);
- if(!ok)return extra_bytes?"Download contains extra bytes. Current firmware is unchanged.":"Firmware verification failed. Current firmware is unchanged.";
+ if(!ok)return extra_bytes?"Download contains extra bytes. Current firmware is unchanged.":failure;
  return NULL;
 }
-static bool install(void)
+static bool perform_install(void)
 {
  if(!candidate.version[0]){message(UPDATE_ERROR,"Check for an update first.");return false;}
  esp_ota_img_states_t state;
@@ -248,6 +252,16 @@ static bool install(void)
  if(!persist()){saved.pending[0]=0;message(UPDATE_ERROR,"Could not save activation intent. Current firmware is unchanged.");return false;}
  if(esp_ota_set_boot_partition(partition)!=ESP_OK){saved.pending[0]=0;persist();message(UPDATE_ERROR,"Could not activate update. Current firmware is unchanged.");return false;}
  message(UPDATE_RESTARTING,"Update verified. Restarting Waveform One…");vTaskDelay(pdMS_TO_TICKS(1500));esp_restart();return true;
+}
+static bool install(void)
+{
+ const bool ok=perform_install();
+ if(!ok){
+  portENTER_CRITICAL(&lock);
+  snprintf(status.last_install_message,sizeof(status.last_install_message),"%s",status.message);
+  portEXIT_CRITICAL(&lock);
+ }
+ return ok;
 }
 static void worker(void *unused)
 {
@@ -268,7 +282,7 @@ static void worker(void *unused)
   while(xQueueReceive(commands,&cmd,0)==pdTRUE){
    if(cmd.action==5)accept_trial();
    if(cmd.action==1){if(ready){force_check=true;}else message(UPDATE_ERROR,"Connect to Wi-Fi and synchronise time to check updates.");}
-   if(cmd.action==2){if(ready&&candidate.version[0]){manual_install=true;countdown=mono+60000000;message(UPDATE_AVAILABLE,"Installing in 60 seconds. Choose Postpone to cancel.");}else message(UPDATE_ERROR,"Check for an available update while connected first.");}
+   if(cmd.action==2){if(ready&&candidate.version[0]){manual_install=true;countdown=mono;force_check=false;message(UPDATE_AVAILABLE,"Starting installation now…");}else message(UPDATE_ERROR,"Check for an available update while connected first.");}
    if(cmd.action==3){countdown=0;manual_install=false;postponed_until=now+86400;saved.postponed=postponed_until;if(!persist())message(UPDATE_ERROR,"Postponed, but saving failed. This may not survive a restart.");else message(candidate.version[0]?UPDATE_AVAILABLE:UPDATE_IDLE,"Installation postponed for 24 hours.");}
    if(cmd.action==4){saved_t old=saved;saved.hours=cmd.hours;saved.automatic=cmd.automatic;saved.start=cmd.start;saved.end=cmd.end;
     saved.next=waveform_update_next(now,saved.hours,esp_random());if(!persist()){saved=old;message(UPDATE_ERROR,"Could not save update settings.");}else message(candidate.version[0]?UPDATE_AVAILABLE:UPDATE_IDLE,"Update settings saved.");publish();}
@@ -316,6 +330,7 @@ esp_err_t waveform_update_start(void)
   bool failed=state_err==ESP_OK&&(state==ESP_OTA_IMG_INVALID||state==ESP_OTA_IMG_ABORTED)&&!strcmp(image.version,saved.pending);
   if(failed)snprintf(saved.blocked,sizeof(saved.blocked),"%s",saved.pending);
   message(failed?UPDATE_ERROR:UPDATE_IDLE,failed?"Trial firmware failed; version blocked.":"Activation was interrupted; update may be retried.");
+  snprintf(status.last_install_message,sizeof(status.last_install_message),"%s",status.message);
   saved.pending[0]=0;if(!persist())return ESP_FAIL;
  }
  else message(UPDATE_IDLE,"Automatic update checks are ready.");

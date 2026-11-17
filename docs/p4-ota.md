@@ -8,18 +8,33 @@ The older [Pi updater](../pi/updater/README.md) remains for legacy devices.
 ## Owner experience
 
 Settings → Software updates and the paired phone show installed/available versions,
-status, download progress, Check now, Install and Postpone. The phone also links
+status, download progress, Check now, Install now and Postpone. The phone also links
 to release notes and configures automatic installation, the maintenance window
 and the hourly testing option. Normal checks run every 720 hours plus up to one
 hour of jitter; hourly testing adds up to five minutes. Check now is immediate
 when connected with a usable clock, subject to server rate limits.
 
 Automatic installation defaults to 03:00–04:00 in the device's existing local
-timezone (Europe/Paris). Both manual and automatic installation offer a 60-second
-countdown. Postpone cancels the countdown and persists a 24-hour delay. Settings
+timezone (Europe/Paris). Automatic installation offers a 60-second countdown.
+Install now starts immediately, including during an automatic countdown.
+Postpone cancels the countdown and persists a 24-hour delay. Settings
 and check deadlines survive restart. Failed checks retry after 15 minutes, one
 hour, then six hours; GitHub rate-limit deadlines take precedence. The existing
 application continues when offline.
+
+The installed version always identifies the running application. A local bootstrap
+build reports `0.0.0`; it must not be presented as a successful release install.
+Download/validation failures and interrupted activation/rollback are shown separately
+from check status, so Check now does not hide the last installation result during
+the current boot. A successful trial reports its version only after startup checks pass.
+
+The phone polls live device state and OTA status independently and retries temporary
+network/session failures. It clears stale OTA values if pairing is required. Valid
+one-hour pairing sessions survive same-address Wi-Fi reconnects and firmware restarts
+using NVS and absolute expiry; restoration waits for a usable clock. Expired sessions,
+address changes or an explicit network change require scanning the QR again. Pair once
+after upgrading from firmware that did not persist sessions. Unsaved update-setting
+edits are not overwritten by background polling.
 
 ## Necessary Waveform One adaptations
 
@@ -53,7 +68,9 @@ descriptor, version, size, rollback configuration and source/hash provenance.
 The `production-ota` environment's release job uses `UPDATE_SIGNING_KEY` (an
 environment secret or the existing repository secret) to sign and locally verify
 the exact manifest bytes. Configure that environment to allow main only and
-retain any desired reviewer protection. The existing publisher setup script
+require `simonholmes001` as reviewer, matching Tempo. This is a GitHub environment
+setting, not something declaring `environment:` in YAML creates. Verified and
+configured on 2026-11-17; the only allowed deployment branch is `main`. The existing publisher setup script
 provisions the repository secret without rotating an existing key.
 
 P4 assets are `waveform-p4.bin`, `waveform-p4-manifest.json`,
@@ -73,7 +90,8 @@ Failed trial versions are durably blocked until a newer release appears.
 ## One-time USB bootstrap
 
 The current factory-only layout cannot receive this OTA service by ordinary OTA.
-Stop other flash/watch/monitor processes and preserve a recovery backup first.
+Stop other flash/watch/monitor processes. A backup is optional and preserves
+device-specific data rather than the source code held in GitHub.
 Build the new rollback-enabled bootloader and partition table with the application:
 
 ```sh
@@ -108,3 +126,12 @@ These checks establish software behaviour, not electrical power-loss resilience.
 GitHub environment protection, publication, physical bootstrap and two-release
 hardware acceptance must be confirmed separately. No eFuses or hardware Secure
 Boot settings are changed. Signing-key rotation needs an explicit trust transition.
+
+## 2026-11-17 follow-up evidence
+
+Verified: the published v0.7.1 image contains descriptor version `0.7.1`, project
+`waveform_p4_display`, and matches its signed manifest hash and size. The reported
+post-install `0.0.0` is therefore not a mislabeled v0.7.1 release binary. The exact
+on-device failure remains unconfirmed without the installation/boot log; no claim
+of successful hardware installation is made by the host/browser tests. Recognition
+provider differences and transient LED behaviour are deferred to a separate task.
