@@ -35,7 +35,8 @@ endif()
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=missing-field-initializers)
 
 # Recognition-service credentials from the untracked acrcloud.local at the
-# repository root. Without it, the device uses its fallback service.
+# repository root. Without them the device silently uses its fallback service,
+# so a local build stops instead; CI sets WAVEFORM_ALLOW_NO_ACRCLOUD.
 set(acrcloud_file "${CMAKE_CURRENT_LIST_DIR}/../../../../acrcloud.local")
 set(ACRCLOUD_HOST "")
 set(ACRCLOUD_ACCESS_KEY "")
@@ -49,6 +50,12 @@ if(EXISTS "${acrcloud_file}" AND NOT DEFINED ENV{WAVEFORM_RELEASE_VERSION})
             set(ACRCLOUD_${acrcloud_name} "${CMAKE_MATCH_2}")
         endif()
     endforeach()
+endif()
+if((NOT ACRCLOUD_HOST OR NOT ACRCLOUD_ACCESS_KEY OR NOT ACRCLOUD_ACCESS_SECRET)
+   AND NOT DEFINED ENV{WAVEFORM_ALLOW_NO_ACRCLOUD})
+    message(FATAL_ERROR "ACRCloud keys missing from ${acrcloud_file}. Copy acrcloud.local "
+        "from the main checkout (needs host=, access_key= and access_secret= lines), then run "
+        "idf.py reconfigure. Set WAVEFORM_ALLOW_NO_ACRCLOUD=1 to build with the fallback service.")
 endif()
 file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/acrcloud_config.h" CONTENT
 "#pragma once
