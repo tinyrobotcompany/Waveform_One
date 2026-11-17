@@ -104,9 +104,14 @@ end to end:
 - from the P4's **P1** socket (pins labelled BAT, GND, 3V3, VO4 … IO52) to
   **J2**, printed "to P4 socket P1".
 
+The cables themselves are never modified. In the working setup (photo,
+2026-11-17) the two cables cross over each other between the P4 and the
+green board: that crossing is what puts each cable in its own socket. If the
+two cables run side by side without crossing, check them again.
+
 If the two cables are in each other's sockets at the green board, the POWER
 LED lights and the P4 starts, but the panel stays dark. Swap the two plugs at
-the green board. (This happened at the first revision 2 bring-up,
+the green board, without changing the cables. (This happened at the first revision 2 bring-up,
 2026-11-17; after the swap the panel worked with the cables as delivered.)
 Don't leave them swapped: J1 pin 1, the board's 3.3 V input, then gets the
 P4's BAT pin.
