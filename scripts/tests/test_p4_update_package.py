@@ -1,10 +1,14 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('p4_package', Path(__file__).parents[1] / 'package-p4-update.py')
 p4 = importlib.util.module_from_spec(spec)
@@ -25,6 +29,63 @@ def image(version='1.2.3'):
 
 
 class P4PackageTests(unittest.TestCase):
+    def test_ci_signing_command_creates_a_verifiable_manifest_and_cleans_up_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            # Run the actual CLI against an isolated publisher public key, never the real key.
+            script = root / 'scripts/package-p4-update.py'
+            script.parent.mkdir()
+            shutil.copyfile(Path(p4.__file__), script)
+            public = root / 'firmware/esp32/p4_display/main/ota_public.pem'
+            public.parent.mkdir(parents=True)
+            private = root / 'fixture.pem'
+            subprocess.run(['openssl', 'genpkey', '-algorithm', 'RSA', '-pkeyopt',
+                            'rsa_keygen_bits:2048', '-out', str(private)], check=True, capture_output=True)
+            subprocess.run(['openssl', 'pkey', '-in', str(private), '-pubout', '-out', str(public)],
+                           check=True, capture_output=True)
+            dist = root / 'dist'; dist.mkdir()
+            (dist / p4.IMAGE).write_bytes(image())
+            (dist / 'p4-dependencies.lock').write_text('pinned dependencies')
+            (dist / 'p4-update-build.json').write_text(json.dumps(dict(
+                commit='a'*40, version='1.2.3', sha256=p4.digest(dist / p4.IMAGE),
+                dependency_lock_sha256=p4.digest(dist / 'p4-dependencies.lock'))))
+            plan = root / 'plan.json'
+            plan.write_text(json.dumps(dict(tag='v1.2.3', commit='a'*40, notes='CLI regression test')))
+            scratch = root / 'scratch'; scratch.mkdir()
+            environment = dict(os.environ, GITHUB_SHA='a'*40, UPDATE_SIGNING_KEY=private.read_text(),
+                               TMPDIR=str(scratch), TEMP=str(scratch), TMP=str(scratch))
+            result = subprocess.run([sys.executable, str(script), 'package', '--dist', str(dist),
+                                     '--plan', str(plan)], env=environment, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn(private.read_text(), result.stdout + result.stderr)
+            self.assertEqual(list(scratch.iterdir()), [])
+            self.assertEqual({path.name for path in dist.iterdir()}, release_assets.P4_ASSETS)
+            subprocess.run(['openssl', 'dgst', '-sha256', '-verify', str(public), '-signature',
+                            str(dist / 'waveform-p4-manifest.sig'), str(dist / 'waveform-p4-manifest.json')],
+                           check=True, capture_output=True)
+
+    def test_cli_private_key_is_owner_only_and_removed_on_signing_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            plan = root / 'plan.json'; plan.write_text('{}')
+            observed = []
+
+            def fail_signing(dist, value, commit, private, public):
+                observed.append(private)
+                self.assertEqual(stat.S_IMODE(private.stat().st_mode), 0o600)
+                self.assertEqual(private.read_text(), 'test-only key content')
+                raise RuntimeError('Simulated signing failure')
+
+            with patch.object(sys, 'argv', ['package-p4-update.py', 'package', '--dist', str(root),
+                                            '--plan', str(plan)]), \
+                    patch.dict(os.environ, {'GITHUB_SHA': 'a'*40, 'UPDATE_SIGNING_KEY': 'test-only key content'}), \
+                    patch.object(p4, 'package', side_effect=fail_signing):
+                with self.assertRaisesRegex(RuntimeError, 'Simulated signing failure'):
+                    p4.main()
+            self.assertEqual(len(observed), 1)
+            self.assertFalse(observed[0].exists())
+            self.assertFalse(observed[0].parent.exists())
+
     def test_image_identity_version_and_slot_are_required(self):
         p4.validate_image(image(), '1.2.3')
         for blob, version in [(image(), '1.2.4'), (image(), '01.2.3'),
