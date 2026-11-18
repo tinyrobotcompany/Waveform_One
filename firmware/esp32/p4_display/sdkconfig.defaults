@@ -44,6 +44,8 @@ CONFIG_MBEDTLS_DEFAULT_MEM_ALLOC=y
 CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
 
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# ota_1 crosses 16 MB; both application validation and boot mapping need 32-bit addresses.
+CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH=y
 
 # Shipped hardware: the P4's own ES7210 microphone, and the P4 driving the
 # LED panel through the adapter board. The local sdkconfig is generated and

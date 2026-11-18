@@ -86,6 +86,27 @@ class P4PackageTests(unittest.TestCase):
             self.assertFalse(observed[0].exists())
             self.assertFalse(observed[0].parent.exists())
 
+    def test_record_requires_32bit_mapping_in_application_and_bootloader(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / 'build'
+            headers = [build / 'config/sdkconfig.h', build / 'bootloader/config/sdkconfig.h']
+            rollback = '#define CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE 1\n'
+            addressing = '#define CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH 1\n'
+            for header in headers:
+                header.parent.mkdir(parents=True)
+                header.write_text(rollback + addressing)
+            (build / 'waveform_p4_display.bin').write_bytes(image())
+            for header in headers:
+                with self.subTest(header=header):
+                    header.write_text(rollback)
+                    with self.assertRaisesRegex(ValueError, '32-bit flash addressing'):
+                        p4.record(build, root / 'dist', '1.2.3', 'a'*40)
+                    self.assertFalse((root / 'dist').exists())
+                    header.write_text(rollback + addressing)
+            p4.record(build, root / 'dist', '1.2.3', 'a'*40)
+            self.assertEqual((root / 'dist' / p4.IMAGE).read_bytes(), image())
+
     def test_image_identity_version_and_slot_are_required(self):
         p4.validate_image(image(), '1.2.3')
         for blob, version in [(image(), '1.2.4'), (image(), '01.2.3'),

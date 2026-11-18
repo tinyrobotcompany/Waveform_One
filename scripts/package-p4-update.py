@@ -40,6 +40,9 @@ def record(build, dist, version, commit):
     config = (build / 'config/sdkconfig.h').read_text()
     if '#define CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE 1' not in config:
         raise ValueError('Rollback must be enabled')
+    for header in [build / 'config/sdkconfig.h', build / 'bootloader/config/sdkconfig.h']:
+        if '#define CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH 1' not in header.read_text():
+            raise ValueError(f'32-bit flash addressing must be enabled in {header}')
     dist.mkdir(parents=True, exist_ok=True)
     (dist / IMAGE).write_bytes(blob)
     shutil.copyfile(APP / 'dependencies.lock', dist / 'p4-dependencies.lock')

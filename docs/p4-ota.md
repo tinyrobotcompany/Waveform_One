@@ -60,6 +60,20 @@ edits are not overwritten by background polling.
   Tempo-specific PRIM credential controls are not copied. Release builds ignore
   local `acrcloud.local` diagnostics credentials and use the normal Shazam path.
 
+## Flash addressing repair
+
+The second OTA slot starts at `0xf20000` and extends beyond 16 MB. Both the
+application and bootloader must enable `CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH`.
+A 32 MB flash-size setting alone does not enable CPU mapping above 16 MB.
+Release recording rejects builds missing this option in either generated configuration.
+
+Devices bootstrapped without it need a one-time USB update of the bootloader and
+application. An application-only OTA cannot repair the installed bootloader.
+Preserve the partition table, OTA selection data, NVS, model and storage; do not
+perform a full-chip erase. Confirm the active slot before writing the application.
+The characteristic failure is `flash_mmap: ... out of range for 24bit flash mapping`
+followed by `Downloaded firmware failed device validation` after downloading.
+
 ## Publication
 
 Reviewed main changes with a new changeset pass the existing validation gates.
