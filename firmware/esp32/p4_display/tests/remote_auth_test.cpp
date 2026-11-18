@@ -89,6 +89,33 @@ int main()
     assert(auth.refresh_pairing(2 + kPairingLifetimeUs));
     assert(pairing_code(auth) != waiting_code);
 
+    // Radio interruptions suspend access without losing pairing at the same IP.
+    auth.suspend();
+    assert(!auth.authorize(kHost, kOrigin, cookie(session), csrf, 3));
+    auth.connect(kHost, 4);
+    assert(auth.authorize(kHost, kOrigin, cookie(session), csrf, 5));
+
+    // A reboot restores only unexpired sessions at the same address after clock sync.
+    StoredSessions stored{};
+    constexpr int64_t epoch = 1800000000;
+    assert(!auth.export_sessions(stored, 5, 0));
+    assert(auth.export_sessions(stored, 5, epoch));
+    RemoteAuth rebooted(deterministic_random);
+    rebooted.connect(kHost, 100);
+    assert(!rebooted.restore_sessions(stored, 100, 0));
+    assert(rebooted.restore_sessions(stored, 100, epoch + 60));
+    assert(rebooted.authorize(kHost, kOrigin, cookie(session), csrf, 101));
+    assert(!rebooted.authorize(kHost, kOrigin, cookie(session), "forged", 101));
+    assert(!rebooted.authorize(kHost, "http://evil.example", cookie(session), csrf, 101));
+    assert(!rebooted.authorize(kHost, kOrigin, cookie(session), csrf, kSessionLifetimeUs));
+    rebooted.disconnect();rebooted.connect("192.168.1.21", 100);
+    assert(!rebooted.restore_sessions(stored, 100, epoch + 60));
+    rebooted.disconnect();rebooted.connect(kHost, 100);
+    assert(rebooted.restore_sessions(stored, 100, epoch + 3601));
+    assert(!rebooted.authorize(kHost, kOrigin, cookie(session), csrf, 101));
+    stored.entries[0].id[0] = '!';
+    assert(!rebooted.restore_sessions(stored, 100, epoch + 60));
+
     // Losing Wi-Fi revokes every session and code.
     assert(auth.authorize(kHost, kOrigin, cookie(session), csrf, 3));
     const std::string before_drop = pairing_code(auth);

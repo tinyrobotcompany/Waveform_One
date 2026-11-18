@@ -44,6 +44,37 @@ std::atomic_bool credentials_rejected{false};
 std::mutex auth_mutex;
 char acquired_host[16]{}; // guarded by auth_mutex
 remote_auth::RemoteAuth auth{esp_fill_random};
+// Guarded by auth_mutex. Only pairing changes write NVS, never status polling.
+bool sessions_restored = false;
+bool sessions_need_save = false;
+
+void restore_phone_sessions()
+{
+    const int64_t epoch = std::time(nullptr);
+    if (sessions_restored || !auth.connected() || epoch < 1700000000) return;
+    nvs_handle_t handle;
+    if (nvs_open("waveform_remote", NVS_READONLY, &handle) == ESP_OK) {
+        remote_auth::StoredSessions stored{};
+        size_t size = sizeof(stored);
+        if (nvs_get_blob(handle, "sessions", &stored, &size) == ESP_OK && size == sizeof(stored))
+            auth.restore_sessions(stored, esp_timer_get_time(), epoch);
+        nvs_close(handle);
+    }
+    sessions_restored = true;
+}
+
+void save_phone_sessions()
+{
+    remote_auth::StoredSessions stored{};
+    if (!sessions_need_save || !auth.export_sessions(stored, esp_timer_get_time(), std::time(nullptr))) return;
+    nvs_handle_t handle;
+    if (nvs_open("waveform_remote", NVS_READWRITE, &handle) != ESP_OK) return;
+    const bool saved = nvs_set_blob(handle, "sessions", &stored, sizeof(stored)) == ESP_OK && nvs_commit(handle) == ESP_OK;
+    nvs_close(handle);
+    if (saved) sessions_need_save = false;
+    else ESP_LOGW(kTag, "Phone pairing persistence failed; will retry");
+}
+
 RemoteState remote_state;
 std::atomic_bool wifi_ready{false};
 std::atomic_bool update_local_ready{false};
@@ -262,7 +293,9 @@ void bind_remote()
 {
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        const bool address_changed = !auth.matches_address(acquired_host);
         auth.connect(acquired_host, esp_timer_get_time());
+        if (sessions_restored && address_changed) { sessions_need_save = true; save_phone_sessions(); }
     }
     publish_remote();
 }
@@ -271,6 +304,20 @@ void revoke_remote()
 {
     const std::lock_guard<std::mutex> lock(auth_mutex);
     auth.disconnect();
+    sessions_restored = true;
+    sessions_need_save = false;
+    nvs_handle_t handle;
+    if (nvs_open("waveform_remote", NVS_READWRITE, &handle) == ESP_OK) {
+        nvs_erase_key(handle, "sessions");
+        nvs_commit(handle);
+        nvs_close(handle);
+    }
+}
+
+void suspend_remote()
+{
+    const std::lock_guard<std::mutex> lock(auth_mutex);
+    auth.suspend();
 }
 
 bool require_authorized(httpd_req_t *request)
@@ -280,6 +327,7 @@ bool require_authorized(httpd_req_t *request)
     bool valid = false;
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        restore_phone_sessions();
         valid = auth.authorize(headers.host, headers.origin, headers.cookies, headers.csrf,
                                esp_timer_get_time());
     }
@@ -296,6 +344,7 @@ esp_err_t session_handler(httpd_req_t *request)
     bool valid = false;
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        restore_phone_sessions();
         valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
@@ -311,6 +360,7 @@ esp_err_t state_handler(httpd_req_t *request)
     bool valid = false;
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        restore_phone_sessions();
         valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
@@ -330,6 +380,7 @@ esp_err_t update_status_handler(httpd_req_t *request)
     bool valid = false;
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        restore_phone_sessions();
         valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
@@ -343,6 +394,7 @@ esp_err_t update_status_handler(httpd_req_t *request)
     cJSON_AddStringToObject(j, "installed", value.installed);
     cJSON_AddStringToObject(j, "available", value.available);
     cJSON_AddStringToObject(j, "message", value.message);
+    cJSON_AddStringToObject(j, "last_install_message", value.last_install_message);
     cJSON_AddStringToObject(j, "notes_url", value.notes_url);
     cJSON_AddNumberToObject(j, "progress", value.progress);
     cJSON_AddNumberToObject(j, "countdown_seconds", value.countdown_seconds);
@@ -377,7 +429,9 @@ esp_err_t pair_handler(httpd_req_t *request)
         httpd_req_get_url_query_str(request, query, sizeof(query)) == ESP_OK &&
         httpd_query_key_value(query, "code", presented, sizeof(presented)) == ESP_OK) {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        restore_phone_sessions();
         paired = auth.pair(headers.host, presented, esp_timer_get_time(), session_id);
+        if (paired) { sessions_restored = true; sessions_need_save = true; save_phone_sessions(); }
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
     httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
@@ -514,8 +568,8 @@ void wifi_event(void *, esp_event_base_t base, int32_t event_id, void *event_dat
         if (attempting_home.load() || maintaining_home.load()) esp_wifi_connect();
     } else if (base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         if (maintaining_home.load()) {
-            // Sessions are bound to the address just lost; the maintenance loop rejoins.
-            revoke_remote();
+            // Suspend access while Wi-Fi rejoins; retain pairing at the same address.
+            suspend_remote();
             publish_remote();
         } else if (attempting_home.load()) {
             const auto *event = static_cast<wifi_event_sta_disconnected_t *>(event_data);
@@ -533,7 +587,7 @@ void wifi_event(void *, esp_event_base_t base, int32_t event_id, void *event_dat
         }
     } else if (base == IP_EVENT && event_id == IP_EVENT_STA_LOST_IP) {
         if (maintaining_home.load()) {
-            revoke_remote();
+            suspend_remote();
             publish_remote();
         }
     } else if (base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -748,6 +802,8 @@ void network_task(void *)
         bool bound = false;
         {
             const std::lock_guard<std::mutex> lock(auth_mutex);
+            restore_phone_sessions();
+            save_phone_sessions();
             rotated = auth.refresh_pairing(esp_timer_get_time());
             bound = auth.connected();
         }

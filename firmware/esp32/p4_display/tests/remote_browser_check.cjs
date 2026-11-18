@@ -14,7 +14,7 @@ const standard={background:'#080d0a',panel:'#121a13',line:'#374838',text:'#edf3e
 const albumPalette={background:'#f7dc72',panel:'#e3c85e',line:'#ba8826',text:'#411a0b',secondary:'#8f3003',tertiary:'#6c4622',quaternary:'#8f3003',accent:'#bd4716',search:'#411a0b',light:true,
     field:Array.from({length:40},(_,i)=>i<20?'#e6c062':'#eed884')};
 let state = { appearance:'album', status: 'capturing', track: null, name: 'Simon', brightness: 65, style: 'classic' };
-let unauthorized = false, failing = false;
+let unauthorized = false, failing = false, sessionFailing = false;
 const posts = [];
 let update = {state:2,installed:'0.0.0',available:'1.2.3',message:'Update available',progress:0,countdown_seconds:0,interval_hours:720,automatic:true,window_start:180,window_end:240,next_check:1800000000,notes_url:'https://github.com/tinyrobotcompany/Waveform_One/releases/tag/v1.2.3'};
 const server = http.createServer((req, res) => {
@@ -30,7 +30,7 @@ const server = http.createServer((req, res) => {
     }
     const paired = req.headers.cookie?.includes('wf1_session=fixture');
     if (req.url === '/api/session') {
-        res.writeHead(paired ? 200 : 401);
+        res.writeHead(sessionFailing ? 503 : paired && !unauthorized ? 200 : 401);
         return res.end(paired ? 'fixture-csrf' : 'Pairing required');
     }
     if (req.url === '/api/state') {
@@ -52,8 +52,9 @@ const server = http.createServer((req, res) => {
             if (req.url === '/api/name') state.name = form.get('name');
             if (req.url === '/api/style') state.style = form.get('style');
             if (req.url === '/api/appearance') state.appearance = form.get('value');
-            if(req.url==='/api/updates/action' && form.get('action')==='install') update={...update,countdown_seconds:60,message:'Installing in 60 seconds. Choose Postpone to cancel.'};
-            if(req.url==='/api/updates/action' && form.get('action')==='postpone') update={...update,countdown_seconds:0,message:'Installation postponed for 24 hours.'};
+            if(req.url==='/api/updates/action' && form.get('action')==='install') update={...update,state:3,countdown_seconds:0,message:'Downloading update… Keep Waveform One powered on.'};
+            if(req.url==='/api/updates/action' && form.get('action')==='postpone') update={...update,state:2,countdown_seconds:0,message:'Installation postponed for 24 hours.'};
+            if(req.url==='/api/updates/config') { const [hours,automatic,start,end]=form.get('value').split(',').map(Number); update={...update,interval_hours:hours,automatic:!!automatic,window_start:start,window_end:end}; }
             res.end('OK');
         });
         return;
@@ -126,8 +127,15 @@ const server = http.createServer((req, res) => {
         assert.equal(await page.locator('#update-hours').inputValue(),'720');
         assert.equal(await page.locator('#update-notes').getAttribute('href'), update.notes_url);
         await page.locator('[data-update=install]').click();
-        await page.getByText('Installing in 60 seconds. Choose Postpone to cancel.',{exact:true}).waitFor();
+        await page.getByText('Downloading update… Keep Waveform One powered on.',{exact:true}).waitFor();
         assert(await page.locator('[data-update=install]').isDisabled());
+        // A failed install remains visible even when a new check reports availability.
+        update={...update,state:2,last_install_message:'Download interrupted. Current firmware is unchanged.',message:'Update available'};
+        await page.getByText(update.last_install_message,{exact:true}).waitFor();
+        // Device-originated scheduled countdown is visible without a phone action.
+        update={...update,state:2,countdown_seconds:51,message:'Installing in 51 seconds. Choose Postpone to cancel.'};
+        await page.getByText(update.message,{exact:true}).waitFor();
+        assert(!await page.locator('[data-update=install]').isDisabled());
         await page.locator('[data-update=postpone]').click();
         await page.getByText('Installation postponed for 24 hours.',{exact:true}).waitFor();
         await page.locator('#update-hours').selectOption('1');
@@ -152,6 +160,9 @@ const server = http.createServer((req, res) => {
         await page.getByRole('heading', { name: track.title }).waitFor();
         assert(await page.locator('#placeholder').isVisible());
         failing = true;
+        update={...update,installed:'1.2.3',available:'',state:0,message:'Waveform One is up to date.'};
+        await page.waitForFunction(()=>document.querySelector('#update-version').textContent==='Installed: 1.2.3');
+        assert.equal(await page.locator('#update-message').textContent(),'Waveform One is up to date.');
         await page.getByText('Reconnecting to Waveform One…').waitFor();
         assert.equal(await page.locator('#title').textContent(), track.title);
         failing = false;
@@ -161,6 +172,18 @@ const server = http.createServer((req, res) => {
         unauthorized = true;
         await page.getByText('Scan the QR code on Waveform One to connect.').first().waitFor();
         assert(await page.locator('#save-name').isDisabled());
+        assert.equal(await page.locator('#update-version').textContent(),'');
+        assert.equal(await page.locator('#update-next').textContent(),'');
+        unauthorized=false;
+        await page.getByRole('heading',{name:'Listening for music'}).waitFor({timeout:15000});
+        await page.waitForFunction(()=>!document.querySelector('#controls').disabled);
+        await page.waitForFunction(()=>document.querySelector('#update-version').textContent==='Installed: 1.2.3');
+        // A temporary /api/session outage on page load must recover without a reload.
+        sessionFailing=true;await page.reload();
+        await page.getByText('Reconnecting to Waveform One…').waitFor();
+        sessionFailing=false;
+        await page.getByRole('heading',{name:'Listening for music'}).waitFor({timeout:15000});
+        await page.waitForFunction(()=>document.querySelector('#update-version').textContent==='Installed: 1.2.3');
         assert.deepEqual(errors, []);
         console.log('PASS: native phone album-first layouts, artwork fallback, search/check retention, settings/CSRF, safe text and session loss');
         console.log('Screenshots: ' + output);

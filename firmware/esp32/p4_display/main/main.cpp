@@ -646,7 +646,8 @@ void remote_set_wifi_configuration(WifiConfigurationState state)
 }
 
 lv_obj_t *updates_panel = nullptr, *updates_status = nullptr, *updates_version = nullptr;
-lv_obj_t *updates_progress = nullptr;
+lv_obj_t *updates_progress = nullptr, *updates_result = nullptr;
+lv_obj_t *update_buttons[3]{};
 int64_t update_feedback_until = 0;
 std::atomic<unsigned> ui_health_ticks{0};
 
@@ -679,7 +680,16 @@ void refresh_updates(lv_timer_t *)
         value.installed[0] ? value.installed : "Starting", value.available[0] ? value.available : "None");
     if (esp_timer_get_time() >= update_feedback_until)
         lv_label_set_text(updates_status, value.message);
+    lv_label_set_text(updates_result, value.last_install_message);
     lv_bar_set_value(updates_progress, value.progress, LV_ANIM_OFF);
+    const bool busy = value.state == UPDATE_CHECKING || value.state == UPDATE_DOWNLOADING
+        || value.state == UPDATE_VERIFYING || value.state == UPDATE_RESTARTING;
+    for (unsigned i = 0; i < 3; ++i) {
+        const bool disabled = busy || (i == 0 && value.countdown_seconds > 0)
+            || (i == 1 && !value.available[0]);
+        if (disabled) lv_obj_add_state(update_buttons[i], LV_STATE_DISABLED);
+        else lv_obj_remove_state(update_buttons[i], LV_STATE_DISABLED);
+    }
 }
 
 void on_update_action(lv_event_t *event)
@@ -694,6 +704,12 @@ void create_updates_screen(lv_obj_t *screen)
 {
     auto *open = lv_button_create(settings_panel);
     lv_obj_set_size(open, 220, 52);
+    lv_obj_set_style_bg_opa(open, LV_OPA_TRANSP, LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(open, kLine, LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(open, 1, LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(open, 0, LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(open, kAccent, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(open, LV_OPA_COVER, LV_STATE_PRESSED);
     lv_obj_align(open, LV_ALIGN_TOP_RIGHT, -180, 26);
     lv_obj_center(make_label(open, "Software updates", &lv_font_montserrat_16, kForeground));
     lv_obj_add_event_cb(open, [](lv_event_t *) { lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
@@ -719,17 +735,21 @@ void create_updates_screen(lv_obj_t *screen)
     updates_progress = lv_bar_create(updates_panel);
     lv_obj_set_size(updates_progress, 900, 20);
     lv_obj_align(updates_progress, LV_ALIGN_TOP_LEFT, 32, 290);
-    const char *labels[] = {"Check now", "Install update", "Postpone 24 hours"};
+    const char *labels[] = {"Check now", "Install now", "Postpone 24 hours"};
     static const char *actions[] = {"check", "install", "postpone"};
     for (unsigned i = 0; i < 3; ++i) {
-        auto *button = lv_button_create(updates_panel);
+        auto *button = update_buttons[i] = lv_button_create(updates_panel);
         lv_obj_set_size(button, 280, 60);
         lv_obj_align(button, LV_ALIGN_TOP_LEFT, 32 + 310 * i, 350);
         lv_obj_center(make_label(button, labels[i], &lv_font_montserrat_20, kForeground));
         lv_obj_add_event_cb(button, on_update_action, LV_EVENT_CLICKED, const_cast<char *>(actions[i]));
     }
+    updates_result = make_label(updates_panel, "", &lv_font_montserrat_16, kMuted);
+    lv_obj_set_width(updates_result, 900);
+    lv_label_set_long_mode(updates_result, LV_LABEL_LONG_WRAP);
+    lv_obj_align(updates_result, LV_ALIGN_TOP_LEFT, 32, 425);
     auto *help = make_label(updates_panel, "Keep power connected while installing.\nRelease notes and schedule settings are on your paired phone.", &lv_font_montserrat_20, kMuted);
-    lv_obj_align(help, LV_ALIGN_TOP_LEFT, 32, 450);
+    lv_obj_align(help, LV_ALIGN_TOP_LEFT, 32, 490);
     lv_obj_add_flag(updates_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(refresh_updates, 1000, nullptr);
 }

@@ -12,7 +12,7 @@ typedef struct {
  bool automatic;
  unsigned interval_hours, window_start, window_end, progress, countdown_seconds;
  int64_t last_check, next_check;
- char installed[32], available[32], message[160], notes_url[160];
+ char installed[32], available[32], message[160], notes_url[160], last_install_message[160];
 } waveform_update_status_t;
 typedef struct {
  char version[32], sha256[65], url[256];

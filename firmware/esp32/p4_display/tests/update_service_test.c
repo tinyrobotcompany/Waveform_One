@@ -48,7 +48,7 @@ int xQueueSend(QueueHandle_t handle,const void *v,unsigned ticks){(void)handle;(
 int xQueueReceive(QueueHandle_t handle,void *v,unsigned ticks){(void)handle;(void)ticks;if(!q.n)return 0;*(command_t *)v=q.item[0];memmove(q.item,q.item+1,--q.n*sizeof(command_t));return pdTRUE;}
 void vQueueDelete(QueueHandle_t h){(void)h;}
 int xTaskCreate(void (*fn)(void *),const char *name,unsigned stack,void *arg,unsigned priority,void *handle){(void)fn;(void)arg;(void)handle;assert(!strcmp(name,"ota")&&stack==16384&&priority==1);return task_fail?0:pdPASS;}
-void vTaskDelay(unsigned ticks){mono+=(int64_t)ticks*1000;test_clock+=ticks/1000;if(stop_loop&&++loops>=stop_loop)longjmp(done,1);}
+void vTaskDelay(unsigned ticks){mono+=(int64_t)ticks*1000;test_clock+=ticks/1000;if(stop_loop&&ticks==1000&&++loops>=stop_loop)longjmp(done,1);}
 const esp_partition_t *esp_ota_get_running_partition(void){return &part;}
 const esp_partition_t *esp_ota_get_next_update_partition(const void *p){(void)p;return no_partition?NULL:&part;}
 int esp_ota_get_state_partition(const esp_partition_t *p,esp_ota_img_states_t *s){(void)p;*s=trial_aborted?ESP_OTA_IMG_ABORTED:active_pending?ESP_OTA_IMG_PENDING_VERIFY:ESP_OTA_IMG_VALID;return 0;}
@@ -157,7 +157,18 @@ int main(void){
 truncated=true;assert(!install());truncated=false;
  candidate.sha256[0]='1';assert(!install());candidate.sha256[0]='0';commit_error=-1;assert(!install());commit_error=0;boot_error=-1;assert(!install()&&!persisted.pending[0]);boot_error=0;
  assert(activated==0);assert(install()&&activated==1&&restarted==1);
- assert(waveform_update_request("install"));run(63);assert(restarted==2);
+ /* Manual installation starts in this worker turn, outside the automatic window. */
+ assert(waveform_update_request("install"));run(1);assert(restarted==2&&status.countdown_seconds==0);
+ /* Automatic installs retain the cancellation countdown; Install now skips the remainder. */
+ saved.automatic=true;saved.start=0;saved.end=1439;saved.postponed=0;
+ run(1);assert(status.countdown_seconds==60&&restarted==2);
+ assert(waveform_update_request("install"));run(1);assert(restarted==3&&status.countdown_seconds==0);
+ saved.automatic=false;
+ /* A failed install must report failure and keep the running version unchanged. */
+ read_failed=true;assert(waveform_update_request("install"));run(1);
+ assert(status.state==UPDATE_ERROR&&restarted==3&&!strcmp(status.installed,"0.9.0"));read_failed=false;
+ assert(strstr(status.last_install_message,"Download interrupted"));
+ assert(check_release());assert(strstr(status.last_install_message,"Download interrupted"));
  /* Failed trial survives reboot. */
  commands=NULL;read_error=0;strcpy(desc.version,"0.9.1");active_pending=true;assert(waveform_update_start()==0);run(2);assert(!strcmp(persisted.pending,"0.9.1"));
  commands=NULL;strcpy(desc.version,"0.9.0");active_pending=false;trial_aborted=true;assert(waveform_update_start()==0);trial_aborted=false;assert(!strcmp(persisted.blocked,"0.9.1")&&!persisted.pending[0]);assert(check_release()&&!candidate.version[0]);
@@ -167,7 +178,7 @@ truncated=true;assert(!install());truncated=false;
  read_error=-1;assert(!waveform_update_validate_trial());run(1);assert(!accepted&&active_pending);read_error=0;
  accept_error=-1;assert(!waveform_update_validate_trial());run(1);assert(!accepted&&active_pending);accept_error=0;
  cleanup_fails=true;assert(!waveform_update_validate_trial());run(1);assert(!trial_validated&&accepted==1&&!active_pending&&persisted.pending[0]);
- cleanup_fails=false;commit_error=0;assert(!waveform_update_validate_trial());run(1);assert(waveform_update_validate_trial()&&accepted==1&&!persisted.pending[0]);
+ cleanup_fails=false;commit_error=0;assert(!waveform_update_validate_trial());run(1);assert(waveform_update_validate_trial()&&accepted==1&&!persisted.pending[0]);assert(strstr(status.last_install_message,"Version 0.9.1 installed"));
  /* Retry marker cleanup. */
  commands=NULL;strcpy(persisted.pending,"0.9.1");strcpy(desc.version,"0.9.1");active_pending=true;assert(waveform_update_start()==0);run(1);active_pending=false;commit_error=-1;run(1);assert(persisted.pending[0]);commit_error=0;run(1);assert(!persisted.pending[0]);strcpy(desc.version,"0.9.0");
  commands=NULL;strcpy(persisted.pending,"0.9.1");persisted.blocked[0]=0;assert(waveform_update_start()==0);assert(!persisted.blocked[0]&&!persisted.pending[0]);
