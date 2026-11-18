@@ -61,7 +61,9 @@ def privacy_notice(root, head):
     readme = git(root, 'show', f'{head}:README.md')
     match = re.search(r'<!-- privacy-notice:start -->\s*(.+?)\s*<!-- privacy-notice:end -->',
                       readme, re.DOTALL)
-    if not match or not match[1].strip():
+    if (readme.count('<!-- privacy-notice:start -->') != 1 or
+            readme.count('<!-- privacy-notice:end -->') != 1 or
+            not match or not match[1].strip()):
         raise ValueError('README must contain the microphone privacy notice for every release')
     return match[1].strip()
 

@@ -61,6 +61,9 @@ class GitReleaseTests(unittest.TestCase):
         self.assertIn('Initial firmware.', plan['notes'])
         self.assertIn('Waveform One does not save audio recordings on the device.', plan['notes'])
         self.assertIn('Clips may include nearby voices', plan['notes'])
+        notice = release.privacy_notice(self.root, plan['commit'])
+        self.assertTrue(plan['notes'].endswith(notice + '\n'))
+        self.assertEqual(plan['notes'].count(notice), 1)
         self.git('tag', plan['tag'])
         self.assertEqual(release.plan(self.root), plan)
         self.commit('README.md', 'Docs only\n' + self.notice_readme)
@@ -70,6 +73,7 @@ class GitReleaseTests(unittest.TestCase):
         self.assertEqual(plan['tag'], 'v0.1.1')
         self.assertNotIn('Initial firmware.', plan['notes'])
         self.assertEqual(plan['notes'].count('## Microphone and privacy'), 1)
+        self.assertTrue(plan['notes'].endswith(notice + '\n'))
 
     def test_release_rejects_missing_notice_and_uses_committed_notice(self):
         self.commit('.changeset/initial.md', '---\n"waveform-one": patch\n---\nFix.\n')
@@ -79,6 +83,16 @@ class GitReleaseTests(unittest.TestCase):
         self.commit('README.md', 'Committed removal of notice')
         with self.assertRaisesRegex(ValueError, 'privacy notice'):
             release.plan(self.root)
+
+    def test_release_rejects_empty_duplicate_or_unclosed_notice(self):
+        self.commit('.changeset/initial.md', '---\n"waveform-one": patch\n---\nFix.\n')
+        for notice in ['<!-- privacy-notice:start -->\n<!-- privacy-notice:end -->',
+                       self.notice_readme + self.notice_readme,
+                       self.notice_readme.replace('<!-- privacy-notice:end -->', '')]:
+            with self.subTest(notice=notice[:60]):
+                self.commit('README.md', notice)
+                with self.assertRaisesRegex(ValueError, 'privacy notice'):
+                    release.plan(self.root)
 
     def test_firmware_change_needs_new_changeset(self):
         self.commit('README.md', 'Initial')
