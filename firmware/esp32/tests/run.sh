@@ -9,6 +9,15 @@ sh "$esp_dir/mic_test/tests/run.sh"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/tests/credential_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/recognition_credentials_test.cpp" \
+    "$esp_dir/p4_display/main/recognition_credentials.cpp" -o "$build_dir/p4_credentials"
+"$build_dir/p4_credentials"
+printf '%s\n' 'PASS: ACRCloud provisioning, OTA persistence, corruption and storage failures'
+
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$esp_dir/led_test/tests/patterns_test.cpp" -o "$build_dir/patterns"
 "$build_dir/patterns"
 printf '%s\n' 'PASS: LED diagnostic patterns'
@@ -99,6 +108,10 @@ printf '%s\n' 'PASS: native classifier features, PCM bounds and bounded level no
     "$esp_dir/p4_display/tests/audio_presence_test.cpp" -o "$build_dir/p4_presence"
 "$build_dir/p4_presence"
 printf '%s\n' 'PASS: audio presence independent of lookup, absolute positions and stale-result invalidation'
+
+# Reject oversized production FFT frames independently of sanitizer/test overhead.
+"${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror -Wframe-larger-than=4096 \
+    -c "$esp_dir/p4_display/main/fingerprint.cpp" -o "$build_dir/p4_fingerprint_stack.o"
 
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \

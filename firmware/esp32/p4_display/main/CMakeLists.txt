@@ -1,6 +1,6 @@
 idf_component_register(
     SRCS "update_service.c" "update_policy.c" "main.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
-         "recognition.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
+         "recognition.cpp" "recognition_credentials.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
          "music_detector.cpp" "../../common/music_features.cpp"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
          "fonts/waveform_font_24.c" "fonts/waveform_font_32.c"
@@ -35,8 +35,8 @@ endif()
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=missing-field-initializers)
 
 # Recognition-service credentials from the untracked acrcloud.local at the
-# repository root. Without them the device silently uses its fallback service,
-# so a local build stops instead; CI sets WAVEFORM_ALLOW_NO_ACRCLOUD.
+# repository root for one-time provisioning. OTA builds load credentials from
+# device NVS; public artifacts must never embed the local secrets.
 set(acrcloud_file "${CMAKE_CURRENT_LIST_DIR}/../../../../acrcloud.local")
 set(ACRCLOUD_HOST "")
 set(ACRCLOUD_ACCESS_KEY "")
@@ -52,10 +52,10 @@ if(EXISTS "${acrcloud_file}" AND NOT DEFINED ENV{WAVEFORM_RELEASE_VERSION})
     endforeach()
 endif()
 if((NOT ACRCLOUD_HOST OR NOT ACRCLOUD_ACCESS_KEY OR NOT ACRCLOUD_ACCESS_SECRET)
-   AND NOT DEFINED ENV{WAVEFORM_ALLOW_NO_ACRCLOUD})
+   AND NOT DEFINED ENV{WAVEFORM_DEVICE_ACRCLOUD})
     message(FATAL_ERROR "ACRCloud keys missing from ${acrcloud_file}. Copy acrcloud.local "
         "from the main checkout (needs host=, access_key= and access_secret= lines), then run "
-        "idf.py reconfigure. Set WAVEFORM_ALLOW_NO_ACRCLOUD=1 to build with the fallback service.")
+        "idf.py reconfigure. Set WAVEFORM_DEVICE_ACRCLOUD=1 only to build firmware that loads provisioned device credentials.")
 endif()
 file(CONFIGURE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/acrcloud_config.h" CONTENT
 "#pragma once
@@ -68,3 +68,6 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}
 
 # Audit the experimental task stack before any hardware trial.
 set_source_files_properties(p4_led.cpp PROPERTIES COMPILE_OPTIONS "-fstack-usage")
+
+# Shazam startup calls the FFT self-test on the recognition task stack.
+set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-O3;-Werror=frame-larger-than=4096;-fstack-usage")

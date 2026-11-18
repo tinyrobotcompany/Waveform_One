@@ -58,7 +58,37 @@ edits are not overwritten by background polling.
   prerequisites for accepting local startup.
 - Existing paired-session, Host/Origin and CSRF checks protect the phone actions.
   Tempo-specific PRIM credential controls are not copied. Release builds ignore
-  local `acrcloud.local` diagnostics credentials and use the normal Shazam path.
+  embedded credentials and load the existing ACRCloud configuration from device NVS.
+  Recognition never falls back to Shazam.
+
+## ACRCloud credentials across updates
+
+A local USB provisioning build reads the existing untracked `acrcloud.local` and
+saves one versioned ACRCloud record to NVS. Repeated boots do not rewrite an
+unchanged record. Public release builds contain no account credentials: they use
+the provisioned record, which ordinary application OTA updates preserve.
+`WAVEFORM_DEVICE_ACRCLOUD=1` allows a build without local credentials for this
+purpose; it does not enable another recognition provider.
+
+Devices flashed before this persistence support need one USB provisioning build
+with their existing credentials. A release without a valid record reports
+“ACRCloud configuration required”; it cannot silently switch providers. Trial
+acceptance requires valid persisted credentials, without requiring internet or a
+successful recognition request. Storage failures never erase NVS.
+
+## Flash addressing repair
+
+The second OTA slot starts at `0xf20000` and extends beyond 16 MB. Both the
+application and bootloader must enable `CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH`.
+A 32 MB flash-size setting alone does not enable CPU mapping above 16 MB.
+Release recording rejects builds missing this option in either generated configuration.
+
+Devices bootstrapped without it need a one-time USB update of the bootloader and
+application. An application-only OTA cannot repair the installed bootloader.
+Preserve the partition table, OTA selection data, NVS, model and storage; do not
+perform a full-chip erase. Confirm the active slot before writing the application.
+The characteristic failure is `flash_mmap: ... out of range for 24bit flash mapping`
+followed by `Downloaded firmware failed device validation` after downloading.
 
 ## Publication
 

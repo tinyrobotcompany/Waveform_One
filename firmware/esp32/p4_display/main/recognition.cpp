@@ -10,6 +10,7 @@
 #include "recognition_delivery.h"
 #include "acrcloud.h"
 #include "acrcloud_config.h"
+#include "recognition_credentials.h"
 #include "album_resolver.h"
 #include "album_cache.h"
 #include "album_cache_retry.h"
@@ -161,7 +162,9 @@ Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track, 
     return Lookup::Failed;
 }
 
-constexpr acrcloud::Credentials kAcrcloud{ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET};
+recognition_credentials::Record acrcloud_record;
+acrcloud::Credentials kAcrcloud;
+std::atomic_bool credentials_persisted{false};
 
 #if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
 void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection)
@@ -535,8 +538,8 @@ void presence_task(void *)
 
 void recognition_task(void *)
 {
-    const bool paid = kAcrcloud.valid();
-    ESP_LOGI(kTag, "Recognition service=%s", paid ? "acrcloud" : "shazam");
+    constexpr bool paid = true; // Waveform One uses ACRCloud only.
+    ESP_LOGI(kTag, "Recognition service=acrcloud");
     // ACRCloud uses PCM directly. No Shazam FFT, peak gate or fingerprint heap.
     Heap<fingerprint::Analyzer> analyzer;
     if (!paid) {
@@ -780,6 +783,19 @@ void recognition_start(RecognitionCallback callback)
         std::lock_guard<std::mutex> lock(session_mutex);
         show = callback;
     }
+    bool persisted = false;
+    const bool configured = recognition_credentials::load(acrcloud_record,
+        ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET, persisted);
+    credentials_persisted.store(configured && persisted);
+    if (!configured) {
+        ESP_LOGE(kTag, "ACRCloud configuration missing or invalid; recognition disabled");
+        std::lock_guard<std::mutex> lock(session_mutex);
+        clear_display_locked(RecognitionStatus::ConfigurationRequired);
+        return;
+    }
+    kAcrcloud = {acrcloud_record.host, acrcloud_record.key, acrcloud_record.secret};
+    if (persisted) ESP_LOGI(kTag, "ACRCloud device credentials loaded and persisted");
+    else ESP_LOGE(kTag, "ACRCloud persistence failed; OTA trial acceptance disabled");
     recognition_input_start([](bool available) {
         std::lock_guard<std::mutex> lock(session_mutex);
         if (sessions.set_controller(available)) clear_display_locked(RecognitionStatus::Waiting);
@@ -792,6 +808,8 @@ void recognition_start(RecognitionCallback callback)
         nullptr, 4, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
 }
 
+bool recognition_configuration_ready() { return credentials_persisted.load(); }
+
 bool recognition_sound_heard() { return sound_heard.load(); }
 bool recognition_music_heard() { return music_heard.load(); }
 
@@ -799,7 +817,7 @@ void recognition_set_network(bool available, const char *address)
 {
     std::lock_guard<std::mutex> lock(session_mutex);
     if (!sessions.set_network(available, address != nullptr ? address : "")) return;
-    clear_display_locked(RecognitionStatus::Waiting);
+    clear_display_locked(kAcrcloud.valid() ? RecognitionStatus::Waiting : RecognitionStatus::ConfigurationRequired);
 }
 
 void recognition_set_controller(bool available)
@@ -808,5 +826,5 @@ void recognition_set_controller(bool available)
     if (recognition_input_is_local()) return;
     std::lock_guard<std::mutex> lock(session_mutex);
     if (!sessions.set_controller(available)) return;
-    clear_display_locked(RecognitionStatus::Waiting);
+    clear_display_locked(kAcrcloud.valid() ? RecognitionStatus::Waiting : RecognitionStatus::ConfigurationRequired);
 }
