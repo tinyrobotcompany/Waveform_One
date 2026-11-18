@@ -28,6 +28,22 @@ def bump(version, bumps):
     return f'{major}.{minor}.{patch + 1}'
 
 
+def parse_release_evidence(text):
+    headings = ['Recognition accuracy', 'Recognition service costs']
+    if re.findall(r'^## (.+)$', text, re.MULTILINE) != headings:
+        raise ValueError('Release evidence must contain accuracy and service-cost sections exactly once')
+    sections = re.split(r'^## .+\n', text + '\n', flags=re.MULTILINE)
+    if sections[0].strip() or any(not re.sub(r'<!--.*?-->', '', section, flags=re.DOTALL).strip()
+                                  for section in sections[1:]):
+        raise ValueError('Release evidence sections must not be empty')
+    return text.strip()
+
+
+def release_evidence(root, head):
+    """Use committed disclosures, never uncommitted working-tree claims."""
+    return parse_release_evidence(git(root, 'show', f'{head}:docs/release-evidence.md'))
+
+
 def is_changeset(path):
     return path.startswith('.changeset/') and path.endswith('.md') and path != '.changeset/README.md'
 
@@ -48,6 +64,7 @@ def new_changesets(root, base, head='HEAD'):
 
 
 def check(root, base):
+    release_evidence(root, 'HEAD')
     base = git(root, 'merge-base', base, 'HEAD')
     entries = new_changesets(root, base)
     paths = git(root, 'diff', '--name-only', base, 'HEAD').splitlines()
@@ -70,6 +87,7 @@ def plan(root):
         return None
     tag = latest if rerun else 'v' + bump(base[1:] if base else '0.0.0', [e[0] for e in entries])
     notes = f'# Waveform One {tag}\n\n' + '\n\n'.join(e[1] for e in entries)
+    notes += '\n\n' + release_evidence(root, head)
     notes += f'\n\nCommit: `{head}`\n\nSigned P4 application updates require the one-time A/B USB bootstrap. Pi/S3 update assets remain available for commissioned legacy devices.\n'
     return {'tag': tag, 'commit': head, 'notes': notes}
 

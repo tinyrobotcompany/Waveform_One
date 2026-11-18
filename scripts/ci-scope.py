@@ -12,6 +12,9 @@ def select(paths):
     apps = set()
     pi = tests = False
     for path in paths:
+        if path == 'docs/release-evidence.md':
+            tests = True
+            continue
         if PurePosixPath(path).suffix.lower() in {'.md', '.rst', '.txt'} and not path.endswith('CMakeLists.txt'):
             continue
         if path.startswith(('docs/', '.changeset/')):
