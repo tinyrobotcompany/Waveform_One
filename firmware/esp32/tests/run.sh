@@ -9,6 +9,15 @@ sh "$esp_dir/mic_test/tests/run.sh"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/tests/credential_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/recognition_credentials_test.cpp" \
+    "$esp_dir/p4_display/main/recognition_credentials.cpp" -o "$build_dir/p4_credentials"
+"$build_dir/p4_credentials"
+printf '%s\n' 'PASS: ACRCloud provisioning, OTA persistence, corruption and storage failures'
+
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
     "$esp_dir/led_test/tests/patterns_test.cpp" -o "$build_dir/patterns"
 "$build_dir/patterns"
 printf '%s\n' 'PASS: LED diagnostic patterns'

@@ -98,6 +98,7 @@ private:
         case RecognitionStatus::Identifying: return "identifying";
         case RecognitionStatus::Matched: return "matched";
         case RecognitionStatus::NoMatch: return "no_match";
+        case RecognitionStatus::ConfigurationRequired: return "configuration_required";
         case RecognitionStatus::Unavailable: return "unavailable";
         case RecognitionStatus::Waiting: return "waiting";
         }

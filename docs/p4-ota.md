@@ -58,7 +58,23 @@ edits are not overwritten by background polling.
   prerequisites for accepting local startup.
 - Existing paired-session, Host/Origin and CSRF checks protect the phone actions.
   Tempo-specific PRIM credential controls are not copied. Release builds ignore
-  local `acrcloud.local` diagnostics credentials and use the normal Shazam path.
+  embedded credentials and load the existing ACRCloud configuration from device NVS.
+  Recognition never falls back to Shazam.
+
+## ACRCloud credentials across updates
+
+A local USB provisioning build reads the existing untracked `acrcloud.local` and
+saves one versioned ACRCloud record to NVS. Repeated boots do not rewrite an
+unchanged record. Public release builds contain no account credentials: they use
+the provisioned record, which ordinary application OTA updates preserve.
+`WAVEFORM_DEVICE_ACRCLOUD=1` allows a build without local credentials for this
+purpose; it does not enable another recognition provider.
+
+Devices flashed before this persistence support need one USB provisioning build
+with their existing credentials. A release without a valid record reports
+“ACRCloud configuration required”; it cannot silently switch providers. Trial
+acceptance requires valid persisted credentials, without requiring internet or a
+successful recognition request. Storage failures never erase NVS.
 
 ## Flash addressing repair
 

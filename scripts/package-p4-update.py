@@ -43,6 +43,10 @@ def record(build, dist, version, commit):
     for header in [build / 'config/sdkconfig.h', build / 'bootloader/config/sdkconfig.h']:
         if '#define CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH 1' not in header.read_text():
             raise ValueError(f'32-bit flash addressing must be enabled in {header}')
+    credentials = (build / 'esp-idf/main/acrcloud_config.h').read_text()
+    for name in ['HOST', 'ACCESS_KEY', 'ACCESS_SECRET']:
+        if not re.search(r'^#define ACRCLOUD_' + name + r' ""$', credentials, re.MULTILINE):
+            raise ValueError('Public OTA images must use device ACRCloud credentials, not embed them')
     dist.mkdir(parents=True, exist_ok=True)
     (dist / IMAGE).write_bytes(blob)
     shutil.copyfile(APP / 'dependencies.lock', dist / 'p4-dependencies.lock')

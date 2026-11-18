@@ -97,6 +97,10 @@ class P4PackageTests(unittest.TestCase):
                 header.parent.mkdir(parents=True)
                 header.write_text(rollback + addressing)
             (build / 'waveform_p4_display.bin').write_bytes(image())
+            credentials = build / 'esp-idf/main/acrcloud_config.h'
+            credentials.parent.mkdir(parents=True)
+            credentials.write_text(''.join(f'#define ACRCLOUD_{name} ""\n'
+                for name in ['HOST', 'ACCESS_KEY', 'ACCESS_SECRET']))
             for header in headers:
                 with self.subTest(header=header):
                     header.write_text(rollback)
@@ -106,6 +110,11 @@ class P4PackageTests(unittest.TestCase):
                     header.write_text(rollback + addressing)
             p4.record(build, root / 'dist', '1.2.3', 'a'*40)
             self.assertEqual((root / 'dist' / p4.IMAGE).read_bytes(), image())
+            credentials.write_text(credentials.read_text().replace('ACRCLOUD_ACCESS_KEY ""',
+                'ACRCLOUD_ACCESS_KEY "test-key"'))
+            with self.assertRaisesRegex(ValueError, 'must use device ACRCloud credentials'):
+                p4.record(build, root / 'secret-dist', '1.2.3', 'a'*40)
+            self.assertFalse((root / 'secret-dist').exists())
 
     def test_image_identity_version_and_slot_are_required(self):
         p4.validate_image(image(), '1.2.3')

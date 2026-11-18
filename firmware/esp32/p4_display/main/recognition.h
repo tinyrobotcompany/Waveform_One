@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
-enum class RecognitionStatus { Waiting, Capturing, Identifying, Matched, NoMatch, Unavailable };
+enum class RecognitionStatus { Waiting, Capturing, Identifying, Matched, NoMatch, Unavailable, ConfigurationRequired };
 struct RecognitionTrack {
     int64_t matched_at_us = 0;
     double offset_s = -1;   // song position at the clip's start; negative if unknown
@@ -27,6 +27,7 @@ struct RecognitionArtwork {
 using RecognitionCallback = bool (*)(RecognitionStatus status, const RecognitionTrack *track,
                                     const RecognitionArtwork *artwork);
 void recognition_start(RecognitionCallback callback);
+bool recognition_configuration_ready();
 void recognition_set_network(bool online, const char *address);
 void recognition_set_controller(bool connected);
 // The room's level detector currently hears sound (music, or anything as

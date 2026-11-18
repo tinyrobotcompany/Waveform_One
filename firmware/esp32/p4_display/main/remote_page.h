@@ -64,7 +64,7 @@ function render(state){
  document.querySelectorAll('[data-appearance]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.appearance===(state.appearance||'album'))));
  const track=state.track,searching=['capturing','identifying'].includes(state.status);$('cover').classList.toggle('known',!!track);$('cover').classList.toggle('searching',searching);$('activity').classList.toggle('searching',searching);$('wave').hidden=!searching;
  $('eyebrow').textContent=track?'NOW PLAYING':'YOUR MUSIC';$('title').textContent=track?track.title:'Listening for music';$('artist').textContent=track?track.artist:'';$('album').textContent=track?track.album:'';
- $('activity-text').textContent=searching?(track?'Checking what’s playing…':'Finding your song…'):state.status==='unavailable'?'Trying again shortly':track?'Enjoy the music':'Play a song to get started';
+ $('activity-text').textContent=searching?(track?'Checking what’s playing…':'Finding your song…'):state.status==='configuration_required'?'ACRCloud configuration required':state.status==='unavailable'?'Trying again shortly':track?'Enjoy the music':'Play a song to get started';
  const url=track&&track.artwork||'';if(url!==artworkUrl){artworkUrl=url;showPlaceholder();if(url){$('artwork').alt=track.album?track.album+' album artwork':'Album artwork';$('artwork').src=url}else{$('artwork').removeAttribute('src');$('artwork').alt=''}}
  if(!settingsOpen){$('name').value=state.name;$('brightness').value=state.brightness;$('brightness-value').textContent=state.brightness+'%'}
  document.querySelectorAll('[data-style]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.style===state.style)));
