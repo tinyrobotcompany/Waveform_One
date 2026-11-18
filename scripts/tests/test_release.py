@@ -40,6 +40,9 @@ class GitReleaseTests(unittest.TestCase):
         self.git('init', '-q')
         self.git('config', 'user.email', 'test@example.com')
         self.git('config', 'user.name', 'Test')
+        readme = (Path(__file__).parents[2] / 'README.md').read_text()
+        self.notice_readme = readme[readme.index('<!-- privacy-notice:start -->'):]
+        self.commit('README.md', self.notice_readme)
 
     def git(self, *args):
         return subprocess.check_output(['git', '-C', str(self.root), *args], text=True).strip()
@@ -56,14 +59,26 @@ class GitReleaseTests(unittest.TestCase):
         plan = release.plan(self.root)
         self.assertEqual(plan['tag'], 'v0.1.0')
         self.assertIn('Initial firmware.', plan['notes'])
+        self.assertIn('Waveform One does not save audio recordings on the device.', plan['notes'])
+        self.assertIn('Clips may include nearby voices', plan['notes'])
         self.git('tag', plan['tag'])
-        self.assertEqual(release.plan(self.root)['tag'], 'v0.1.0')
-        self.commit('README.md', 'Docs only')
+        self.assertEqual(release.plan(self.root), plan)
+        self.commit('README.md', 'Docs only\n' + self.notice_readme)
         self.assertIsNone(release.plan(self.root))
         self.commit('.changeset/fix.md', '---\n"waveform-one": patch\n---\nQuiet audio fix.\n')
         plan = release.plan(self.root)
         self.assertEqual(plan['tag'], 'v0.1.1')
         self.assertNotIn('Initial firmware.', plan['notes'])
+        self.assertEqual(plan['notes'].count('## Microphone and privacy'), 1)
+
+    def test_release_rejects_missing_notice_and_uses_committed_notice(self):
+        self.commit('.changeset/initial.md', '---\n"waveform-one": patch\n---\nFix.\n')
+        expected = release.plan(self.root)
+        (self.root / 'README.md').write_text('Uncommitted edit without notice')
+        self.assertEqual(release.plan(self.root), expected)
+        self.commit('README.md', 'Committed removal of notice')
+        with self.assertRaisesRegex(ValueError, 'privacy notice'):
+            release.plan(self.root)
 
     def test_firmware_change_needs_new_changeset(self):
         self.commit('README.md', 'Initial')

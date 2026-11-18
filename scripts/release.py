@@ -57,6 +57,15 @@ def check(root, base):
         raise ValueError('Add a new .changeset/*.md for firmware, Pi, protocol or automation changes')
 
 
+def privacy_notice(root, head):
+    readme = git(root, 'show', f'{head}:README.md')
+    match = re.search(r'<!-- privacy-notice:start -->\s*(.+?)\s*<!-- privacy-notice:end -->',
+                      readme, re.DOTALL)
+    if not match or not match[1].strip():
+        raise ValueError('README must contain the microphone privacy notice for every release')
+    return match[1].strip()
+
+
 def plan(root):
     tags = [t for t in git(root, 'tag', '--merged', 'HEAD').splitlines()
             if re.fullmatch(r'v\d+\.\d+\.\d+', t)]
@@ -71,6 +80,7 @@ def plan(root):
     tag = latest if rerun else 'v' + bump(base[1:] if base else '0.0.0', [e[0] for e in entries])
     notes = f'# Waveform One {tag}\n\n' + '\n\n'.join(e[1] for e in entries)
     notes += f'\n\nCommit: `{head}`\n\nSigned P4 application updates require the one-time A/B USB bootstrap. Pi/S3 update assets remain available for commissioned legacy devices.\n'
+    notes += '\n' + privacy_notice(root, head) + '\n'
     return {'tag': tag, 'commit': head, 'notes': notes}
 
 

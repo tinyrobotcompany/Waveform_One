@@ -28,3 +28,31 @@ Native P4 signed updates follow Tempo: monthly checks, an overnight installation
 window, countdown and postponement, with controls on the touchscreen and paired phone.
 The P4 needs a one-time USB bootstrap into the A/B layout before OTA updates.
 Legacy commissioned Pi/S3 devices retain their existing updater.
+
+<!-- privacy-notice:start -->
+## Microphone and privacy
+
+**Waveform One does not save audio recordings on the device.** While running,
+its microphone continuously captures nearby sound in temporary memory to animate
+the LED display and identify music. The current P4 firmware uses a rolling
+16-second audio buffer; this is not a permanent recording archive or a guarantee
+that every temporary copy is securely erased after 16 seconds.
+
+For recognition, the P4 sends actual audio clips of up to 10 seconds directly to
+ACRCloud over HTTPS. Requests can repeat approximately every 2.5 seconds while
+recognition is active, so clips overlap. Clips may include nearby voices and
+other background sounds. Sound classification cannot guarantee that speech is
+excluded, and sustained unclassified sound can also trigger a recognition request.
+Waveform One does not provide conversation transcription.
+
+ACRCloud states that it deletes temporary raw audio when request processing
+succeeds or fails. Recognition results, fingerprints and technical logs have
+separate retention rules; see [ACRCloud's data-processing terms](https://www.acrcloud.com/dpa/).
+These are the provider's commitments, not a claim of independently verified deletion.
+Device diagnostics include recognised titles, artists, timings and sound levels;
+those logs can be retained when captured by a connected development computer.
+Using your own ACRCloud account does not prevent audio from being sent to ACRCloud.
+
+This notice describes the current P4 implementation. Separate cloud-recognition
+controls and a microphone-off control are proposed features, not current promises.
+<!-- privacy-notice:end -->
