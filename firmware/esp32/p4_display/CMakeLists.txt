@@ -1,11 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 
-set(PROJECT_VER "0.0.0")
+# Allow a local repair build to retain its base release version so an older
+# published image cannot automatically replace the repair. CI always overrides it.
+set(PROJECT_VER "0.0.0" CACHE STRING "Local firmware version")
 if(DEFINED ENV{WAVEFORM_RELEASE_VERSION})
     set(PROJECT_VER "$ENV{WAVEFORM_RELEASE_VERSION}")
-    if(NOT PROJECT_VER MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
-        message(FATAL_ERROR "Invalid WAVEFORM_RELEASE_VERSION")
-    endif()
+endif()
+if(NOT PROJECT_VER MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+    message(FATAL_ERROR "Invalid firmware version")
 endif()
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(waveform_p4_display)

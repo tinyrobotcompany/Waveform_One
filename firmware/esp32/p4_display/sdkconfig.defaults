@@ -53,3 +53,10 @@ CONFIG_WAVEFORM_P4_MIC_CHANNEL=0
 CONFIG_WAVEFORM_P4_MIC_GAIN_DB=24
 CONFIG_WAVEFORM_P4_LED=y
 # CONFIG_WAVEFORM_P4_LED_PATTERN is not set
+
+# Retain the C6 streaming protocol, but bound queued packets and release idle
+# transport buffers. P4 transport payloads use cache-aligned PSRAM (see backport).
+CONFIG_ESP_HOSTED_SDIO_OPTIMIZATION_RX_STREAMING_MODE=y
+CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=4
+CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=4
+# CONFIG_ESP_HOSTED_USE_MEMPOOL is not set
