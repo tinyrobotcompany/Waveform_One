@@ -135,3 +135,41 @@ post-install `0.0.0` is therefore not a mislabeled v0.7.1 release binary. The ex
 on-device failure remains unconfirmed without the installation/boot log; no claim
 of successful hardware installation is made by the host/browser tests. Recognition
 provider differences and transient LED behaviour are deferred to a separate task.
+
+## P4 SDIO memory repair
+
+The 2026-11-18 device capture showed `sdio_push_data_to_queue` and
+`sdio_rx_get_buffer` asserting after failed allocations. The largest internal DMA
+block fell from 25,088 bytes at startup to 560 bytes immediately before a crash,
+while more than 12 MB of PSRAM remained free. The rebooted image was still 0.0.0.
+
+The pinned ESP-Hosted driver originally allocated both growing stream buffers and
+packet-pool payloads from internal DMA RAM. Its pools retained returned buffers.
+For this P4/IDF 6.1 profile, transport payloads and stream storage now use PSRAM,
+with addresses and capacities aligned to 128 bytes. The pinned P4 SDMMC driver
+validates cache alignment and performs cache synchronization; its existing 512-byte
+aligned bounce buffer covers short CMD53 tails. Small register/descriptor buffers
+remain internal. The C6 streaming protocol is unchanged, transport queues are four
+packets deep, and the retained buffer cache is disabled.
+
+Failed stream growth preserves the old pointer/capacity. Receive allocation retries
+release the bus lock and preserve the pending length/counter, rather than waiting
+for another already-acknowledged interrupt. Failure to allocate a packet drops the
+received stream; transmit failure uses the existing payload cleanup path. The
+build patches copies of hash-pinned vendor sources and stops if those sources change.
+
+For an application-only local repair, `idf.py -C firmware/esp32/p4_display -DPROJECT_VER=0.7.2 build` keeps
+the base version without changing recognition credential selection. CI release
+version injection still takes precedence. This prevents the existing published
+0.7.2 from replacing the local repair. It is not evidence that a new signed release
+has been installed: full OTA acceptance requires a later approved release containing
+this fix. Do not overwrite OTA metadata, the bootloader or the model during this repair.
+
+Hardware evidence: the application-only local repair was flashed to the existing
+valid slot 0 (sequence 1) and flash hashing passed. It booted as 0.7.2 with ACRCloud,
+the onboard microphone and direct P4 LED controller configured. A bounded test of
+180 HTTP page transfers (3,347,280 bytes, three concurrent clients) completed in
+6.0 seconds. The largest free internal DMA block stayed at 23,040 bytes; no SDIO
+assertion or reboot occurred during that test. This is a network/memory smoke test,
+not a completed signed-OTA install or power-loss qualification. Serial diagnostics
+remain available for the touchscreen Check now validation.

@@ -253,3 +253,9 @@ for suite in policy service; do
         -lm -o "$build_dir/p4_update_$suite"
     "$build_dir/p4_update_$suite"
 done
+
+"${CC:-cc}" -std=c11 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/tests/dma_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/hosted_dma_memory_test.c" -o "$build_dir/p4_hosted_dma"
+"$build_dir/p4_hosted_dma"
