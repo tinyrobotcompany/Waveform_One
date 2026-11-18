@@ -39,10 +39,10 @@ body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:b
 </div></fieldset><p class="feedback" id="feedback" role="status"></p></section></div>
 <script>
 const $=id=>document.getElementById(id);
-let updateSettingsLoaded=false,updateSettingsDirty=false;
+let updateSettingsLoaded=false,updateSettingsDirty=false,activeUpdate=false;
 let csrf='',pollTimer,artworkUrl='',requestActive=false,settingsOpen=false,failures=0,fieldKey='',fieldFront=false;
 function pairedMessage(){return 'Scan the QR code on Waveform One to connect.'}
-function loseSession(){csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
+function loseSession(){activeUpdate=false;csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
 function reconnecting(){$('connection').textContent='Reconnecting to Waveform One…';$('update-message').textContent='Update status unavailable. Reconnecting…'}
 function showSettings(open){settingsOpen=open;$('settings').hidden=!open;$('open-settings').setAttribute('aria-expanded',String(open));document.body.style.overflow=open?'hidden':'';(open?$('close-settings'):$('open-settings')).focus()}
 $('open-settings').onclick=()=>showSettings(true);$('close-settings').onclick=()=>showSettings(false);
@@ -75,6 +75,7 @@ document.querySelectorAll('[data-appearance]').forEach(button=>button.onclick=as
 // Commit a slider change once; dragging never creates overlapping device requests.
 $('brightness').oninput=()=>{$('brightness-value').textContent=$('brightness').value+'%'};$('brightness').onchange=()=>post('/api/brightness',{value:$('brightness').value});
 function renderUpdates(value){
+ activeUpdate=value.countdown_seconds>0||[1,3,4,5].includes(value.state);
  $('update-version').textContent='Installed: '+value.installed+(value.available?' · Available: '+value.available:'');
  $('update-message').textContent=value.message;
  $('update-result').textContent=value.last_install_message||'';$('update-result').hidden=!value.last_install_message;
@@ -126,7 +127,7 @@ async function poll(){
    if(results[1].status==='rejected')$('update-message').textContent='Update status unavailable. Reconnecting…';
   }else{failures=0;$('connection').textContent=''}
  }catch{failures++;reconnecting()}
- finally{requestActive=false;if(!document.hidden)pollTimer=setTimeout(poll,Math.min(10000,2000*(failures+1)))}
+ finally{requestActive=false;if(!document.hidden)pollTimer=setTimeout(poll,failures?Math.min(10000,2000*(failures+1)):(activeUpdate?1000:2000))}
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();else clearTimeout(pollTimer)});
 window.addEventListener('pageshow',()=>poll());

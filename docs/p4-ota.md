@@ -30,11 +30,23 @@ the current boot. A successful trial reports its version only after startup chec
 
 The phone polls live device state and OTA status independently and retries temporary
 network/session failures. It clears stale OTA values if pairing is required. Valid
-one-hour pairing sessions survive same-address Wi-Fi reconnects and firmware restarts
-using NVS and absolute expiry; restoration waits for a usable clock. Expired sessions,
-address changes or an explicit network change require scanning the QR again. Pair once
-after upgrading from firmware that did not persist sessions. Unsaved update-setting
-edits are not overwritten by background polling.
+90-day pairing sessions survive same-address Wi-Fi reconnects and firmware restarts
+using NVS and absolute expiry; restoration waits for a usable clock. Pairing is
+confirmed only after storage commits successfully. Status polling does not renew
+the lifetime or write to flash. Existing one-hour sessions retain their original
+expiry; scan the device QR once to obtain a new 90-day session after upgrading.
+
+Settings → Forget paired phones requires a second tap on the device and durably
+revokes all phones, including across reboot; it also rotates the QR code. If
+saving fails, existing pairing remains intact and the screen reports the failure.
+At most four phones are paired; pairing a fifth replaces the oldest. Expiry,
+cleared browser cookies, address changes or an explicit network change require
+scanning the current QR again. Cookies remain HttpOnly and SameSite=Strict, and
+Host/Origin/CSRF checks remain mandatory. Local HTTP still requires a trusted LAN.
+
+The phone polls every second during update checks, installation and countdowns,
+and every two seconds when idle, with bounded backoff during outages. Unsaved
+update-setting edits are not overwritten by background polling.
 
 ## Necessary Waveform One adaptations
 

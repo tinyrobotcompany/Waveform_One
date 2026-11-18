@@ -76,6 +76,8 @@ lv_obj_t *wifi_header_button = nullptr;
 lv_obj_t *network_qr = nullptr;
 lv_obj_t *network_heading = nullptr;
 lv_obj_t *network_instructions = nullptr;
+lv_obj_t *forget_phones_button = nullptr, *forget_phones_text = nullptr;
+bool forget_phones_confirm = false;
 lv_obj_t *wifi_dropdown = nullptr;
 lv_obj_t *wifi_password = nullptr;
 lv_obj_t *wifi_keyboard = nullptr;
@@ -348,6 +350,9 @@ void on_open_settings(lv_event_t *event)
 
 void on_close_settings(lv_event_t *event)
 {
+    forget_phones_confirm = false;
+    if (forget_phones_text && !lv_obj_has_state(forget_phones_button, LV_STATE_DISABLED))
+        lv_label_set_text(forget_phones_text, "Forget paired phones");
     if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
         lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     }
@@ -565,6 +570,30 @@ void update_controller_status(LedControllerState state)
     ESP_LOGI(kTag, "LED controller: %s", text);
 }
 
+void phone_pairing_forgotten(bool saved)
+{
+    if (!bsp_display_lock(-1)) return;
+    lv_obj_remove_state(forget_phones_button, LV_STATE_DISABLED);
+    lv_label_set_text(forget_phones_text, "Forget paired phones");
+    lv_label_set_text(network_instructions, saved ? "Paired phones forgotten.\nScan the new QR to connect."
+        : "Could not save removal.\nPhones remain paired.\nPlease try again.");
+    bsp_display_unlock();
+}
+
+void on_forget_phones(lv_event_t *)
+{
+    if (!forget_phones_confirm) {
+        forget_phones_confirm = true;
+        lv_label_set_text(forget_phones_text, "Tap again to forget all");
+        return;
+    }
+    forget_phones_confirm = false;
+    if (network_forget_paired_phones()) {
+        lv_obj_add_state(forget_phones_button, LV_STATE_DISABLED);
+        lv_label_set_text(forget_phones_text, "Forgetting phones…");
+    } else lv_label_set_text(forget_phones_text, "Busy — try again");
+}
+
 void remote_set_network(NetworkMode mode, const char *address)
 {
     recognition_set_network(mode == NetworkMode::HomeWifi, address);
@@ -589,7 +618,7 @@ void remote_set_network(NetworkMode mode, const char *address)
         lv_obj_remove_flag(clock_label, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(network_heading, "PHONE REMOTE");
         lv_label_set_text(network_instructions,
-                          "Reconnecting to home Wi-Fi.\nPhone remotes must scan the\nnew QR once it appears.");
+                          "Reconnecting to home Wi-Fi.\nPaired phones reconnect\nat the same address.");
         lv_label_set_text(wifi_status, "Reconnecting to home Wi-Fi…");
     } else {
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);
@@ -600,7 +629,7 @@ void remote_set_network(NetworkMode mode, const char *address)
         lv_obj_remove_flag(clock_label, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(network_heading, "PHONE REMOTE");
         lv_label_set_text(network_instructions,
-                          "Connected to home Wi-Fi.\nScan to open the remote\non this network.");
+                          "Scan to connect your phone.\nPairing lasts 90 days\non this network address.");
         lv_label_set_text(wifi_status, "Connected to home Wi-Fi.");
     }
     bsp_display_unlock();
@@ -1071,6 +1100,14 @@ void create_product_screen()
     lv_obj_set_style_text_line_space(network_instructions, 8, 0);
     lv_obj_align(network_instructions, LV_ALIGN_TOP_LEFT, 215, 430);
 
+    forget_phones_button = lv_button_create(settings_panel);
+    lv_obj_set_size(forget_phones_button, 285, 44);
+    style_update_button(forget_phones_button);
+    lv_obj_align(forget_phones_button, LV_ALIGN_TOP_LEFT, 215, 525);
+    forget_phones_text = make_label(forget_phones_button, "Forget paired phones", &lv_font_montserrat_16, kForeground);
+    lv_obj_center(forget_phones_text);
+    lv_obj_add_event_cb(forget_phones_button, on_forget_phones, LV_EVENT_CLICKED, nullptr);
+
     wifi_entry_panel = lv_obj_create(settings_panel);
     lv_obj_set_size(wifi_entry_panel, 1024, 600);
     lv_obj_set_style_bg_color(wifi_entry_panel, kBackground, 0);
@@ -1257,6 +1294,7 @@ extern "C" void app_main()
     if (p4_led_enabled()) p4_led_start(update_controller_status);
     else usb_controller_start(update_controller_status);
     RemoteCallbacks remote{};
+    remote.phone_pairing_forgotten = phone_pairing_forgotten;
     remote.set_appearance = remote_set_appearance;
     remote.set_style = remote_set_style;
     remote.set_brightness = remote_set_brightness;

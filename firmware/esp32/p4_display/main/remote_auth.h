@@ -11,9 +11,18 @@
 namespace remote_auth {
 
 constexpr int64_t kPairingLifetimeUs = 10LL * 60LL * 1000000LL;
-constexpr int64_t kSessionLifetimeUs = 60LL * 60LL * 1000000LL;
+constexpr int64_t kSessionLifetimeSeconds = 90LL * 24LL * 60LL * 60LL;
+constexpr int64_t kSessionLifetimeUs = kSessionLifetimeSeconds * 1000000LL;
 constexpr std::size_t kMaxSessions = 4;
 constexpr std::size_t kTokenSize = 33;
+
+inline bool session_cookie(char *output, std::size_t capacity, const char *id)
+{
+    const int size = std::snprintf(output, capacity,
+        "wf1_session=%s; Path=/; Max-Age=%lld; HttpOnly; SameSite=Strict", id,
+        static_cast<long long>(kSessionLifetimeSeconds));
+    return size > 0 && static_cast<std::size_t>(size) < capacity;
+}
 
 using RandomFill = void (*)(void *buffer, std::size_t size);
 
@@ -45,6 +54,13 @@ public:
     void disconnect()
     {
         *this = RemoteAuth(fill_);
+    }
+
+    void forget_sessions(int64_t now_us)
+    {
+        for (auto &session : sessions_) session = Session{};
+        next_session_ = 0;
+        if (connected()) issue_pairing_code(now_us);
     }
 
     bool matches_address(std::string_view host) const { return host == host_; }
