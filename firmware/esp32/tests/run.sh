@@ -100,6 +100,10 @@ printf '%s\n' 'PASS: native classifier features, PCM bounds and bounded level no
 "$build_dir/p4_presence"
 printf '%s\n' 'PASS: audio presence independent of lookup, absolute positions and stale-result invalidation'
 
+# Reject oversized production FFT frames independently of sanitizer/test overhead.
+"${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror -Wframe-larger-than=4096 \
+    -c "$esp_dir/p4_display/main/fingerprint.cpp" -o "$build_dir/p4_fingerprint_stack.o"
+
 "${CXX:-c++}" -O2 -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \

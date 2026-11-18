@@ -226,8 +226,10 @@ bool generate(const uint8_t *pcm, size_t bytes, Analyzer &analyzer, Signature &o
 
 double self_test()
 {
-    std::complex<float> twiddles[1024];
-    fill_twiddles(twiddles);
+    // The recognition task already has a substantial live stack frame.
+    // Keep this 8 KB self-test table on the heap, alongside the FFT buffers.
+    std::vector<std::complex<float>> twiddles(1024);
+    fill_twiddles(twiddles.data());
     // Temporary buffers, never static: internal RAM is scarce at boot.
     std::vector<std::complex<float>> expected_buffer(2048 + 4), actual_buffer(2048 + 4);
     // 16-byte alignment for the platform FFT.
@@ -242,11 +244,11 @@ double self_test()
         const float sample = float(int(random >> 16) - 32768) * float(0.5 - 0.5 * std::cos(2 * kPi * (i + 1) / 2049));
         expected[i] = actual[i] = {sample, 0};
     }
-    reference_fft(expected, twiddles);
+    reference_fft(expected, twiddles.data());
 #if defined(ESP_PLATFORM)
     if (!platform_fft(actual)) return INFINITY;
 #else
-    reference_fft(actual, twiddles);
+    reference_fft(actual, twiddles.data());
 #endif
     double largest = 0, error = 0;
     for (unsigned bin = 0; bin < 1025; ++bin) largest = std::max(largest, double(std::norm(expected[bin])));

@@ -700,6 +700,20 @@ void on_update_action(lv_event_t *event)
     update_feedback_until = esp_timer_get_time() + 5000000;
 }
 
+void style_update_button(lv_obj_t *button)
+{
+    lv_obj_set_style_bg_color(button, kPanel, LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_opa(button, LV_OPA_COVER, LV_STATE_DEFAULT);
+    lv_obj_set_style_border_color(button, kAccent, LV_STATE_DEFAULT);
+    lv_obj_set_style_border_width(button, 1, LV_STATE_DEFAULT);
+    lv_obj_set_style_radius(button, 9, LV_STATE_DEFAULT);
+    lv_obj_set_style_shadow_width(button, 0, LV_STATE_DEFAULT);
+    lv_obj_set_style_bg_color(button, kLine, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(button, kPanel, LV_STATE_DISABLED);
+    lv_obj_set_style_border_color(button, kLine, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(button, LV_OPA_50, LV_STATE_DISABLED);
+}
+
 void create_updates_screen(lv_obj_t *screen)
 {
     auto *open = lv_button_create(settings_panel);
@@ -718,10 +732,12 @@ void create_updates_screen(lv_obj_t *screen)
     lv_obj_center(updates_panel);
     lv_obj_set_style_bg_color(updates_panel, kBackground, 0);
     lv_obj_set_style_bg_opa(updates_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(updates_panel, 0, 0);
     lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_SCROLLABLE);
     auto *title = make_label(updates_panel, "Software updates", &lv_font_montserrat_48, kForeground);
     lv_obj_align(title, LV_ALIGN_TOP_LEFT, 32, 30);
     auto *close = lv_button_create(updates_panel);
+    style_update_button(close);
     lv_obj_set_size(close, 120, 52);
     lv_obj_align(close, LV_ALIGN_TOP_RIGHT, -32, 26);
     lv_obj_center(make_label(close, "Done", &lv_font_montserrat_16, kForeground));
@@ -733,12 +749,16 @@ void create_updates_screen(lv_obj_t *screen)
     lv_label_set_long_mode(updates_status, LV_LABEL_LONG_WRAP);
     lv_obj_align(updates_status, LV_ALIGN_TOP_LEFT, 32, 175);
     updates_progress = lv_bar_create(updates_panel);
+    lv_obj_set_style_bg_color(updates_progress, kLine, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(updates_progress, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(updates_progress, kAccent, LV_PART_INDICATOR);
     lv_obj_set_size(updates_progress, 900, 20);
     lv_obj_align(updates_progress, LV_ALIGN_TOP_LEFT, 32, 290);
     const char *labels[] = {"Check now", "Install now", "Postpone 24 hours"};
     static const char *actions[] = {"check", "install", "postpone"};
     for (unsigned i = 0; i < 3; ++i) {
         auto *button = update_buttons[i] = lv_button_create(updates_panel);
+        style_update_button(button);
         lv_obj_set_size(button, 280, 60);
         lv_obj_align(button, LV_ALIGN_TOP_LEFT, 32 + 310 * i, 350);
         lv_obj_center(make_label(button, labels[i], &lv_font_montserrat_20, kForeground));

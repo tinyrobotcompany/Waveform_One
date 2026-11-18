@@ -68,3 +68,6 @@ target_include_directories(${COMPONENT_LIB} PRIVATE "${CMAKE_CURRENT_BINARY_DIR}
 
 # Audit the experimental task stack before any hardware trial.
 set_source_files_properties(p4_led.cpp PROPERTIES COMPILE_OPTIONS "-fstack-usage")
+
+# Shazam startup calls the FFT self-test on the recognition task stack.
+set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-Werror=frame-larger-than=4096;-fstack-usage")
