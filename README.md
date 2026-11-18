@@ -3,16 +3,18 @@
 [![CI and Release](https://github.com/tinyrobotcompany/Waveform_One/actions/workflows/release.yml/badge.svg)](https://github.com/tinyrobotcompany/Waveform_One/actions/workflows/release.yml)
 [![Latest release](https://img.shields.io/github/v/release/tinyrobotcompany/Waveform_One)](https://github.com/tinyrobotcompany/Waveform_One/releases/latest)
 
-A music-reactive LED display using an ESP32-S3, INMP441 microphone and 64×32
-HUB75 panel. The current working prototype connects the panel directly to the
-ESP32-S3. The ESP32-P4 touchscreen controller selects visual styles over USB,
-joins the user's home Wi-Fi and hosts the local phone remote.
+A music-reactive 64×32 HUB75 LED display with a touchscreen and local phone
+remote. The current P4 configuration uses the Waveshare
+ESP32-P4-WIFI6-Touch-LCD-7B, onboard ES7210 audio capture and direct P4 LED drive.
+It joins home Wi-Fi and uses ACRCloud for music identification. Legacy S3/USB
+and Pi configurations remain in the repository; their behavior and dependencies
+must not be confused with the current P4 product.
 
-Migration to the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B display controller is
-under development. Display, touch, home Wi-Fi setup, the phone remote and S3
-style control are working. Native music recognition has host/reference
-verification and awaits physical P4 acceptance. The working
-ESP32-S3 audio and HUB75 engine remains intact during this migration.
+Public source and local audio processing are foundations for long-term ownership.
+Cloud song identification still requires ACRCloud. A repeatable recognition
+accuracy benchmark and a documented cold-boot offline demonstration are pending;
+see the evidence and acceptance plans below rather than assuming a measured
+accuracy percentage or a complete offline guarantee.
 
 - [Wiring, firmware programs and build instructions](firmware/esp32/README.md)
 - [ESP32-P4 display bring-up and wiring](firmware/esp32/p4_display/README.md)
@@ -20,6 +22,11 @@ ESP32-S3 audio and HUB75 engine remains intact during this migration.
 - [Contributing and local tests](CONTRIBUTING.md)
 - [Release notes](CHANGELOG.md)
 - [Native P4 over-the-air updates](docs/p4-ota.md)
+- [Recognition accuracy protocol and result template](docs/validation/recognition-protocol.md)
+- [Recognition providers and commercial-cost review](docs/product/recognition-commercial-review.md)
+- [Offline visualizer acceptance plan](docs/validation/offline-visualizer.md)
+- [Ownership and service continuity](docs/product/longevity.md)
+- [Buyer-readiness checklist](https://github.com/tinyrobotcompany/Waveform_One/issues/25)
 - [Legacy Pi over-the-air updates](pi/updater/README.md)
 - [CI and releases](docs/delivery.md)
 - [Pi setup and visual-style controls](pi/README.md)

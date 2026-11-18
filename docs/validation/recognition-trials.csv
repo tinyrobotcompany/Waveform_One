@@ -1,0 +1,1 @@
+run_id,trial_id,trial_type,condition_id,corpus_recording_id,expected_artist,expected_recording_id,expected_album_id,outcome,failure_subtype,any_wrong_answer,first_correct_ms,stable_correct_ms,display_clear_ms,led_settle_ms,music_duration_s,observation_duration_s,request_count,provider_billed_units,evidence_path,notes
