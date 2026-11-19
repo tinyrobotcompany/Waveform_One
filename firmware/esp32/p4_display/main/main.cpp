@@ -23,6 +23,7 @@
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "network.h"
 #include "recognition.h"
+#include "owner_credentials_ui.h"
 #include "recognition_feedback.h"
 #include "search_waveform.h"
 #include "album_palette.h"
@@ -1151,6 +1152,7 @@ void create_product_screen()
     lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(update_clock, 1000, nullptr);
     create_updates_screen(screen);
+    owner_credentials_ui_create(screen, settings_panel);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
