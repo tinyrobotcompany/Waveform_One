@@ -27,7 +27,9 @@ struct RecognitionArtwork {
 using RecognitionCallback = bool (*)(RecognitionStatus status, const RecognitionTrack *track,
                                     const RecognitionArtwork *artwork);
 void recognition_start(RecognitionCallback callback);
-bool recognition_configuration_ready();
+// Workers initialized in configured or intentionally unconfigured mode.
+// Credential corruption/storage errors still block OTA trial acceptance.
+bool recognition_local_ready();
 void recognition_set_network(bool online, const char *address);
 void recognition_set_controller(bool connected);
 // The room's level detector currently hears sound (music, or anything as

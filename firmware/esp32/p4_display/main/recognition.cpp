@@ -10,6 +10,7 @@
 #include "recognition_delivery.h"
 #include "acrcloud.h"
 #include "acrcloud_config.h"
+#include "recognition_startup.h"
 #include "recognition_credentials.h"
 #include "album_resolver.h"
 #include "album_cache.h"
@@ -63,6 +64,8 @@ audio_presence::Snapshot sound_state;
 std::atomic_bool track_visible{false};
 std::atomic_bool sound_heard{false};
 std::atomic_bool music_heard{false};
+std::atomic_bool cloud_configured{false};
+std::atomic_bool local_startup_ready{false};
 // Sound has gone on for a while without the classifier calling it music:
 // lookups still run, cautiously, in case it is music the classifier misses.
 std::atomic_bool cautious_lookups{false};
@@ -94,7 +97,8 @@ void flush_clear_locked()
 void clear_display_locked(RecognitionStatus status)
 {
     track_visible.store(false);
-    pending_clear.request(sessions.snapshot().epoch, status);
+    pending_clear.request(sessions.snapshot().epoch,
+        recognition_startup::status(cloud_configured.load(), status));
     flush_clear_locked();
 }
 
@@ -164,7 +168,6 @@ Lookup lookup(const fingerprint::Signature &signature, RecognitionTrack &track, 
 
 recognition_credentials::Record acrcloud_record;
 acrcloud::Credentials kAcrcloud;
-std::atomic_bool credentials_persisted{false};
 
 #if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
 void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection)
@@ -784,31 +787,37 @@ void recognition_start(RecognitionCallback callback)
         show = callback;
     }
     bool persisted = false;
+    recognition_credentials::State credential_state;
     const bool configured = recognition_credentials::load(acrcloud_record,
-        ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET, persisted);
-    credentials_persisted.store(configured && persisted);
+        ACRCLOUD_HOST, ACRCLOUD_ACCESS_KEY, ACRCLOUD_ACCESS_SECRET, persisted, &credential_state);
+    cloud_configured.store(configured);
+    kAcrcloud = {acrcloud_record.host, acrcloud_record.key, acrcloud_record.secret};
     if (!configured) {
-        ESP_LOGE(kTag, "ACRCloud configuration missing or invalid; recognition disabled");
+        ESP_LOGW(kTag, "ACRCloud configuration required; local audio remains enabled");
         std::lock_guard<std::mutex> lock(session_mutex);
         clear_display_locked(RecognitionStatus::ConfigurationRequired);
-        return;
     }
-    kAcrcloud = {acrcloud_record.host, acrcloud_record.key, acrcloud_record.secret};
     if (persisted) ESP_LOGI(kTag, "ACRCloud device credentials loaded and persisted");
-    else ESP_LOGE(kTag, "ACRCloud persistence failed; OTA trial acceptance disabled");
-    recognition_input_start([](bool available) {
-        std::lock_guard<std::mutex> lock(session_mutex);
-        if (sessions.set_controller(available)) clear_display_locked(RecognitionStatus::Waiting);
+    else if (credential_state == recognition_credentials::State::Error)
+        ESP_LOGE(kTag, "ACRCloud storage/configuration error; OTA trial acceptance disabled");
+    recognition_startup::start(configured, [] {
+        recognition_input_start([](bool available) {
+            std::lock_guard<std::mutex> lock(session_mutex);
+            if (sessions.set_controller(available)) clear_display_locked(RecognitionStatus::Waiting);
+        });
+    }, [] {
+        ESP_ERROR_CHECK(xTaskCreatePinnedToCore(presence_task, "audio_presence", 8192,
+            nullptr, 5, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+    }, [] {
+        ESP_ERROR_CHECK(xTaskCreatePinnedToCore(album_cache_task, "album_cache", 16384,
+            nullptr, 3, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+        ESP_ERROR_CHECK(xTaskCreatePinnedToCore(recognition_task, "recognition", 24576,
+            nullptr, 4, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
     });
-    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(presence_task, "audio_presence", 8192,
-        nullptr, 5, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
-    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(album_cache_task, "album_cache", 16384,
-        nullptr, 3, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
-    ESP_ERROR_CHECK(xTaskCreatePinnedToCore(recognition_task, "recognition", 24576,
-        nullptr, 4, nullptr, 1) == pdPASS ? ESP_OK : ESP_ERR_NO_MEM);
+    local_startup_ready.store(recognition_startup::trial_ready(true, credential_state));
 }
 
-bool recognition_configuration_ready() { return credentials_persisted.load(); }
+bool recognition_local_ready() { return local_startup_ready.load(); }
 
 bool recognition_sound_heard() { return sound_heard.load(); }
 bool recognition_music_heard() { return music_heard.load(); }
