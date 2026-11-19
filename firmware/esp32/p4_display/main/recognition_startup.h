@@ -16,6 +16,7 @@ inline RecognitionStatus status(bool configured, RecognitionStatus requested) {
 inline bool trial_ready(bool local_started, recognition_credentials::State state) {
     // Missing is supported; storage corruption is not evidence of intentional
     // non-provisioning. Preserve the protection against lost credentials.
-    return local_started && state != recognition_credentials::State::Error;
+    return local_started && (state == recognition_credentials::State::Ready ||
+        state == recognition_credentials::State::Missing);
 }
 }

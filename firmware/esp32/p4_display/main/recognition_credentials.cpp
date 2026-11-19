@@ -37,7 +37,10 @@ bool load(Record &output, const char *host, const char *key, const char *secret,
     // A partial bootstrap must not silently retain a different configuration.
     const bool any_embedded = (host && *host) || (key && *key) || (secret && *secret);
     if (any_embedded && !has_embedded) return false;
-    if (has_embedded) output = embedded;
+    if (has_embedded) {
+        output = embedded;
+        if (state) *state = State::Unpersisted;
+    }
     if (nvs_flash_init() != ESP_OK) return has_embedded; // Never erase NVS.
     nvs_handle_t handle;
     const auto opened = nvs_open("recognition", has_embedded ? NVS_READWRITE : NVS_READONLY, &handle);

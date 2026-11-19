@@ -64,12 +64,12 @@ int main() {
     assert(ota() && persisted); // Invalid provisioning did not destroy stored credentials.
     commit_error = -1;
     assert(recognition_credentials::load(output, "identify.example.com", "new-key", "new-secret", persisted, &state));
-    assert(state == State::Error && !recognition_startup::trial_ready(true, state));
+    assert(state == State::Unpersisted && !recognition_startup::trial_ready(true, state));
     assert(!persisted && std::strcmp(output.key, "new-key") == 0);
     assert(ota() && std::strcmp(output.key, "test-key") == 0);
     commit_error = 0; write_error = -1;
     assert(recognition_credentials::load(output, "identify.example.com", "new-key", "new-secret", persisted, &state));
-    assert(state == State::Error && !recognition_startup::trial_ready(true, state));
+    assert(state == State::Unpersisted && !recognition_startup::trial_ready(true, state));
     assert(!persisted);
     write_error = 0;
     const auto saved = stored;
@@ -78,4 +78,15 @@ int main() {
     stored = saved; std::memset(stored.data() + 4, 'a', 256); assert(!ota() && state == State::Error);
     stored = saved; init_error = -1; assert(!ota() && state == State::Error);
     assert(stored == saved); // Storage errors must never erase existing credentials.
+    auto embedded = [&] {
+        assert(recognition_credentials::load(output, "identify.example.com", "new-key", "new-secret", persisted, &state));
+        assert(!persisted && state == State::Unpersisted);
+        assert(!recognition_startup::trial_ready(true, state));
+        assert(output.valid() && stored == saved);
+    };
+    embedded(); // Valid embedded configuration with NVS initialization failure.
+    init_error = 0; open_error = -1;
+    embedded(); // Valid embedded configuration with NVS open failure.
+    open_error = 0;
+    assert(ota() && state == State::Ready); // Original credentials still usable.
 }

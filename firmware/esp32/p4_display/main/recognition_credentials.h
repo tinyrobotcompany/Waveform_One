@@ -2,7 +2,9 @@
 #include <cstdint>
 
 namespace recognition_credentials {
-enum class State { Missing, Ready, Error };
+// Unpersisted means valid embedded credentials are usable this boot, but their
+// durable write failed. It must never authorize an OTA trial.
+enum class State { Missing, Ready, Unpersisted, Error };
 struct Record {
     uint32_t version = 1;
     char host[256]{};

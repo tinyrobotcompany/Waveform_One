@@ -84,6 +84,10 @@ failed persistence still block trial acceptance, preserving the protection
 against credential loss during an update. They do not prevent local audio
 startup on the running image. Storage failures never erase NVS. The local health
 check establishes worker startup, not a physical microphone/LED acceptance test.
+Valid embedded credentials whose durable write fails have an explicit
+`Unpersisted` state and diagnostic: they can serve recognition for that boot,
+but cannot authorize trial acceptance. Successful first provisioning moves
+directly to `Ready`; absent configuration is the separate supported `Missing` state.
 
 ## Flash addressing repair
 

@@ -798,6 +798,8 @@ void recognition_start(RecognitionCallback callback)
         clear_display_locked(RecognitionStatus::ConfigurationRequired);
     }
     if (persisted) ESP_LOGI(kTag, "ACRCloud device credentials loaded and persisted");
+    else if (credential_state == recognition_credentials::State::Unpersisted)
+        ESP_LOGE(kTag, "Embedded ACRCloud credentials not persisted; OTA trial acceptance disabled");
     else if (credential_state == recognition_credentials::State::Error)
         ESP_LOGE(kTag, "ACRCloud storage/configuration error; OTA trial acceptance disabled");
     recognition_startup::start(configured, [] {
