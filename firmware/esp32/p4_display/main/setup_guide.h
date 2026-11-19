@@ -6,7 +6,10 @@ class Guide {
 public:
     void network(Network value) {
         network_ = value;
-        if (!presented_ && value == Network::Unconfigured) open();
+        if (!presented_ && value != Network::Starting) {
+            if (value == Network::Unconfigured) open();
+            else presented_ = true; // Existing setup must not become first-run later.
+        }
         finish_join();
     }
     void open() { presented_ = visible_ = true; }

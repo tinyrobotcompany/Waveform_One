@@ -25,6 +25,9 @@ int main() {
     Guide saved;
     saved.network(Network::Reconnecting); saved.network(Network::Ready);
     assert(!saved.visible()); // Existing setup is not interrupted at boot.
+    saved.network(Network::Unconfigured);
+    assert(!saved.visible()); // A later Wi-Fi failure must not cover its error UI.
+    saved.network(Network::Ready);
     saved.open(); saved.choose_wifi(); saved.network(Network::Reconnecting);
     saved.joined(true);
     assert(!saved.visible());
