@@ -867,6 +867,7 @@ void network_set_recognition(RecognitionStatus status, const RecognitionTrack *t
 }
 
 void network_set_brightness(int percent) { remote_state.brightness(percent); }
+void network_set_display_brightness(int percent) { remote_state.display_brightness(percent); }
 void network_set_name(const char *name) { remote_state.name(name); }
 void network_set_style(LedStyle style)
 {

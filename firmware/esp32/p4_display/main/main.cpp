@@ -24,6 +24,7 @@
 #include "network.h"
 #include "recognition.h"
 #include "recognition_feedback.h"
+#include "display_schedule.h"
 #include "search_waveform.h"
 #include "album_palette.h"
 #include "usb_controller.h"
@@ -70,7 +71,15 @@ lv_obj_t *settings_panel = nullptr;
 lv_obj_t *brightness_label = nullptr;
 lv_obj_t *brightness_slider = nullptr;
 lv_obj_t *welcome_label = nullptr;
-lv_obj_t *clock_label = nullptr;
+lv_obj_t *clock_label = nullptr, *idle_clock = nullptr;
+lv_obj_t *display_panel = nullptr, *night_enabled = nullptr, *night_start = nullptr, *night_end = nullptr;
+lv_obj_t *night_level = nullptr, *night_level_label = nullptr, *night_status = nullptr;
+display_schedule::Config night_config;
+bool night_storage_ready = true;
+std::atomic_int effective_brightness{100};
+std::atomic<int64_t> manual_brightness_until{0};
+void create_display_preferences(lv_obj_t *screen);
+
 lv_obj_t *wifi_indicator = nullptr;
 lv_obj_t *wifi_header_button = nullptr;
 lv_obj_t *network_qr = nullptr;
@@ -134,6 +143,7 @@ lv_color_t theme_search() { return lv_color_hex(current_palette.search); }
     lv_obj_set_style_text_color(brand_label, theme_accent(), 0);
     lv_obj_set_style_text_color(welcome_label, colour(p.tertiary), 0);
     lv_obj_set_style_text_color(clock_label, colour(p.text), 0);
+    if (idle_clock) lv_obj_set_style_text_color(idle_clock, colour(p.text), 0);
     lv_obj_set_style_text_color(wifi_indicator, wifi_online ? theme_accent() : colour(p.tertiary), 0);
     lv_obj_set_style_bg_color(wifi_header_button, colour(p.panel), 0);
     lv_obj_set_style_border_color(wifi_header_button, theme_accent(), 0);
@@ -442,6 +452,9 @@ void on_brightness(lv_event_t *event)
     const esp_err_t result = bsp_display_brightness_set(value);
     if (result == ESP_OK) {
         current_brightness.store(value);
+        effective_brightness.store(value);
+        network_set_display_brightness(value);
+        manual_brightness_until.store(esp_timer_get_time() + 60000000);
         network_set_brightness(value);
         lv_label_set_text_fmt(brightness_label, "%d%%", value);
     } else {
@@ -481,20 +494,19 @@ bool remote_set_style(LedStyle style)
 
 bool remote_set_brightness(int percent)
 {
-    if (!control_policy::valid_brightness(percent)) return false;
+    if (!control_policy::valid_brightness(percent) || !bsp_display_lock(1000)) return false;
     const esp_err_t result = bsp_display_brightness_set(percent);
-    if (result != ESP_OK) {
-        ESP_LOGW(kTag, "Remote brightness failed: %s", esp_err_to_name(result));
-        return false;
-    }
-    current_brightness.store(percent);
-    network_set_brightness(percent);
-    if (bsp_display_lock(1000)) {
+    if (result == ESP_OK) {
+        current_brightness.store(percent);
+        effective_brightness.store(percent);
+        manual_brightness_until.store(esp_timer_get_time() + 60000000);
+        network_set_brightness(percent);
+        network_set_display_brightness(percent);
         lv_label_set_text_fmt(brightness_label, "%d%%", percent);
         lv_slider_set_value(brightness_slider, percent, LV_ANIM_OFF);
-        bsp_display_unlock();
-    }
-    return true;
+    } else ESP_LOGW(kTag, "Remote brightness failed: %s", esp_err_to_name(result));
+    bsp_display_unlock();
+    return result == ESP_OK;
 }
 
 void remote_set_name(const char *name)
@@ -517,10 +529,30 @@ void remote_set_time(std::time_t epoch)
 void update_clock(lv_timer_t *)
 {
     const std::time_t now = std::time(nullptr);
-    if (now < 1700000000) return;
+    const bool valid_time = now >= 1700000000;
     tm local{};
-    localtime_r(&now, &local);
-    lv_label_set_text_fmt(clock_label, "%02d:%02d", local.tm_hour, local.tm_min);
+    if (valid_time) {
+        localtime_r(&now, &local);
+        lv_label_set_text_fmt(clock_label, "%02d:%02d", local.tm_hour, local.tm_min);
+        lv_label_set_text_fmt(idle_clock, "%02d:%02d", local.tm_hour, local.tm_min);
+    }
+    const bool idle = !recognition_music_heard() && !displayed_track.title[0] && !search_wave_active;
+    if (valid_time && idle) {
+        lv_obj_remove_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
+        if (!displayed_track.title[0]) lv_obj_remove_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
+    }
+    const bool interaction = lv_display_get_inactive_time(nullptr) < 60000 ||
+        esp_timer_get_time() < manual_brightness_until.load();
+    const int target = display_schedule::brightness(night_config,
+        valid_time ? local.tm_hour * 60 + local.tm_min : -1,
+        idle, interaction, current_brightness.load());
+    if (target != effective_brightness.load() && bsp_display_brightness_set(target) == ESP_OK) {
+        effective_brightness.store(target);
+        network_set_display_brightness(target);
+    }
 }
 
 void update_controller_status(LedControllerState state)
@@ -838,6 +870,9 @@ void create_product_screen()
     artwork_mark = make_label(artwork, "WAVEFORM\nONE", &lv_font_montserrat_48, kMuted);
     lv_obj_set_style_text_align(artwork_mark, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(artwork_mark);
+    idle_clock = make_label(artwork, "--:--", &lv_font_montserrat_48, kForeground);
+    lv_obj_center(idle_clock);
+    lv_obj_add_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
 
     search_wave_pixels = static_cast<uint16_t *>(heap_caps_aligned_alloc(64,
         search_waveform::kPixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -1150,7 +1185,112 @@ void create_product_screen()
 
     lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(update_clock, 1000, nullptr);
+    create_display_preferences(screen);
     create_updates_screen(screen);
+}
+
+void create_display_preferences(lv_obj_t *screen)
+{
+    auto *open = lv_button_create(settings_panel);
+    lv_obj_set_size(open, 235, 38);
+    style_update_button(open);
+    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 725, 115);
+    lv_obj_center(make_label(open, "Clock & night dimming", &lv_font_montserrat_16, kForeground));
+    display_panel = lv_obj_create(screen);
+    lv_obj_set_size(display_panel, 1024, 600);
+    lv_obj_center(display_panel);
+    lv_obj_set_style_pad_all(display_panel, 0, 0);
+    lv_obj_set_style_bg_color(display_panel, kBackground, 0);
+    lv_obj_set_style_bg_opa(display_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(display_panel, 0, 0);
+    lv_obj_clear_flag(display_panel, LV_OBJ_FLAG_SCROLLABLE);
+    auto *title = make_label(display_panel, "Clock & night dimming", &lv_font_montserrat_32, kForeground);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 48, 35);
+    auto *close = lv_button_create(display_panel);
+    lv_obj_set_size(close, 120, 52); style_update_button(close);
+    lv_obj_align(close, LV_ALIGN_TOP_RIGHT, -42, 26);
+    lv_obj_center(make_label(close, "Done", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(close, [](lv_event_t *) { lv_obj_add_flag(display_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
+    night_enabled = lv_checkbox_create(display_panel);
+    lv_checkbox_set_text(night_enabled, "Dim touchscreen at night while idle");
+    lv_obj_set_style_text_color(night_enabled, kForeground, 0);
+    lv_obj_set_style_text_font(night_enabled, display_font(&lv_font_montserrat_20), 0);
+    lv_obj_set_style_bg_color(night_enabled, kPanel, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(night_enabled, kAccent, static_cast<lv_style_selector_t>(LV_PART_INDICATOR) | LV_STATE_CHECKED);
+    lv_obj_set_style_border_color(night_enabled, kAccent, LV_PART_INDICATOR);
+    lv_obj_align(night_enabled, LV_ALIGN_TOP_LEFT, 70, 115);
+    lv_obj_align(make_label(display_panel, "Starts", &lv_font_montserrat_20, kForeground), LV_ALIGN_TOP_LEFT, 70, 180);
+    lv_obj_align(make_label(display_panel, "Ends", &lv_font_montserrat_20, kForeground), LV_ALIGN_TOP_LEFT, 360, 180);
+    std::string times;
+    char value[8];
+    for (int minute = 0; minute < 1440; minute += 15) {
+        std::snprintf(value, sizeof(value), "%02d:%02d", minute / 60, minute % 60);
+        if (!times.empty()) times += '\n';
+        times += value;
+    }
+    night_start = lv_dropdown_create(display_panel);
+    night_end = lv_dropdown_create(display_panel);
+    for (auto *dropdown : {night_start, night_end}) {
+        lv_dropdown_set_options(dropdown, times.c_str());
+        lv_obj_set_size(dropdown, 220, 52);
+        lv_obj_set_style_bg_color(dropdown, kPanel, 0);
+        lv_obj_set_style_text_color(dropdown, kForeground, 0);
+        lv_obj_set_style_border_color(dropdown, kLine, 0);
+    }
+    lv_obj_align(night_start, LV_ALIGN_TOP_LEFT, 70, 215);
+    lv_obj_align(night_end, LV_ALIGN_TOP_LEFT, 360, 215);
+    night_level_label = make_label(display_panel, "Night brightness: 10%", &lv_font_montserrat_20, kForeground);
+    lv_obj_align(night_level_label, LV_ALIGN_TOP_LEFT, 70, 305);
+    night_level = lv_slider_create(display_panel);
+    lv_obj_set_size(night_level, 510, 40);
+    lv_slider_set_range(night_level, 10, 100);
+    lv_obj_set_style_bg_color(night_level, kLine, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(night_level, kAccent, LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(night_level, kForeground, LV_PART_KNOB);
+    lv_obj_align(night_level, LV_ALIGN_TOP_LEFT, 70, 345);
+    lv_obj_add_event_cb(night_level, [](lv_event_t *) {
+        lv_label_set_text_fmt(night_level_label, "Night brightness: %d%%", int(lv_slider_get_value(night_level)));
+    }, LV_EVENT_VALUE_CHANGED, nullptr);
+    auto *help = make_label(display_panel,
+        "The idle clock uses device local time (24-hour).\n"
+        "Touch or music restores your selected brightness.\n"
+        "Automatic dimming waits 60 seconds after interaction.\n"
+        "Without valid time, automatic dimming stays off.", &lv_font_montserrat_16, kMuted);
+    lv_obj_align(help, LV_ALIGN_TOP_LEFT, 70, 405);
+    auto *save = lv_button_create(display_panel);
+    lv_obj_set_size(save, 220, 52); style_update_button(save);
+    lv_obj_align(save, LV_ALIGN_BOTTOM_LEFT, 70, -25);
+    lv_obj_center(make_label(save, "Save display settings", &lv_font_montserrat_16, kForeground));
+    night_status = make_label(display_panel, "", &lv_font_montserrat_16, kMuted);
+    lv_obj_set_width(night_status, 620);
+    lv_obj_align(night_status, LV_ALIGN_BOTTOM_LEFT, 320, -40);
+    lv_obj_add_event_cb(save, [](lv_event_t *) {
+        display_schedule::Config candidate;
+        candidate.enabled = lv_obj_has_state(night_enabled, LV_STATE_CHECKED);
+        candidate.start = lv_dropdown_get_selected(night_start) * 15;
+        candidate.end = lv_dropdown_get_selected(night_end) * 15;
+        candidate.percent = lv_slider_get_value(night_level);
+        if (!candidate.valid()) {
+            lv_label_set_text(night_status, "Choose different start and end times.");
+        } else if (!display_schedule::save(candidate)) {
+            lv_label_set_text(night_status, "Could not save. Previous settings remain active.");
+        } else {
+            night_config = candidate; night_storage_ready = true;
+            lv_label_set_text(night_status, "Saved. Applies when idle and the clock is set.");
+        }
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(open, [](lv_event_t *) {
+        if (night_config.enabled) lv_obj_add_state(night_enabled, LV_STATE_CHECKED);
+        else lv_obj_remove_state(night_enabled, LV_STATE_CHECKED);
+        lv_dropdown_set_selected(night_start, night_config.start / 15);
+        lv_dropdown_set_selected(night_end, night_config.end / 15);
+        lv_slider_set_value(night_level, night_config.percent, LV_ANIM_OFF);
+        lv_label_set_text_fmt(night_level_label, "Night brightness: %d%%", int(night_config.percent));
+        lv_label_set_text(night_status, night_storage_ready ? "" : "Settings could not be read. Dimming is off until saved.");
+        lv_obj_remove_flag(display_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(display_panel);
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_flag(display_panel, LV_OBJ_FLAG_HIDDEN);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
@@ -1172,6 +1312,7 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
         ESP_LOGW(kTag, "Recognition display update deferred: GUI busy");
         return false;
     }
+    if (track || recognition_feedback::searching(status)) lv_obj_add_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
     const bool same_cover = track != nullptr
         && std::strcmp(displayed_track.artwork_url, track->artwork_url) == 0;
     const bool same_track = track != nullptr
@@ -1232,6 +1373,11 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(xTaskCreate(update_boot_guard, "ota_boot", 4096, nullptr, 5, nullptr) == pdPASS
         ? ESP_OK : ESP_ERR_NO_MEM);
     log_board_identity();
+    night_storage_ready = display_schedule::load(night_config);
+    if (!night_storage_ready) {
+        night_config.enabled = 0;
+        ESP_LOGW(kTag, "Display schedule unavailable; automatic dimming disabled until saved");
+    }
 
     bsp_display_cfg_t config = {
         .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),

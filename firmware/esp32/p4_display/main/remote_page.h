@@ -26,7 +26,7 @@ body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:b
 <fieldset id="controls" disabled style="border:0;padding:0;margin:0;min-width:0"><label for="name">Your name</label><input id="name" type="text" maxlength="40" autocomplete="given-name"><button class="save" id="save-name">Save name</button>
 <div class="section"><h3>LED STYLE</h3><div class="styles"><button data-style="classic" aria-pressed="false">Classic</button><button data-style="mirrored" aria-pressed="false">Mirrored</button><button data-style="waterfall" aria-pressed="false">Waterfall</button></div></div>
 <div class="section"><h3>APPEARANCE</h3><div class="styles"><button data-appearance="album" aria-pressed="true">Album colours</button><button data-appearance="classic" aria-pressed="false">Classic black</button></div></div>
-<div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"></div>
+<div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"><p id="display-brightness" role="status"></p></div>
 <div class="section"><h3>SOFTWARE UPDATES</h3>
 <p id="update-version"></p><p id="update-result" role="status" hidden></p><p id="update-message" role="status">Checking update status…</p>
 <progress id="update-progress" max="100" value="0" aria-label="Download progress"></progress>
@@ -42,7 +42,7 @@ const $=id=>document.getElementById(id);
 let updateSettingsLoaded=false,updateSettingsDirty=false;
 let csrf='',pollTimer,artworkUrl='',requestActive=false,settingsOpen=false,failures=0,fieldKey='',fieldFront=false;
 function pairedMessage(){return 'Scan the QR code on Waveform One to connect.'}
-function loseSession(){csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
+function loseSession(){$('display-brightness').textContent='';csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
 function reconnecting(){$('connection').textContent='Reconnecting to Waveform One…';$('update-message').textContent='Update status unavailable. Reconnecting…'}
 function showSettings(open){settingsOpen=open;$('settings').hidden=!open;$('open-settings').setAttribute('aria-expanded',String(open));document.body.style.overflow=open?'hidden':'';(open?$('close-settings'):$('open-settings')).focus()}
 $('open-settings').onclick=()=>showSettings(true);$('close-settings').onclick=()=>showSettings(false);
@@ -67,6 +67,7 @@ function render(state){
  $('activity-text').textContent=searching?(track?'Checking what’s playing…':'Finding your song…'):state.status==='configuration_required'?'ACRCloud configuration required':state.status==='unavailable'?'Trying again shortly':track?'Enjoy the music':'Play a song to get started';
  const url=track&&track.artwork||'';if(url!==artworkUrl){artworkUrl=url;showPlaceholder();if(url){$('artwork').alt=track.album?track.album+' album artwork':'Album artwork';$('artwork').src=url}else{$('artwork').removeAttribute('src');$('artwork').alt=''}}
  if(!settingsOpen){$('name').value=state.name;$('brightness').value=state.brightness;$('brightness-value').textContent=state.brightness+'%'}
+ const actual=state.display_brightness??state.brightness;$('display-brightness').textContent=actual<state.brightness?'Night dimming: screen '+actual+'% (selected '+state.brightness+'%)':'';
  document.querySelectorAll('[data-style]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.style===state.style)));
 }
 async function post(path,data){if(!csrf){loseSession();return false}try{const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams(data)});if(response.status===403){loseSession();return false}if(!response.ok)throw Error();$('feedback').textContent=path==='/api/style'?'Applying LED style…':'Saved';return true}catch{$('feedback').textContent='Could not save. Please try again.';return false}}
