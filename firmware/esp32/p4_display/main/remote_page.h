@@ -17,6 +17,7 @@ main{max-width:900px;margin:18px auto 40px}.player{display:grid;grid-template-co
 @media(min-width:700px){main{margin-top:44px}.player{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:42px;align-items:center}.eyebrow{font-size:20px}.connection{margin-top:32px}}
 body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:background-color .7s,border-color .7s,color .7s}
 @media(prefers-reduced-motion:reduce){:root,body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button,.field canvas{transition:none}.wave i{animation:none;height:28px}}
+#controls:disabled #display-brightness{display:none}
 </style></head><body>
 <div class="field" aria-hidden="true"><canvas id="field-a" width="8" height="5"></canvas><canvas id="field-b" width="8" height="5" style="opacity:0"></canvas></div>
 <header><span class="brand">WAVEFORM ONE</span><button class="settings-button" id="open-settings" aria-controls="settings" aria-expanded="false">Settings</button></header>
@@ -42,7 +43,7 @@ const $=id=>document.getElementById(id);
 let updateSettingsLoaded=false,updateSettingsDirty=false;
 let csrf='',pollTimer,artworkUrl='',requestActive=false,settingsOpen=false,failures=0,fieldKey='',fieldFront=false;
 function pairedMessage(){return 'Scan the QR code on Waveform One to connect.'}
-function loseSession(){$('display-brightness').textContent='';csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
+function loseSession(){csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
 function reconnecting(){$('connection').textContent='Reconnecting to Waveform One…';$('update-message').textContent='Update status unavailable. Reconnecting…'}
 function showSettings(open){settingsOpen=open;$('settings').hidden=!open;$('open-settings').setAttribute('aria-expanded',String(open));document.body.style.overflow=open?'hidden':'';(open?$('close-settings'):$('open-settings')).focus()}
 $('open-settings').onclick=()=>showSettings(true);$('close-settings').onclick=()=>showSettings(false);
@@ -109,6 +110,7 @@ $('save-updates').onclick=async()=>{
 async function connect(){
  const response=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});
  if(response.status===401){loseSession();return false}if(!response.ok)throw Error();
+ $('display-brightness').textContent='';
  csrf=await response.text();$('controls').disabled=false;$('feedback').textContent='';await post('/api/time',{epoch:Math.floor(Date.now()/1000)});return !!csrf;
 }
 async function poll(){
