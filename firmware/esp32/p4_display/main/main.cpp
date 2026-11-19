@@ -940,6 +940,8 @@ void create_product_screen()
     lv_obj_t *close_text = make_label(close, "Done", &lv_font_montserrat_16, kForeground);
     lv_obj_center(close_text);
 
+    owner_credentials_ui_create(screen, settings_panel);
+
     lv_obj_t *profile_heading = make_label(settings_panel, "PROFILE", &lv_font_montserrat_16,
                                            kAccent);
     lv_obj_align(profile_heading, LV_ALIGN_TOP_LEFT, 48, 125);
@@ -1152,7 +1154,6 @@ void create_product_screen()
     lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(update_clock, 1000, nullptr);
     create_updates_screen(screen);
-    owner_credentials_ui_create(screen, settings_panel);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
