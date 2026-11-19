@@ -16,6 +16,7 @@ const albumPalette={background:'#f7dc72',panel:'#e3c85e',line:'#ba8826',text:'#4
 let state = { appearance:'album', status: 'capturing', track: null, name: 'Simon', brightness: 65, style: 'classic' };
 let unauthorized = false, failing = false, sessionFailing = false;
 const posts = [];
+let history={schema:1,session:'fixture-session',enabled:false,entries:[]};
 let update = {state:2,installed:'0.0.0',available:'1.2.3',message:'Update available',progress:0,countdown_seconds:0,interval_hours:720,automatic:true,window_start:180,window_end:240,next_check:1800000000,notes_url:'https://github.com/tinyrobotcompany/Waveform_One/releases/tag/v1.2.3'};
 const server = http.createServer((req, res) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -55,6 +56,13 @@ const server = http.createServer((req, res) => {
             if(req.url==='/api/updates/action' && form.get('action')==='install') update={...update,state:3,countdown_seconds:0,message:'Downloading update… Keep Waveform One powered on.'};
             if(req.url==='/api/updates/action' && form.get('action')==='postpone') update={...update,state:2,countdown_seconds:0,message:'Installation postponed for 24 hours.'};
             if(req.url==='/api/updates/config') { const [hours,automatic,start,end]=form.get('value').split(',').map(Number); update={...update,interval_hours:hours,automatic:!!automatic,window_start:start,window_end:end}; }
+            if(req.url==='/api/history') {
+                const action=form.get('action');
+                if(action==='enable')history.enabled=true;
+                if(action==='disable'){history.enabled=false;history.entries=[]}
+                if(action==='clear')history.entries=[];
+                res.setHeader('Content-Type','application/json');return res.end(JSON.stringify(history));
+            }
             res.end('OK');
         });
         return;
@@ -143,6 +151,21 @@ const server = http.createServer((req, res) => {
         await page.locator('#save-updates').click();
         await page.waitForFunction(()=>document.querySelector('#feedback').textContent==='Update settings queued…');
         assert(posts.some(post=>post.path==='/api/updates/config'&&post.body==='value=1%2C0%2C180%2C240'));
+        await page.locator('#history-refresh').click();
+        await page.waitForFunction(()=>document.getElementById('history-status').textContent==='History is off.');
+        await page.locator('#history-toggle').click();
+        await page.waitForFunction(()=>document.getElementById('history-toggle').textContent==='Disable and delete');
+        history.entries=[{id:1,title:'<img src=x onerror=alert(1)>',artist:'Artist & Name',album:'Album',started:1800000000,observed_seconds:65,duration_seconds:120}];
+        await page.locator('#history-refresh').click();
+        await page.waitForFunction(()=>document.querySelectorAll('#history-list li').length===1);
+        assert.equal(await page.locator('#history-list img').count(),0);
+        assert((await page.locator('#history-list').textContent()).includes('<img src=x'));
+        assert((await page.locator('#history-list a').getAttribute('href')).startsWith('https://www.discogs.com/search/?'));
+        await page.locator('#history-clear').click();
+        await page.waitForFunction(()=>document.querySelectorAll('#history-list li').length===0);
+        await page.locator('#history-toggle').click();
+        await page.waitForFunction(()=>document.getElementById('history-status').textContent==='History is off.');
+
         update={...update,notes_url:'javascript:alert(1)',message:'<img src=x onerror=alert(1)>'};
         await page.waitForFunction(()=>document.querySelector('#update-message').textContent.includes('<img'));
         assert(await page.locator('#update-notes').isHidden());

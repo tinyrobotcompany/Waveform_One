@@ -141,6 +141,14 @@ printf '%s\n' 'PASS: production recognition HTTP chunked reads, size bounds, err
 "$build_dir/p4_metadata"
 printf '%s\n' 'PASS: recognition metadata, UTF-8 and artwork origin validation'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/listening_history_test.cpp" "$build_dir/cJSON.o" -o "$build_dir/p4_history"
+"$build_dir/p4_history"
+printf '%s\n' 'PASS: opt-in bounded history, repeated evidence, deletion and reset'
+
+
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \

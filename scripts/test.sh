@@ -10,6 +10,7 @@ python3 -m unittest discover -s scripts/tests -v
 PYTHONPATH=pi/recognition python3 -m unittest discover -s pi/recognition/tests -v
 python3 -m unittest discover -s pi/updater/tests -v
 python3 -m unittest discover -s tools/music_benchmark -p 'test_*.py' -v
+python3 -m unittest discover -s tools/history_bridge -p 'test_*.py' -v
 sh firmware/esp32/tests/run.sh
 cargo test --manifest-path pi/core/Cargo.toml --locked
 
