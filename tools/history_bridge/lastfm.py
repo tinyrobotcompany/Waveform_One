@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import sqlite3
+import stat
 import time
 import urllib.error
 import urllib.parse
@@ -73,12 +74,29 @@ def eligible(document, now):
     return sorted(output, key=lambda item: item['started'])
 
 
+def private_stat(info):
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise ValueError('Account and queue files must be owned by you with mode 0600')
+
+
+def read_config(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd) as source:
+        private_stat(os.fstat(source.fileno()))
+        return json.load(source)
+
+
 class Queue:
     def __init__(self, path):
         self.lock_fd = None
         if str(path) != ':memory:':
             self.lock_fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
-            fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                private_stat(os.fstat(self.lock_fd))
+                fcntl.flock(self.lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except Exception:
+                os.close(self.lock_fd)
+                raise
         self.db = sqlite3.connect(path)
         if str(path) != ':memory:':
             os.chmod(path, 0o600)
@@ -178,7 +196,7 @@ def main():
         for path in (args.config, args.queue):
             path.unlink(missing_ok=True)
         print('Local credentials/queue removed. Export files and Last.fm records are separate; revoke access at Last.fm.'); return
-    config = json.loads(args.config.read_text())
+    config = read_config(args.config)
     account = hashlib.sha256(config['session'].encode()).hexdigest()
     args.queue.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     queue = Queue(args.queue)

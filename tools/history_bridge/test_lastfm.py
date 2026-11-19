@@ -1,12 +1,24 @@
 import hashlib
 import unittest
-from lastfm import Queue, eligible, signed
+import os
+import tempfile
+from pathlib import Path
+from lastfm import Queue, eligible, signed, read_config
 
 class LastFmTests(unittest.TestCase):
     def setUp(self):
         self.config = dict(api_key='api',secret='secret',session='session')
         self.account = hashlib.sha256(b'session').hexdigest()
         self.document = dict(schema=1,session='boot',entries=[dict(id=1,title='Song',artist='Artist',album='Album',duration_seconds=120,observed_seconds=60,started=1800000000)])
+    def test_private_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'account.json';path.write_text('{}');path.chmod(0o644)
+            with self.assertRaises(ValueError):read_config(path)
+            with self.assertRaises(ValueError):Queue(path)
+            path.chmod(0o600);self.assertEqual(read_config(path),{})
+            link=Path(directory)/'link';link.symlink_to(path)
+            with self.assertRaises(OSError):read_config(link)
+
     def test_signature(self):
         expected=hashlib.md5('api_keyapimethodauth.getSessiontokenxsecret'.encode()).hexdigest()
         self.assertEqual(signed(dict(token='x',method='auth.getSession',api_key='api'),'secret')['api_sig'],expected)

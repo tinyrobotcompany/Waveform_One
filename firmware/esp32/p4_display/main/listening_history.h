@@ -29,6 +29,7 @@ public:
     }
     void enable(bool value) {
         const std::lock_guard<std::mutex> lock(mutex_);
+        if (enabled_ != value) candidate_ = {};
         enabled_ = value;
         if (!value) { entries_.clear(); candidate_ = {}; }
     }

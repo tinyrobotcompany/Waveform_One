@@ -2,6 +2,11 @@
 #include <cassert>
 #include <cstring>
 int main() {
+ ListeningHistory fresh; fresh.begin("fresh"); fresh.enable(true);
+ RecognitionTrack initial; std::strcpy(initial.title,"First");std::strcpy(initial.artist,"Artist");
+ for (int n : {1,11,21}) { initial.matched_at_us=int64_t(n)*1000000;fresh.observe(&initial,1800000000+n); }
+ const auto first=fresh.json();assert(first.find("\"observed_seconds\":20")!=std::string::npos);
+ assert(first.find("\"started\":1800000001")!=std::string::npos);assert(first.find("First")!=std::string::npos);
  ListeningHistory history; history.begin("test-session");
  RecognitionTrack track; std::strcpy(track.title,"A <script>"); std::strcpy(track.artist,"Artist"); track.duration_s=120;
  auto observe=[&](int second){track.matched_at_us=int64_t(second)*1000000;history.observe(&track,1800000000+second);};
