@@ -1,9 +1,11 @@
 import hashlib
 import unittest
+from unittest.mock import patch, MagicMock
+from urllib.parse import urlsplit, parse_qs
 import os
 import tempfile
 from pathlib import Path
-from lastfm import Queue, eligible, signed, read_config
+from lastfm import Queue, eligible, signed, read_config, request
 
 class LastFmTests(unittest.TestCase):
     def setUp(self):
@@ -18,6 +20,25 @@ class LastFmTests(unittest.TestCase):
             path.chmod(0o600);self.assertEqual(read_config(path),{})
             link=Path(directory)/'link';link.symlink_to(path)
             with self.assertRaises(OSError):read_config(link)
+
+    def test_http_method_and_signed_fields(self):
+        with patch('lastfm.urllib.request.build_opener') as factory:
+            response=MagicMock()
+            response.__enter__.return_value.read.return_value=b'{}'
+            factory.return_value.open.return_value=response
+            request(dict(method='auth.getToken'),self.config,post=False)
+            req=factory.return_value.open.call_args.args[0]
+            self.assertEqual(req.get_method(),'GET')
+            self.assertIsNone(req.data)
+            fields=parse_qs(urlsplit(req.full_url).query)
+            self.assertEqual(fields['method'],['auth.getToken'])
+            self.assertIn('api_sig',fields)
+            self.assertNotIn('secret',fields)
+            request(dict(method='track.scrobble',track='A & B'),self.config)
+            req=factory.return_value.open.call_args.args[0]
+            self.assertEqual(req.get_method(),'POST')
+            self.assertEqual(urlsplit(req.full_url).query,'')
+            self.assertEqual(parse_qs(req.data.decode())['track'],['A & B'])
 
     def test_signature(self):
         expected=hashlib.md5('api_keyapimethodauth.getSessiontokenxsecret'.encode()).hexdigest()
