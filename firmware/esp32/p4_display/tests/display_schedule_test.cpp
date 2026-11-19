@@ -4,10 +4,16 @@
 #include <cstring>
 #include <vector>
 std::vector<unsigned char> stored, pending;
+bool namespace_exists = false;
 int error = 0, commits = 0, init_error = 0, open_error = 0, read_error = 0, write_error = 0;
 int nvs_flash_init() { return init_error; }
-int nvs_open(const char *name, int, nvs_handle_t *handle) {
-    assert(std::strcmp(name, "wf_display") == 0); *handle = 1; return open_error;
+int nvs_open(const char *name, int mode, nvs_handle_t *handle) {
+    assert(std::strcmp(name, "wf_display") == 0);
+    if (open_error) return open_error;
+    if (!namespace_exists && mode == NVS_READONLY) return ESP_ERR_NVS_NOT_FOUND;
+    if (mode == NVS_READWRITE) namespace_exists = true;
+    *handle = 1;
+    return 0;
 }
 int nvs_get_blob(nvs_handle_t, const char *key, void *out, size_t *size) {
     assert(std::strcmp(key, "schedule") == 0);
@@ -27,6 +33,13 @@ int main() {
     using namespace display_schedule;
     Config c;
     assert(load(c) && c.start == 1380 && commits == 0);
+    assert(!namespace_exists); // Default loading does not create or write anything.
+    c.percent = 30;
+    assert(save(c) && namespace_exists && commits == 1); // First save creates it.
+    Config first_reboot;
+    assert(load(first_reboot) && first_reboot.percent == 30);
+    stored.clear(); // Existing namespace without a schedule also loads defaults.
+    assert(load(c) && c.percent == 10);
     open_error = ESP_ERR_NVS_NOT_FOUND; assert(load(c));
     open_error = -1; assert(!load(c)); open_error = 0;
     init_error = -1; assert(!load(c)); init_error = 0;
