@@ -358,7 +358,7 @@ void on_open_settings(lv_event_t *event)
 void on_close_settings(lv_event_t *event)
 {
     if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
-        setup.dismiss(); refresh_setup_guide();
+        setup.settings_closed(); refresh_setup_guide();
         lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     }
 }

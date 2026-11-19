@@ -14,6 +14,8 @@ public:
     }
     void open() { presented_ = visible_ = true; }
     void dismiss() { visible_ = awaiting_join_ = saved_ = false; }
+    // Closing Settings is not the guide's explicit "Done / later" action.
+    void settings_closed() { visible_ = false; }
     void choose_wifi() { visible_ = false; awaiting_join_ = true; saved_ = false; }
     void joined(bool saved) { saved_ = saved; finish_join(); }
     bool visible() const { return visible_; }

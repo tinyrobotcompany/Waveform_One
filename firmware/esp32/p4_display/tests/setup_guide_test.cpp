@@ -10,6 +10,7 @@ int main() {
     first.dismiss(); first.network(Network::Unconfigured);
     assert(!first.visible()); // No repeated takeover after dismissal.
     first.open(); first.choose_wifi();
+    first.settings_closed();
     first.network(Network::Ready);
     assert(!first.visible()); // IP acquisition is not proof of a saved password.
     first.joined(false);
