@@ -20,6 +20,7 @@ ESP32-S3 audio and HUB75 engine remains intact during this migration.
 - [Contributing and local tests](CONTRIBUTING.md)
 - [Release notes](CHANGELOG.md)
 - [Native P4 over-the-air updates](docs/p4-ota.md)
+- [Wi-Fi and QR phone setup](docs/setup.md)
 - [Legacy Pi over-the-air updates](pi/updater/README.md)
 - [CI and releases](docs/delivery.md)
 - [Pi setup and visual-style controls](pi/README.md)
