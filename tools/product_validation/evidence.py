@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 
@@ -23,7 +24,7 @@ def verify_offline(value, root):
     evidence=[]
     for item in value['cases']:
         if item['status']!='pass':raise ValueError('Offline acceptance incomplete: '+item['case'])
-        if isinstance(item['duration_s'],bool) or not isinstance(item['duration_s'],(int,float)) or item['duration_s']<=0:raise ValueError('Measured duration required')
+        if isinstance(item['duration_s'],bool) or not isinstance(item['duration_s'],(int,float)) or not math.isfinite(item['duration_s']) or item['duration_s']<=0:raise ValueError('Measured duration required')
         path=(root/str(item['evidence'])).resolve()
         if not path.is_relative_to(root.resolve()) or not path.is_file() or path.stat().st_size==0:raise ValueError('Missing/local evidence required')
         evidence.append(dict(case=item['case'],sha256=hashlib.sha256(path.read_bytes()).hexdigest()))

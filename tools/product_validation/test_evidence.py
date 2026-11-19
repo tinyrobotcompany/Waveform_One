@@ -13,6 +13,10 @@ class EvidenceTests(unittest.TestCase):
    value=offline_plan('a'*40);value.update(hardware='fixture',operator='test',tested_utc='2026-11-19')
    for item in value['cases']:item.update(status='pass',duration_s=1,evidence='proof.txt')
    self.assertTrue(verify_offline(value,root)['operator_attested'])
+   for invalid in (float('nan'),float('inf'),0,-1,True):
+    value['cases'][0]['duration_s']=invalid
+    with self.assertRaises(ValueError):verify_offline(value,root)
+   value['cases'][0]['duration_s']=1
    value['cases'][0]['evidence']='../missing'
    with self.assertRaises(ValueError):verify_offline(value,root)
  def test_usage_redacts_metadata(self):
