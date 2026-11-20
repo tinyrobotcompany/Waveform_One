@@ -101,13 +101,22 @@ encrypted by these features. Removal is not a claim of forensic secure erasure.
 **Stopping capture.** Powering off Waveform One stops microphone capture and
 uploads. Disconnecting its internet connection prevents cloud recognition
 requests from reaching ACRCloud, but does not itself turn off the microphone.
-On hardware fitted and validated with the supported physical mute circuit, the
-switch disconnects both microphones' power and signal paths. Supporting firmware
-also clears capture buffers, invalidates old audio/results, inhibits new requests
-and cancels uploads between transport operations. It cannot recall bytes already
-sent; an in-progress network operation may finish before cancellation is observed.
-Microphone-reactive LEDs also stop receiving sound while muted. Existing unwired
-devices do not acquire a physical mute through a firmware update: the build option
-remains disabled until the circuit is installed and tested. A software indication
-alone is not proof of electrical disconnection.
+On firmware with Settings → Microphone, the touchscreen mute pauses local P4
+capture, clears capture buffers, invalidates old audio/results and inhibits new
+recognition requests. The paired phone shows the muted state. A successfully
+saved mute survives normal restart and application OTA; an erased/reset settings
+partition restores the fresh-device default of listening. If saving fails, mute
+still takes effect now, but the screen warns that the previous saved setting may
+return after restart. Unmute requires a successful save; corrupt/unreadable
+settings default to muted without erasing storage.
+
+This is a software mute: the microphones remain electrically connected and may
+remain powered. It is not a physical privacy switch or a guarantee against
+replacement/malicious firmware. Microphone-reactive LEDs also stop receiving
+sound while muted. An already-running capture read is discarded when it returns;
+an in-progress network operation may finish before cancellation is observed.
+Cancelled uploads are closed and not retried, but bytes already sent cannot be
+recalled. No switch installation, GPIO wiring or microphone modification is
+required. The control covers the local P4 capture path, not a separately running
+legacy S3 microphone controller.
 <!-- privacy-notice:end -->
