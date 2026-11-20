@@ -133,6 +133,34 @@ async function poll(){
  finally{requestActive=false;if(!document.hidden)pollTimer=setTimeout(poll,failures?Math.min(10000,2000*(failures+1)):(activeUpdate?1000:2000))}
 }
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll();else clearTimeout(pollTimer)});
+// History is explicitly enabled per boot and is never sent to another service here.
+const historySection=document.createElement('div');historySection.className='section';
+historySection.innerHTML='<h3>LISTENING HISTORY</h3><p>Optional: last 50 confirmed tracks, in device memory until restart. No audio. Disabling deletes this session.</p><button id="history-refresh">View / refresh</button> <button id="history-toggle">Enable for this session</button> <button id="history-clear">Delete history</button> <button id="history-export">Export JSON</button><p id="history-status" role="status"></p><ol id="history-list"></ol>';
+$('controls').append(historySection);
+let historyData=null,historyBusy=false;
+function resetHistory(){historyData=null;$('history-list').replaceChildren();$('history-status').textContent='Connect to view history.';$('history-toggle').textContent='Enable for this session'}
+new MutationObserver(()=>{if($('controls').disabled)resetHistory()}).observe($('controls'),{attributes:true,attributeFilter:['disabled']});
+function renderHistory(value){
+ historyData=value;$('history-toggle').textContent=value.enabled?'Disable and delete':'Enable for this session';
+ $('history-status').textContent=value.enabled?'Enabled until device restart. Recognition evidence is not a complete playback log.':'History is off.';
+ $('history-list').replaceChildren();
+ for(const item of value.entries){
+  const row=document.createElement('li'),text=document.createElement('p');
+  text.textContent=item.artist+' — '+item.title+(item.album?' · '+item.album:'');row.append(text);
+  const detail=document.createElement('small');detail.textContent=(item.started?new Date(item.started*1000).toLocaleString():'Time unavailable')+' · '+Math.floor(item.observed_seconds)+' seconds of repeated recognition';row.append(detail);
+  const link=document.createElement('a');link.textContent=' Find on Discogs';link.href='https://www.discogs.com/search/?'+new URLSearchParams({q:item.artist+' '+(item.album||item.title),type:'release'});link.target='_blank';link.rel='noopener noreferrer';row.append(link);$('history-list').append(row);
+ }
+}
+async function historyAction(action){
+ if(historyBusy||!csrf)return null;historyBusy=true;
+ try{const response=await fetch('/api/history',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams({action}),signal:AbortSignal.timeout(8000)});
+ if(response.status===401||response.status===403){loseSession();resetHistory();return null}if(!response.ok)throw Error();const value=await response.json();if(!csrf)return null;renderHistory(value);return value;
+ }catch{$('history-status').textContent='History unavailable. Try again.';return null}finally{historyBusy=false}
+}
+$('history-refresh').onclick=()=>historyAction('read');
+$('history-toggle').onclick=async()=>{const current=await historyAction('read');if(current)await historyAction(current.enabled?'disable':'enable')};
+$('history-clear').onclick=()=>historyAction('clear');
+$('history-export').onclick=async()=>{const value=await historyAction('read');if(!value)return;const url=URL.createObjectURL(new Blob([JSON.stringify(value,null,2)],{type:'application/json'}));const link=document.createElement('a');link.href=url;link.download='waveform-history.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};
 window.addEventListener('pageshow',()=>poll());
 window.addEventListener('online',()=>poll());
 poll();

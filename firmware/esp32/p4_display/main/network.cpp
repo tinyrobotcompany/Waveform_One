@@ -1,3 +1,4 @@
+#include "listening_history.h"
 #include "cJSON.h"
 #include "network.h"
 
@@ -33,6 +34,8 @@
 #include "remote_state.h"
 
 namespace {
+ListeningHistory listening_history;
+
 
 constexpr char kTag[] = "waveform_network";
 RemoteCallbacks controls{};
@@ -564,6 +567,24 @@ esp_err_t update_config_handler(httpd_req_t *request)
     return reply(request, "Request queued");
 }
 
+esp_err_t history_handler(httpd_req_t *request)
+{
+    if (!require_authorized(request)) return ESP_OK;
+    httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    {
+        std::string action;
+        if (!read_form_field(request, "action", action)) return ESP_OK;
+        if (action == "enable") listening_history.enable(true);
+        else if (action == "disable") listening_history.enable(false);
+        else if (action == "clear") listening_history.clear();
+        else if (action != "read") return httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "Invalid history action");
+    }
+    const auto body = listening_history.json();
+    if (body.empty()) return service_unavailable(request, "History unavailable");
+    httpd_resp_set_type(request, "application/json");
+    return httpd_resp_send(request, body.data(), body.size());
+}
+
 void register_uri(httpd_handle_t server, const char *uri, httpd_method_t method,
                   esp_err_t (*handler)(httpd_req_t *))
 {
@@ -785,9 +806,10 @@ void network_task(void *)
     network_request_scan();
 
     httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
-    server_config.max_uri_handlers = 16;
+    server_config.max_uri_handlers = 20;
     httpd_handle_t server = nullptr;
     ESP_ERROR_CHECK(httpd_start(&server, &server_config));
+    register_uri(server, "/api/history", HTTP_POST, history_handler);
     register_uri(server, "/", HTTP_GET, page_handler);
     register_uri(server, "/pair", HTTP_GET, pair_handler);
     register_uri(server, "/api/session", HTTP_GET, session_handler);
@@ -890,6 +912,7 @@ void configure_home_task(void *context)
 
 void network_set_recognition(RecognitionStatus status, const RecognitionTrack *track)
 {
+    listening_history.observe(track, std::time(nullptr));
     remote_state.recognition(status, track);
 }
 
@@ -904,6 +927,10 @@ void network_set_style(LedStyle style)
 
 void network_start(const RemoteCallbacks &callbacks)
 {
+    char history_session[33];
+    std::snprintf(history_session, sizeof(history_session), "%08x%08x%08x%08x",
+        unsigned(esp_random()), unsigned(esp_random()), unsigned(esp_random()), unsigned(esp_random()));
+    listening_history.begin(history_session);
     controls = callbacks;
     ESP_ERROR_CHECK(xTaskCreate(network_task, "network", 8192, nullptr, 8, nullptr) == pdPASS
                         ? ESP_OK : ESP_ERR_NO_MEM);
