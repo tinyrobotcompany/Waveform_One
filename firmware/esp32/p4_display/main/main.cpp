@@ -1015,6 +1015,8 @@ void create_product_screen()
                                      &lv_font_montserrat_16, kForeground);
         lv_obj_center(label);
     }
+    create_microphone_controls(screen);
+
     style_status = make_label(settings_panel, "Waiting for LED controller…",
                               &lv_font_montserrat_16, kMuted);
     lv_obj_align(style_status, LV_ALIGN_TOP_LEFT, 48, 355);
@@ -1201,7 +1203,6 @@ void create_product_screen()
     lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(update_clock, 1000, nullptr);
     create_updates_screen(screen);
-    create_microphone_controls(screen);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
