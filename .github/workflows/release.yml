@@ -101,7 +101,7 @@ jobs:
             mkdir "$verification/downloaded"
             gh release download "$tag" --pattern '*' --dir "$verification/downloaded"
             python3 scripts/verify-release-assets.py --dist "$RELEASE_DIST" --downloaded "$verification/downloaded"
-            gh release edit "$tag" --draft=false --latest
+            gh release edit "$tag" --notes-file /tmp/release-notes.md --draft=false --latest
           else
             test "$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)" = "$GITHUB_SHA"
           fi
