@@ -1,0 +1,37 @@
+{
+  "status": "UNVALIDATED_PROTOTYPE",
+  "units": "mm",
+  "parameters": {
+    "lcd_w": 180,
+    "lcd_h": 115,
+    "lcd_d": 22,
+    "led_w": 191.8,
+    "led_h": 95.8,
+    "led_d": 12.7,
+    "screen_window_w": 154,
+    "screen_window_h": 86,
+    "border": 10,
+    "separator": 12,
+    "depth": 75,
+    "wall": 3,
+    "rear_clearance": 35,
+    "print_limit": 245
+  },
+  "enclosure": {
+    "width": 211.8,
+    "height": 242.8,
+    "depth": 75
+  },
+  "comparison": {
+    "same_components_side_by_side_width": 403.8,
+    "width_reduction_percent": 47.5482912332838
+  },
+  "outstanding": [
+    "LCD glass/depth measurement",
+    "mounting and cable fit",
+    "mute-switch cutout selection",
+    "thermal test",
+    "acoustic/recognition baseline",
+    "electrical safety and stability"
+  ]
+}
