@@ -1,10 +1,11 @@
 # Recovery without company infrastructure
 
-The repository is public, but public visibility alone does not grant an
-open-source licence. This checkout has no root LICENSE file. Choosing a licence
-for original software and hardware is an owner decision still outstanding;
-third-party licences continue to apply independently. Do not advertise unrestricted
-commercial redistribution until that decision and the dependency audit are complete.
+The owner has approved Apache-2.0 for original software and CERN-OHL-W-2.0
+for original hardware/mechanical designs; PR #34 adds the official texts and
+scope. Once merged, consult `LICENSING.md`, `LICENSE` and `LICENSES/` for the
+applicable grants. Until then, this branch alone does not contain that grant.
+Third-party licences continue to apply independently; the repository licence
+is not blanket commercial clearance for vendor SDKs, models, fonts or artwork.
 
 ## Independent USB build/recovery
 
