@@ -16,6 +16,12 @@ accuracy benchmark and a documented cold-boot offline demonstration are pending;
 see the evidence and acceptance plans below rather than assuming a measured
 accuracy percentage or a complete offline guarantee.
 
+## Licence and independent maintenance
+
+Original software is licensed under [Apache 2.0](LICENSE). Original hardware and mechanical designs are licensed under [CERN-OHL-W 2.0](LICENSES/CERN-OHL-W-2.0.txt). See [licensing scope and third-party exclusions](LICENSING.md). These licences allow independent maintenance and commercial use; they do not provide recognition-service accounts or rights to our trademarks.
+
+## Documentation
+
 - [Wiring, firmware programs and build instructions](firmware/esp32/README.md)
 - [ESP32-P4 display bring-up and wiring](firmware/esp32/p4_display/README.md)
 - [ESP32-P4 controller architecture decision](docs/architecture/0001-esp32-p4-display-controller.md)
