@@ -37,6 +37,9 @@ class GitReleaseTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        self.evidence = '## Recognition accuracy\n\nNot benchmarked.\n\n## Recognition service costs\n\nPrice unverified.\n'
+        (self.root / 'docs').mkdir()
+        (self.root / 'docs/release-evidence.md').write_text(self.evidence)
         self.git('init', '-q')
         self.git('config', 'user.email', 'test@example.com')
         self.git('config', 'user.name', 'Test')

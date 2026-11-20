@@ -35,6 +35,15 @@ automation PR. PR checks run all host tests and firmware builds. Codex reviews
 non-draft PRs except Dependabot and changeset-release PRs, matching Voxa. Inspect
 the actual review body: a successful check can represent a skip or fallback.
 
+Every generated release includes the committed [recognition evidence and cost
+disclosures](docs/release-evidence.md). Keep both required sections nonempty.
+Publish measurements only with tested firmware/protocol/date, denominators and
+supporting evidence; otherwise retain the explicit not-benchmarked/unverified
+status. Re-audit provider selection when recognition or build configuration
+changes. These disclosures supplement the separate microphone privacy notice.
+The generator reads the release commit, not local edits, and refreshes notes
+before publishing a resumed draft. Published historical releases are not rewritten.
+
 Changes merge into `main` only when approved. A successful main pipeline publishes
 pending changesets as a GitHub release with firmware assets; it does not install
 anything on a Pi or ESP32. Do not manually create `v*` tags or edit released assets.

@@ -8,6 +8,10 @@ SPEC.loader.exec_module(scope)
 
 
 class ScopeTests(unittest.TestCase):
+    def test_release_disclosure_is_validated_even_when_only_markdown_changes(self):
+        self.assertEqual(scope.select(['docs/release-evidence.md']),
+                         {'firmware': [], 'pi': False, 'tests': True})
+
     def test_documentation_and_changesets_skip_builds(self):
         self.assertEqual(scope.select(['README.md', 'firmware/esp32/visualizer/README.md',
                                        '.changeset/example.md']),
