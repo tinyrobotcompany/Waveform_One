@@ -204,6 +204,9 @@ const server = http.createServer((req, res) => {
         await page.getByText('Reconnecting to Waveform One…').waitFor();
         assert.equal(await page.locator('#title').textContent(), track.title);
         failing = false;
+        state = { ...state, track, status: 'muted' };
+        await page.getByText('Microphone muted', {exact:true}).waitFor();
+        assert.notEqual(await page.locator('#title').textContent(),track.title);
         state = { ...state, track: null, status: 'waiting' };
         await page.getByRole('heading', { name: 'Listening for music' }).waitFor({ timeout: 10000 });
         assert(await page.locator('#wave').isHidden());

@@ -24,6 +24,20 @@ printf '%s\n' 'PASS: phone setup guide, saved Wi-Fi gating, reconnect and dismis
 "$build_dir/p4_credentials"
 printf '%s\n' 'PASS: ACRCloud provisioning, OTA persistence, corruption and storage failures'
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/microphone_privacy_test.cpp" -o "$build_dir/p4_privacy"
+"$build_dir/p4_privacy"
+printf '%s\n' 'PASS: mute epochs, buffer scrubbing and fresh audio segments'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/tests/privacy_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/microphone_settings_test.cpp" \
+    "$esp_dir/p4_display/main/microphone_privacy.cpp" -o "$build_dir/p4_microphone_settings"
+"$build_dir/p4_microphone_settings"
+printf '%s\n' 'PASS: persistent microphone mute, reboot, corrupt storage and failed saves'
+
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \

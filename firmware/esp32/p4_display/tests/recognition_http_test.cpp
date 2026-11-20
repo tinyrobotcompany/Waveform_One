@@ -60,4 +60,48 @@ int main()
     }
     assert(test_http.closed == 3 && test_http.cleaned == 3);
     assert(test_allocations.empty());
+    // Revoking upload permission stops at a bounded chunk and never retries.
+    test_http = {}; test_http_inits = 0;
+    std::string audio(12000, 'a'); int checks = 0;
+    Body guarded{audio.data(), audio.size(), "audio/test", false,
+        [](void *context) { return ++*static_cast<int *>(context) <= 4; }, &checks};
+    { Response response; Connection link;
+      assert(!fetch("https://service.test/", guarded, 8, response, &link));
+      assert(test_http.written == 4096 && test_http_inits == 1 && link.client == nullptr); }
+    test_http = {}; checks = 100;
+    { Response response; assert(!fetch("https://service.test/", guarded, 8, response)); }
+    assert(test_http.written == 0 && test_http.reads == 0);
+    // Cancellation after open, partial write, headers and partial response must
+    // destroy fresh AND reused clients exactly once, without stale-link retry.
+    for (bool reused : {false, true}) for (int allowed_checks : {3, 4, 6, 7, 8}) {
+        test_http = {}; test_http_inits = 0;
+        Response response; Connection link;
+        if (reused) {
+            test_http.body = "ok";
+            assert(fetch("https://service.test/", Body{}, 16, response, &link));
+        }
+        test_http.body = "123456789"; test_http.offset = 0; test_http.written = 0;
+        test_http.reads = 0;
+        struct Permission { int calls = 0; int allowed; } permission{0, allowed_checks};
+        Body bounded{audio.data(), audio.size(), "audio/test", false,
+            [](void *p) { auto &v = *static_cast<Permission *>(p); return ++v.calls <= v.allowed; }, &permission};
+        assert(!fetch("https://service.test/", bounded, 16, response, &link));
+        assert(link.client == nullptr && link.response == nullptr);
+        assert(test_http.closed == 1 && test_http.cleaned == 1 && test_http_inits == 1);
+        if (allowed_checks == 3) assert(test_http.written == 0);
+        if (allowed_checks == 4) assert(test_http.written == 4096);
+        if (allowed_checks == 8) assert(test_http.reads == 1);
+    }
+    // Cleanup must work after fetch has cleared the callback response pointer.
+    test_http = {}; test_http_inits = 0;
+    {
+        Response response; Connection link;
+        assert(fetch("https://service.test/", Body{}, 8, response, &link));
+        assert(link.client && link.response == nullptr);
+        link.drop();
+        assert(link.client == nullptr && test_http.closed == 1 && test_http.cleaned == 1);
+        link.drop(); // Idempotent, including destruction after explicit cancellation.
+        assert(test_http.closed == 1 && test_http.cleaned == 1);
+    }
+    assert(test_allocations.empty());
 }

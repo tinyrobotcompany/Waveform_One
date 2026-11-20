@@ -1,3 +1,4 @@
+#include "microphone_privacy.h"
 #include <algorithm>
 #include <atomic>
 #include <cinttypes>
@@ -347,7 +348,7 @@ void set_recognition_feedback(RecognitionStatus status, bool has_track)
     lv_obj_set_style_bg_color(recognition_dot,
         recognition_feedback::searching(status) ? theme_search() : theme_accent(), 0);
     theme_status = status;
-    set_label_text(recognition_status, recognition_feedback::text(status, has_track));
+    set_label_text(recognition_status, microphone_privacy::muted() ? "Microphone muted" : recognition_feedback::text(status, has_track));
 }
 
 lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font,
@@ -358,6 +359,55 @@ lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font,
     set_label_text(label, text);
     lv_obj_set_style_text_color(label, color, 0);
     return label;
+}
+
+lv_obj_t *microphone_panel = nullptr, *microphone_button_label = nullptr, *microphone_message = nullptr;
+void refresh_microphone() {
+    set_label_text(microphone_button_label, microphone_privacy::storage_error.load() ? "Save muted setting" : microphone_privacy::muted() ? "Unmute microphone" : "Mute microphone");
+    set_label_text(microphone_message, microphone_privacy::storage_error.load()
+        ? "Microphone muted. Setting could not be saved.\nRetry before restarting; the previous saved setting may return."
+        : microphone_privacy::muted()
+            ? "Microphone muted. Capture and music recognition are paused.\nThis setting stays muted after restart and updates."
+            : "Microphone on. Local audio capture is enabled.");
+}
+void create_microphone_controls(lv_obj_t *screen) {
+    auto *open = lv_button_create(settings_panel);
+    lv_obj_set_size(open, 210, 36);
+    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 245, 215);
+    lv_obj_set_style_bg_color(open, kPanel, 0);
+    lv_obj_set_style_border_width(open, 2, 0);
+    lv_obj_set_style_border_color(open, kLine, 0);
+    lv_obj_center(make_label(open, "Microphone", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(open, [](lv_event_t *) { refresh_microphone(); lv_obj_remove_flag(microphone_panel, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(microphone_panel); }, LV_EVENT_CLICKED, nullptr);
+    microphone_panel = lv_obj_create(screen);
+    lv_obj_set_size(microphone_panel, 1024, 600);
+    lv_obj_center(microphone_panel);
+    lv_obj_set_style_bg_color(microphone_panel, kBackground, 0);
+    lv_obj_set_style_bg_opa(microphone_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(microphone_panel, 0, 0);
+    lv_obj_remove_flag(microphone_panel, LV_OBJ_FLAG_SCROLLABLE);
+    auto *title = make_label(microphone_panel, "Microphone", &lv_font_montserrat_48, kForeground);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 48, 35);
+    microphone_message = make_label(microphone_panel, "", &lv_font_montserrat_20, kForeground);
+    lv_obj_set_width(microphone_message, 900);
+    lv_obj_align(microphone_message, LV_ALIGN_TOP_LEFT, 48, 145);
+    auto *toggle = lv_button_create(microphone_panel);
+    lv_obj_set_size(toggle, 340, 65); lv_obj_align(toggle, LV_ALIGN_TOP_LEFT, 48, 260);
+    lv_obj_set_style_bg_color(toggle, kPanel, 0);
+    lv_obj_set_style_border_width(toggle, 2, 0); lv_obj_set_style_border_color(toggle, kAccent, 0);
+    microphone_button_label = make_label(toggle, "", &lv_font_montserrat_20, kForeground);
+    lv_obj_center(microphone_button_label);
+    lv_obj_add_event_cb(toggle, [](lv_event_t *) { microphone_privacy::request(microphone_privacy::storage_error.load() || !microphone_privacy::muted()); clear_recognition_track(); set_recognition_feedback(RecognitionStatus::Waiting, false); refresh_microphone(); }, LV_EVENT_CLICKED, nullptr);
+    auto *explanation = make_label(microphone_panel,
+        "Muting stops sound-reactive LEDs and new recognition uploads.\nAudio already sent cannot be recalled. This is a software mute;\nit does not physically disconnect or remove power from the microphones.",
+        &lv_font_montserrat_20, kMuted);
+    lv_obj_set_width(explanation, 900); lv_obj_align(explanation, LV_ALIGN_TOP_LEFT, 48, 380);
+    auto *close = lv_button_create(microphone_panel);
+    lv_obj_set_size(close, 110, 52); lv_obj_align(close, LV_ALIGN_TOP_RIGHT, -48, 40);
+    lv_obj_set_style_bg_color(close, kPanel, 0);
+    lv_obj_center(make_label(close, "Done", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(close, [](lv_event_t *) { lv_obj_add_flag(microphone_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
+    refresh_microphone(); lv_obj_add_flag(microphone_panel, LV_OBJ_FLAG_HIDDEN);
 }
 
 void on_open_settings(lv_event_t *event)
@@ -1128,6 +1178,8 @@ void create_product_screen()
                                      &lv_font_montserrat_16, kForeground);
         lv_obj_center(label);
     }
+    create_microphone_controls(screen);
+
     style_status = make_label(settings_panel, "Waiting for LED controller…",
                               &lv_font_montserrat_16, kMuted);
     lv_obj_align(style_status, LV_ALIGN_TOP_LEFT, 48, 355);
@@ -1449,6 +1501,7 @@ void create_display_preferences(lv_obj_t *screen)
 bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                         const RecognitionArtwork *image)
 {
+    if (microphone_privacy::muted()) { status = RecognitionStatus::Waiting; track = nullptr; image = nullptr; }
     network_set_recognition(status, track);
     // The recognition/session mutex is acquired before this GUI lock everywhere.
     if (!bsp_display_lock(10)) {
@@ -1513,6 +1566,7 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
 
 extern "C" void app_main()
 {
+    microphone_privacy_start();
     ESP_ERROR_CHECK(xTaskCreate(update_boot_guard, "ota_boot", 4096, nullptr, 5, nullptr) == pdPASS
         ? ESP_OK : ESP_ERR_NO_MEM);
     log_board_identity();
@@ -1538,6 +1592,12 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(bsp_display_backlight_on());
     ESP_ERROR_CHECK(bsp_display_lock(-1) ? ESP_OK : ESP_ERR_TIMEOUT);
     create_product_screen();
+    {
+        // LVGL invokes timers under the display lock, including credential-free boots.
+        lv_timer_create([](lv_timer_t *) {
+            set_recognition_feedback(theme_status, displayed_track.title[0] != '\0');
+        }, 100, nullptr);
+    }
     bsp_display_unlock();
 
     ESP_LOGI(kTag, "Display and touch initialized");

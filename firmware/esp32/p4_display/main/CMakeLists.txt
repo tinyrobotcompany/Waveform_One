@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "update_service.c" "update_policy.c" "main.cpp" "display_schedule.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
          "recognition.cpp" "recognition_credentials.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
-         "music_detector.cpp" "../../common/music_features.cpp"
+         "music_detector.cpp" "microphone_privacy.cpp" "../../common/music_features.cpp"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
          "fonts/waveform_font_24.c" "fonts/waveform_font_32.c"
          "fonts/waveform_font_40.c" "fonts/waveform_font_48.c"

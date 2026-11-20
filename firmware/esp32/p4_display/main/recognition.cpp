@@ -1,3 +1,4 @@
+#include "microphone_privacy.h"
 #include "recognition.h"
 #include "recognition_input.h"
 #include "recognition_activity.h"
@@ -170,13 +171,14 @@ recognition_credentials::Record acrcloud_record;
 acrcloud::Credentials kAcrcloud;
 
 #if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
-void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection)
+void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection, microphone_privacy::Permit permit)
 {
     static bool tested = false;
-    if (tested || original_code != 1001 || count < 5 * 16000) return;
+    if (!permit.valid() || tested || original_code != 1001 || count < 5 * 16000) return;
     tested = true;
     ESP_LOGI(kTag, "PCM comparison: same sample count=%u submitted_8k_code=%d", unsigned(count), original_code);
     std::vector<int16_t> normalized(pcm, pcm + count);
+    microphone_privacy::Scrub scrub_normalized{normalized.data(), normalized.size() * sizeof(int16_t)};
     int peak = 0;
     double squares = 0;
     for (auto value : normalized) { peak = std::max(peak, std::abs(int(value))); squares += double(value) * value; }
@@ -185,11 +187,13 @@ void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognitio
     for (unsigned variant = 0; variant < 2; ++variant) {
         const std::string timestamp = std::to_string(static_cast<long long>(std::time(nullptr)));
         const std::string boundary = "evidence" + uuid();
-        const auto body = acrcloud::body(kAcrcloud, timestamp, variant ? normalized.data() : pcm, count, boundary, 16000);
+        if (!permit.valid()) break;
+        auto body = acrcloud::body(kAcrcloud, timestamp, variant ? normalized.data() : pcm, count, boundary, 16000);
+        microphone_privacy::Scrub scrub_diagnostic{body.data(), body.size()};
         const std::string type = "multipart/form-data; boundary=" + boundary;
         const std::string url = std::string("https://") + kAcrcloud.host + "/v1/identify";
         Response response;
-        if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false},
+        if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::Permit::check, &permit},
                    64 * 1024, response, &connection)) {
             ESP_LOGW(kTag, "PCM comparison variant=%s transport_failed; stopping", variant ? "normalized_16k" : "original_16k");
             break;
@@ -210,32 +214,36 @@ void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognitio
 #endif
 
 // Identifies a stretch of audio with ACRCloud. pcm holds 16 kHz samples.
-Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64_t &service_delay)
+Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64_t &service_delay, microphone_privacy::Permit permit)
 {
     track = {};
+    if (!permit.valid()) return Lookup::Failed;
     Heap<int16_t> reduced(static_cast<int16_t *>(heap_caps_malloc((count / 2) * sizeof(int16_t),
         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
     if (!reduced) return Lookup::Failed;
     acrcloud::downsample(pcm, count, reduced.get());
     const std::string timestamp = std::to_string(static_cast<long long>(std::time(nullptr)));
     const std::string boundary = "waveform" + uuid();
-    const auto body = acrcloud::body(kAcrcloud, timestamp, reduced.get(), count / 2, boundary);
+    auto body = acrcloud::body(kAcrcloud, timestamp, reduced.get(), count / 2, boundary);
+    microphone_privacy::Scrub scrub_body{body.data(), body.size()};
+    microphone_privacy::wipe(reduced.get(), (count / 2) * sizeof(int16_t));
     reduced.reset();
     const std::string type = "multipart/form-data; boundary=" + boundary;
     const std::string url = std::string("https://") + kAcrcloud.host + "/v1/identify";
     Response response;
     // One connection kept open: no TCP/TLS handshake per lookup.
     static recognition_http::Connection connection;
-    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false}, 64 * 1024,
+    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::Permit::check, &permit}, 64 * 1024,
                response, &connection)) {
         service_delay = response.retry_after_us;
         return Lookup::Failed;
     }
+    if (!permit.valid()) return Lookup::Failed;
     Json result(cJSON_ParseWithLengthOpts(response.bytes.get(), response.size + 1, nullptr, true));
     if (!result) return Lookup::Failed;
 #if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
     const auto *response_code = recognition_metadata::field(recognition_metadata::field(result.get(), "status"), "code");
-    compare_pcm(pcm, count, cJSON_IsNumber(response_code) ? response_code->valueint : -1, connection);
+    compare_pcm(pcm, count, cJSON_IsNumber(response_code) ? response_code->valueint : -1, connection, permit);
 #endif
     switch (acrcloud::parse(result.get(), track)) {
     case acrcloud::Result::Matched: return Lookup::Matched;
@@ -486,11 +494,27 @@ void presence_task(void *)
             clear_display_locked(music ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
     };
     while (true) {
+        microphone_privacy::Permit presence_permit;
+        if (!presence_permit.valid()) {
+            if (!missing) {
+                tracker.reset(changed);
+                std::lock_guard<std::mutex> lock(session_mutex);
+                recognition_activity::missing(sessions, sound_state);
+                clear_display_locked(RecognitionStatus::Waiting);
+                missing = true;
+            }
+            microphone_privacy::wipe(buffer.get(), capacity * sizeof(int16_t));
+            sound_heard.store(false); music_heard.store(false); cautious_lookups.store(false);
+            { std::lock_guard<std::mutex> lock(session_mutex); flush_clear_locked(); }
+            last_audio = esp_timer_get_time();
+            vTaskDelay(pdMS_TO_TICKS(20)); continue;
+        }
         const auto *audio = recognition_input_audio();
         size_t count = 0;
         if (audio) {
             const auto read = audio->read(position, buffer.get(), capacity);
             count = read.count;
+            if (!presence_permit.valid()) continue;
             if (count) {
                 if (kContinuousRecognition) {
                     std::lock_guard<std::mutex> lock(session_mutex);
@@ -593,6 +617,13 @@ void recognition_task(void *)
         track = {}; image = {};
     };
     while (true) {
+        microphone_privacy::Permit audio_permit;
+        if (!audio_permit.valid()) {
+            microphone_privacy::wipe(clip.get(), recognition_policy::Planner::kMaxWindow * fingerprint::kHopSamples * sizeof(int16_t));
+            microphone_privacy::wipe(buffer.get(), capacity * sizeof(int16_t));
+            clear(); recent = {}; recent_image = {}; planner.stopped();
+            vTaskDelay(pdMS_TO_TICKS(20)); continue;
+        }
         const auto current = sound_session();
         const auto *audio = recognition_input_audio();
         size_t count = 0;
@@ -665,7 +696,7 @@ void recognition_task(void *)
                 last_request_at = now;
                 if (current.session.ready && !track.title[0]) show_now(RecognitionStatus::Identifying);
                 const int64_t started = esp_timer_get_time();
-                outcome = paid ? identify(clip.get(), wanted, next, delay) : lookup(signature, next, delay);
+                outcome = paid ? identify(clip.get(), wanted, next, delay, audio_permit) : lookup(signature, next, delay);
                 ESP_LOGI(kTag, "Lookup id=%u result=%s title=\"%s\" artist=\"%s\" duration_ms=%lld", id,
                     outcome == Lookup::Matched ? "matched" : outcome == Lookup::NoMatch ? "no_match" : "failed",
                     next.title, next.artist, static_cast<long long>((esp_timer_get_time() - started) / 1000));
@@ -687,6 +718,7 @@ void recognition_task(void *)
             } else {
                 retries.succeeded();
             }
+            if (!audio_permit.valid()) continue;
             const auto completed = sound_session();
             // USB advances the ring generation before the presence task has
             // necessarily observed a discontinuity. Check the stream itself

@@ -1,4 +1,5 @@
 #include "recognition_input.h"
+#include "microphone_privacy.h"
 #include "sdkconfig.h"
 #include "esp_log.h"
 
@@ -30,6 +31,12 @@ void capture(void *) {
     constexpr size_t frames = 256; // 16 ms at 16 kHz
     int16_t stereo[frames * 2], mono[frames];
     while (true) {
+        if (microphone_privacy::muted()) {
+            local_audio->erase(); notify(false);
+            microphone_privacy::wipe(stereo, sizeof(stereo));
+            microphone_privacy::wipe(mono, sizeof(mono));
+            while (microphone_privacy::muted()) vTaskDelay(pdMS_TO_TICKS(20));
+        }
         const int opened = esp_codec_dev_open(codec, &format);
         const int gain = opened == ESP_CODEC_DEV_OK
             ? esp_codec_dev_set_in_gain(codec, CONFIG_WAVEFORM_P4_MIC_GAIN_DB) : opened;
@@ -48,7 +55,16 @@ void capture(void *) {
         while (true) {
             // The installed codec adapter bounds reads to one second. Failed
             // reads (including partial timeouts) never enter the sample ring.
+            microphone_privacy::Permit capture_permit;
+            if (!capture_permit.valid()) { local_audio->erase(); notify(false);
+                microphone_privacy::wipe(stereo, sizeof(stereo)); microphone_privacy::wipe(mono, sizeof(mono)); break; }
             const int result = esp_codec_dev_read(codec, stereo, sizeof(stereo));
+            if (!capture_permit.valid()) {
+                local_audio->erase(); notify(false);
+                microphone_privacy::wipe(stereo, sizeof(stereo));
+                microphone_privacy::wipe(mono, sizeof(mono));
+                break;
+            }
             if (result != ESP_CODEC_DEV_OK) {
                 local_audio->discontinuity(); notify(false);
                 ESP_LOGE(kTag, "ADC read failed=%d; stream invalidated", result);

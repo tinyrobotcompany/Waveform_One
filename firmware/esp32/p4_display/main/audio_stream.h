@@ -148,6 +148,15 @@ public:
         segment_start_ = written_;
     }
 
+    void erase()
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        volatile int16_t *samples = buffer_;
+        for (size_t i = 0; i < Capacity; ++i) samples[i] = 0;
+        ++segment_;
+        segment_start_ = written_;
+    }
+
     struct Read {
         size_t count = 0;
         uint64_t position = 0;
