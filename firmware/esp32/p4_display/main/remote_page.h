@@ -17,6 +17,7 @@ main{max-width:900px;margin:18px auto 40px}.player{display:grid;grid-template-co
 @media(min-width:700px){main{margin-top:44px}.player{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:42px;align-items:center}.eyebrow{font-size:20px}.connection{margin-top:32px}}
 body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:background-color .7s,border-color .7s,color .7s}
 @media(prefers-reduced-motion:reduce){:root,body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button,.field canvas{transition:none}.wave i{animation:none;height:28px}}
+#controls:disabled #display-brightness{display:none}
 </style></head><body>
 <div class="field" aria-hidden="true"><canvas id="field-a" width="8" height="5"></canvas><canvas id="field-b" width="8" height="5" style="opacity:0"></canvas></div>
 <header><span class="brand">WAVEFORM ONE</span><button class="settings-button" id="open-settings" aria-controls="settings" aria-expanded="false">Settings</button></header>
@@ -26,7 +27,7 @@ body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:b
 <fieldset id="controls" disabled style="border:0;padding:0;margin:0;min-width:0"><label for="name">Your name</label><input id="name" type="text" maxlength="40" autocomplete="given-name"><button class="save" id="save-name">Save name</button>
 <div class="section"><h3>LED STYLE</h3><div class="styles"><button data-style="classic" aria-pressed="false">Classic</button><button data-style="mirrored" aria-pressed="false">Mirrored</button><button data-style="waterfall" aria-pressed="false">Waterfall</button></div></div>
 <div class="section"><h3>APPEARANCE</h3><div class="styles"><button data-appearance="album" aria-pressed="true">Album colours</button><button data-appearance="classic" aria-pressed="false">Classic black</button></div></div>
-<div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"></div>
+<div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"><p id="display-brightness" role="status"></p></div>
 <div class="section"><h3>SOFTWARE UPDATES</h3>
 <p id="update-version"></p><p id="update-result" role="status" hidden></p><p id="update-message" role="status">Checking update status…</p>
 <progress id="update-progress" max="100" value="0" aria-label="Download progress"></progress>
@@ -67,6 +68,7 @@ function render(state){
  $('activity-text').textContent=searching?(track?'Checking what’s playing…':'Finding your song…'):state.status==='configuration_required'?'ACRCloud configuration required':state.status==='unavailable'?'Trying again shortly':track?'Enjoy the music':'Play a song to get started';
  const url=track&&track.artwork||'';if(url!==artworkUrl){artworkUrl=url;showPlaceholder();if(url){$('artwork').alt=track.album?track.album+' album artwork':'Album artwork';$('artwork').src=url}else{$('artwork').removeAttribute('src');$('artwork').alt=''}}
  if(!settingsOpen){$('name').value=state.name;$('brightness').value=state.brightness;$('brightness-value').textContent=state.brightness+'%'}
+ const actual=state.display_brightness??state.brightness;$('display-brightness').textContent=actual<state.brightness?'Night dimming: screen '+actual+'% (selected '+state.brightness+'%)':'';
  document.querySelectorAll('[data-style]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.style===state.style)));
 }
 async function post(path,data){if(!csrf){loseSession();return false}try{const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams(data)});if(response.status===403){loseSession();return false}if(!response.ok)throw Error();$('feedback').textContent=path==='/api/style'?'Applying LED style…':'Saved';return true}catch{$('feedback').textContent='Could not save. Please try again.';return false}}
@@ -109,6 +111,7 @@ $('save-updates').onclick=async()=>{
 async function connect(){
  const response=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(8000)});
  if(response.status===401){loseSession();return false}if(!response.ok)throw Error();
+ $('display-brightness').textContent='';
  csrf=await response.text();$('controls').disabled=false;$('feedback').textContent='';await post('/api/time',{epoch:Math.floor(Date.now()/1000)});return !!csrf;
 }
 async function poll(){

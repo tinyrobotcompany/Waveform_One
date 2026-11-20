@@ -6,6 +6,12 @@
 int main()
 {
     RemoteState state;
+    state.brightness(80);
+    state.display_brightness(10);
+    cJSON *brightness_state = cJSON_Parse(state.json().c_str());
+    assert(cJSON_GetObjectItemCaseSensitive(brightness_state, "brightness")->valueint == 80);
+    assert(cJSON_GetObjectItemCaseSensitive(brightness_state, "display_brightness")->valueint == 10);
+    cJSON_Delete(brightness_state);
     RecognitionTrack track{};
     track.matched_at_us = 1000000;
     std::strcpy(track.title, "In My Time of Dying (Live from Earls Court, 1975)");

@@ -127,6 +127,11 @@ const server = http.createServer((req, res) => {
         await page.getByText('Saved', { exact: true }).waitFor();
         await page.getByRole('button', { name: 'Mirrored', exact: true }).click();
         await page.locator('[data-style=mirrored][aria-pressed=true]').waitFor();
+        state.display_brightness = 10;
+        await page.waitForFunction(() => document.getElementById('display-brightness').textContent.includes('screen 10%'));
+        assert.match(await page.locator('#display-brightness').textContent(), /selected 65%/);
+        delete state.display_brightness;
+        await page.waitForFunction(() => document.getElementById('display-brightness').textContent === '');
         await page.locator('#brightness').fill('42');
         await page.locator('#brightness').dispatchEvent('change');
         await page.waitForFunction(() => document.querySelector('#feedback').textContent === 'Saved');

@@ -26,6 +26,9 @@ public:
         const std::lock_guard<std::mutex> lock(mutex_);
         brightness_ = value;
     }
+    void display_brightness(int value) {
+        const std::lock_guard<std::mutex> lock(mutex_); display_brightness_ = value;
+    }
     void name(const char *value) {
         const std::lock_guard<std::mutex> lock(mutex_);
         name_ = value;
@@ -46,6 +49,7 @@ public:
         bool ok = cJSON_AddStringToObject(root, "status", status_name(status)) != nullptr
             && cJSON_AddStringToObject(root, "name", name_.c_str()) != nullptr
             && cJSON_AddNumberToObject(root, "brightness", brightness_) != nullptr
+            && cJSON_AddNumberToObject(root, "display_brightness", display_brightness_) != nullptr
             && cJSON_AddStringToObject(root, "style", style_.c_str()) != nullptr;
         ok = ok && cJSON_AddStringToObject(root, "appearance", album_colours_ ? "album" : "classic") != nullptr;
         const auto colours = visible && album_colours_ ? palette_ : album_palette::Palette{};
@@ -108,7 +112,7 @@ private:
     RecognitionStatus status_ = RecognitionStatus::Waiting;
     RecognitionTrack track_{};
     std::string name_ = "Simon", style_ = "";
-    int brightness_ = 100;
+    int brightness_ = 100, display_brightness_ = 100;
     bool album_colours_ = true;
     album_palette::Palette palette_{};
 };

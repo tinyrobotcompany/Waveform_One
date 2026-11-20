@@ -7,6 +7,8 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 
 sh "$esp_dir/mic_test/tests/run.sh"
 
+
+
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" \
@@ -279,3 +281,11 @@ done
     -I "$esp_dir/p4_display/tests/dma_stubs" -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/hosted_dma_memory_test.c" -o "$build_dir/p4_hosted_dma"
 "$build_dir/p4_hosted_dma"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/tests/credential_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/display_schedule_test.cpp" \
+    "$esp_dir/p4_display/main/display_schedule.cpp" -o "$build_dir/p4_display_schedule"
+"$build_dir/p4_display_schedule"
+printf '%s\n' 'PASS: night schedule boundaries, overrides, persistence and failure rollback'
