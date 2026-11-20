@@ -85,8 +85,21 @@ purpose; it does not enable another recognition provider.
 Devices flashed before this persistence support need one USB provisioning build
 with their existing credentials. A release without a valid record reports
 “ACRCloud configuration required”; it cannot silently switch providers. Trial
-acceptance requires valid persisted credentials, without requiring internet or a
-successful recognition request. Storage failures never erase NVS.
+acceptance supports a genuinely unconfigured device: local audio capture,
+classification and LEDs start without a key; only cloud recognition and its
+catalogue workers remain off. Audio/network events retain the configuration
+message instead of displaying a misleading searching state. No network or
+successful identification is required to accept this local-only operating mode.
+
+Invalid records, NVS read/init failures, partial bootstrap configuration and
+failed persistence still block trial acceptance, preserving the protection
+against credential loss during an update. They do not prevent local audio
+startup on the running image. Storage failures never erase NVS. The local health
+check establishes worker startup, not a physical microphone/LED acceptance test.
+Valid embedded credentials whose durable write fails have an explicit
+`Unpersisted` state and diagnostic: they can serve recognition for that boot,
+but cannot authorize trial acceptance. Successful first provisioning moves
+directly to `Ready`; absent configuration is the separate supported `Missing` state.
 
 ## Flash addressing repair
 

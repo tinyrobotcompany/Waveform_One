@@ -688,7 +688,7 @@ void update_boot_guard(void *)
     if (trial) {
         for (unsigned seconds = 0; seconds < 120; ++seconds) {
             // Local rendering and the initialized OTA worker are sufficient; internet is optional.
-            if (ui_health_ticks.load() >= 10 && waveform_update_local_ready() && recognition_configuration_ready() && waveform_update_validate_trial()) {
+            if (ui_health_ticks.load() >= 10 && waveform_update_local_ready() && recognition_local_ready() && waveform_update_validate_trial()) {
                 vTaskDelete(nullptr);
                 return;
             }

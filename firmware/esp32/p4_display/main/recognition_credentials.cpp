@@ -26,7 +26,8 @@ bool Record::valid() const {
         field_valid(key, sizeof(key)) && field_valid(secret, sizeof(secret));
 }
 bool load(Record &output, const char *host, const char *key, const char *secret,
-          bool &persisted) {
+          bool &persisted, State *state) {
+    if (state) *state = State::Error;
     output = Record{};
     persisted = false;
     Record embedded;
@@ -36,14 +37,21 @@ bool load(Record &output, const char *host, const char *key, const char *secret,
     // A partial bootstrap must not silently retain a different configuration.
     const bool any_embedded = (host && *host) || (key && *key) || (secret && *secret);
     if (any_embedded && !has_embedded) return false;
-    if (has_embedded) output = embedded;
+    if (has_embedded) {
+        output = embedded;
+        if (state) *state = State::Unpersisted;
+    }
     if (nvs_flash_init() != ESP_OK) return has_embedded; // Never erase NVS.
     nvs_handle_t handle;
-    if (nvs_open("recognition", has_embedded ? NVS_READWRITE : NVS_READONLY, &handle) != ESP_OK)
+    const auto opened = nvs_open("recognition", has_embedded ? NVS_READWRITE : NVS_READONLY, &handle);
+    if (opened != ESP_OK) {
+        if (!has_embedded && opened == ESP_ERR_NVS_NOT_FOUND && state) *state = State::Missing;
         return has_embedded;
+    }
     Record saved;
     size_t size = sizeof(saved);
-    const bool found = nvs_get_blob(handle, "acrcloud", &saved, &size) == ESP_OK &&
+    const auto read = nvs_get_blob(handle, "acrcloud", &saved, &size);
+    const bool found = read == ESP_OK &&
         size == sizeof(saved) && saved.valid();
     if (has_embedded) {
         persisted = found && std::memcmp(&saved, &embedded, sizeof(saved)) == 0;
@@ -52,7 +60,10 @@ bool load(Record &output, const char *host, const char *key, const char *secret,
     } else if (found) {
         output = saved;
         persisted = true;
+    } else if (read == ESP_ERR_NVS_NOT_FOUND && state) {
+        *state = State::Missing;
     }
+    if (persisted && state) *state = State::Ready;
     nvs_close(handle);
     return output.valid();
 }

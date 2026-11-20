@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 using nvs_handle_t = int;
+constexpr int ESP_ERR_NVS_NOT_FOUND = 0x1102;
 constexpr int ESP_OK = 0, NVS_READONLY = 0, NVS_READWRITE = 1;
 int nvs_open(const char *, int, nvs_handle_t *);
 int nvs_get_blob(nvs_handle_t, const char *, void *, size_t *);
