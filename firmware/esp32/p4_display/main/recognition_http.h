@@ -41,6 +41,7 @@ struct Connection {
     ~Connection() { drop(); }
     void drop()
     {
+        // response is only header-callback state; cleanup never depends on it.
         if (client == nullptr) return;
         esp_http_client_close(client);
         esp_http_client_cleanup(client);

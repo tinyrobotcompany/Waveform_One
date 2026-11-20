@@ -92,5 +92,16 @@ int main()
         if (allowed_checks == 4) assert(test_http.written == 4096);
         if (allowed_checks == 8) assert(test_http.reads == 1);
     }
+    // Cleanup must work after fetch has cleared the callback response pointer.
+    test_http = {}; test_http_inits = 0;
+    {
+        Response response; Connection link;
+        assert(fetch("https://service.test/", Body{}, 8, response, &link));
+        assert(link.client && link.response == nullptr);
+        link.drop();
+        assert(link.client == nullptr && test_http.closed == 1 && test_http.cleaned == 1);
+        link.drop(); // Idempotent, including destruction after explicit cancellation.
+        assert(test_http.closed == 1 && test_http.cleaned == 1);
+    }
     assert(test_allocations.empty());
 }
