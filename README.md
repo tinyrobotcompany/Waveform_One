@@ -37,8 +37,8 @@ recognition is a core feature and runs during normal operation. This notice
 describes the current ESP32-P4 firmware; temporary audio capture and transmission
 for recognition are different from saving a permanent recording.
 
-**What the microphone captures.** While powered on and running, the microphone
-continuously captures nearby sound to animate the LEDs and identify music. Audio
+**What the microphone captures.** While powered on and running with capture enabled,
+the microphone continuously captures nearby sound to animate the LEDs and identify music. Audio
 is processed in temporary RAM, including a rolling 16-second buffer. Buffers are
 reused; this is not a recording archive or a guarantee that every temporary copy
 is securely erased after exactly 16 seconds. Waveform One does not provide
@@ -77,9 +77,37 @@ continues after firmware updates; that credential storage is separate from audio
 buffering. Using your own ACRCloud account changes whose account is used, not
 whether recognition audio is transmitted to ACRCloud.
 
+**Optional listening history and sharing.** On firmware offering listening history,
+collection starts disabled after every restart. Enabling it stores up to 50 recent
+recognised tracks and timing metadata in device RAM; it stores no audio. Paired
+phones can view, export or delete this history. Disabling it or restarting clears
+the device history, but does not delete exported files. The optional desktop
+Last.fm bridge sends eligible track metadata and timestamps only after the owner
+authorises their account and explicitly submits an export. It stores account
+credentials and a bounded submission queue on that computer with private file
+permissions, without encryption. Deleting local files does not delete Last.fm's
+records; use Last.fm's account controls. Discogs links open a search only when
+clicked and disclose the search terms and normal browser/network information to
+Discogs. Neither integration uploads microphone audio.
+
+**Owner account controls.** On firmware offering owner account setup, credentials
+are entered on the touchscreen, not through the phone's unencrypted local HTTP
+connection. Replacing or disabling an account takes effect after restart; recognition
+can continue with the previous account until then. Disabling the account stops
+cloud recognition after restart but leaves local microphone processing active.
+Wi-Fi/pairing/account settings persist in device storage, which is not newly
+encrypted by these features. Removal is not a claim of forensic secure erasure.
+
 **Stopping capture.** Powering off Waveform One stops microphone capture and
 uploads. Disconnecting its internet connection prevents cloud recognition
 requests from reaching ACRCloud, but does not itself turn off the microphone.
-This notice does not promise a microphone-mute or cloud-opt-out control that the
-current firmware does not implement.
+On hardware fitted and validated with the supported physical mute circuit, the
+switch disconnects both microphones' power and signal paths. Supporting firmware
+also clears capture buffers, invalidates old audio/results, inhibits new requests
+and cancels uploads between transport operations. It cannot recall bytes already
+sent; an in-progress network operation may finish before cancellation is observed.
+Microphone-reactive LEDs also stop receiving sound while muted. Existing unwired
+devices do not acquire a physical mute through a firmware update: the build option
+remains disabled until the circuit is installed and tested. A software indication
+alone is not proof of electrical disconnection.
 <!-- privacy-notice:end -->
