@@ -32,6 +32,10 @@ int main()
     assert(cJSON_IsNull(cJSON_GetObjectItemCaseSensitive(root, "track")));
     cJSON_Delete(root);
     microphone_privacy::set_muted(false);
+    root = read();
+    assert(cJSON_IsNull(cJSON_GetObjectItemCaseSensitive(root, "track"))); // No old track after rapid unmute.
+    cJSON_Delete(root);
+    track.title[0] = 'I'; state.recognition(RecognitionStatus::Matched, &track);
     album_palette::Palette palette{}; palette.background=0x302010;
     palette.text=0x101010; palette.quaternary=0x404040; palette.light=true; palette.field[39]=0xabcdef;
     state.palette(palette);

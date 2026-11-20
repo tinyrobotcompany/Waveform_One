@@ -168,13 +168,14 @@ acrcloud::Credentials kAcrcloud;
 std::atomic_bool credentials_persisted{false};
 
 #if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
-void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection)
+void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognition_http::Connection &connection, microphone_privacy::Permit permit)
 {
     static bool tested = false;
-    if (tested || original_code != 1001 || count < 5 * 16000) return;
+    if (!permit.valid() || tested || original_code != 1001 || count < 5 * 16000) return;
     tested = true;
     ESP_LOGI(kTag, "PCM comparison: same sample count=%u submitted_8k_code=%d", unsigned(count), original_code);
     std::vector<int16_t> normalized(pcm, pcm + count);
+    microphone_privacy::Scrub scrub_normalized{normalized.data(), normalized.size() * sizeof(int16_t)};
     int peak = 0;
     double squares = 0;
     for (auto value : normalized) { peak = std::max(peak, std::abs(int(value))); squares += double(value) * value; }
@@ -183,11 +184,13 @@ void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognitio
     for (unsigned variant = 0; variant < 2; ++variant) {
         const std::string timestamp = std::to_string(static_cast<long long>(std::time(nullptr)));
         const std::string boundary = "evidence" + uuid();
-        const auto body = acrcloud::body(kAcrcloud, timestamp, variant ? normalized.data() : pcm, count, boundary, 16000);
+        if (!permit.valid()) break;
+        auto body = acrcloud::body(kAcrcloud, timestamp, variant ? normalized.data() : pcm, count, boundary, 16000);
+        microphone_privacy::Scrub scrub_diagnostic{body.data(), body.size()};
         const std::string type = "multipart/form-data; boundary=" + boundary;
         const std::string url = std::string("https://") + kAcrcloud.host + "/v1/identify";
         Response response;
-        if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false},
+        if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::Permit::check, &permit},
                    64 * 1024, response, &connection)) {
             ESP_LOGW(kTag, "PCM comparison variant=%s transport_failed; stopping", variant ? "normalized_16k" : "original_16k");
             break;
@@ -227,7 +230,7 @@ Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64
     Response response;
     // One connection kept open: no TCP/TLS handshake per lookup.
     static recognition_http::Connection connection;
-    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::installed.load() ? microphone_privacy::Permit::check : nullptr, &permit}, 64 * 1024,
+    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::Permit::check, &permit}, 64 * 1024,
                response, &connection)) {
         service_delay = response.retry_after_us;
         return Lookup::Failed;
@@ -237,7 +240,7 @@ Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64
     if (!result) return Lookup::Failed;
 #if CONFIG_WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
     const auto *response_code = recognition_metadata::field(recognition_metadata::field(result.get(), "status"), "code");
-    compare_pcm(pcm, count, cJSON_IsNumber(response_code) ? response_code->valueint : -1, connection);
+    compare_pcm(pcm, count, cJSON_IsNumber(response_code) ? response_code->valueint : -1, connection, permit);
 #endif
     switch (acrcloud::parse(result.get(), track)) {
     case acrcloud::Result::Matched: return Lookup::Matched;

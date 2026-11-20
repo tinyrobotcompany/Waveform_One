@@ -15,6 +15,7 @@ public:
         const std::lock_guard<std::mutex> lock(mutex_);
         if (track == nullptr || std::strcmp(track_.artwork_url, track->artwork_url) != 0) palette_ = {};
         status_ = status;
+        track_generation_ = microphone_privacy::state.load();
         track_ = track == nullptr ? RecognitionTrack{} : *track;
     }
     void palette(const album_palette::Palette &value) {
@@ -41,7 +42,7 @@ public:
         cJSON *root = cJSON_CreateObject();
         if (root == nullptr) return {};
         // Recognition clears the track itself when the music stops.
-        const bool visible = !microphone_privacy::muted() && track_.title[0] != '\0';
+        const bool visible = !microphone_privacy::muted() && track_generation_ == microphone_privacy::state.load() && track_.title[0] != '\0';
         const auto status = !visible && status_ == RecognitionStatus::Matched
             ? RecognitionStatus::Waiting : status_;
         bool ok = cJSON_AddStringToObject(root, "status", microphone_privacy::muted() ? "muted" : status_name(status)) != nullptr
@@ -108,6 +109,7 @@ private:
     std::mutex mutex_;
     RecognitionStatus status_ = RecognitionStatus::Waiting;
     RecognitionTrack track_{};
+    uint32_t track_generation_ = 0;
     std::string name_ = "Simon", style_ = "";
     int brightness_ = 100;
     bool album_colours_ = true;

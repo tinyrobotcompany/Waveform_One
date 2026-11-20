@@ -56,6 +56,8 @@ void capture(void *) {
             // The installed codec adapter bounds reads to one second. Failed
             // reads (including partial timeouts) never enter the sample ring.
             microphone_privacy::Permit capture_permit;
+            if (!capture_permit.valid()) { local_audio->erase(); notify(false);
+                microphone_privacy::wipe(stereo, sizeof(stereo)); microphone_privacy::wipe(mono, sizeof(mono)); break; }
             const int result = esp_codec_dev_read(codec, stereo, sizeof(stereo));
             if (!capture_permit.valid()) {
                 local_audio->erase(); notify(false);

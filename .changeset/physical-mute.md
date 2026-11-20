@@ -2,4 +2,4 @@
 "waveform-one": patch
 ---
 
-Add opt-in physical microphone mute support for a mechanically disconnected P4 7B microphone circuit, with fail-closed sense input, stale-audio invalidation, cancellable recognition uploads and synchronized mute status. Existing unwired devices keep the feature disabled. Wiring and physical acceptance remain required before enabling it in production.
+Add Settings → Microphone with persistent software mute/unmute, synchronized phone status, capture-buffer clearing and cancellable recognition uploads. Saved mute survives restart and normal OTA. Failed saves are reported and failed unmute keeps capture paused. No physical switch or wiring is required; software mute does not electrically disconnect the microphones or recall audio already transmitted.
