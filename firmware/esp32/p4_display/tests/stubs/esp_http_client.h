@@ -16,7 +16,7 @@ struct TestHttp {
     int open_result = ESP_OK, open_failures = 0;
     bool complete = true, read_error = false;
     std::string body, retry_after;
-    size_t offset = 0, fragment = 3;
+    size_t offset = 0, fragment = 3, written = 0;
     int64_t read_duration_us = 1000;
     esp_http_client_config_t config{};
 };
@@ -39,7 +39,7 @@ inline int esp_http_client_open(esp_http_client_handle_t client, int) {
     if (client->open_failures > 0) { --client->open_failures; return -1; }
     return result;
 }
-inline int esp_http_client_write(esp_http_client_handle_t, const char *, int length) { return length; }
+inline int esp_http_client_write(esp_http_client_handle_t client, const char *, int length) { client->written += length; return length; }
 inline int64_t esp_http_client_fetch_headers(esp_http_client_handle_t client) {
     if (!client->retry_after.empty()) {
         esp_http_client_event_t event{HTTP_EVENT_ON_HEADER, "Retry-After", client->retry_after.c_str(), client->config.user_data};

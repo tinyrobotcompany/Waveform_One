@@ -60,4 +60,16 @@ int main()
     }
     assert(test_http.closed == 3 && test_http.cleaned == 3);
     assert(test_allocations.empty());
+    // Revoking upload permission stops at a bounded chunk and never retries.
+    test_http = {}; test_http_inits = 0;
+    std::string audio(12000, 'a'); int checks = 0;
+    Body guarded{audio.data(), audio.size(), "audio/test", false,
+        [](void *context) { return ++*static_cast<int *>(context) <= 4; }, &checks};
+    { Response response; Connection link;
+      assert(!fetch("https://service.test/", guarded, 8, response, &link));
+      assert(test_http.written == 4096 && test_http_inits == 1 && link.client == nullptr); }
+    test_http = {}; checks = 100;
+    { Response response; assert(!fetch("https://service.test/", guarded, 8, response)); }
+    assert(test_http.written == 0 && test_http.reads == 0);
+    assert(test_allocations.empty());
 }

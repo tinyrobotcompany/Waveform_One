@@ -1,3 +1,4 @@
+#include "microphone_privacy.h"
 #include <algorithm>
 #include <atomic>
 #include <cinttypes>
@@ -325,7 +326,7 @@ void set_recognition_feedback(RecognitionStatus status, bool has_track)
     lv_obj_set_style_bg_color(recognition_dot,
         recognition_feedback::searching(status) ? theme_search() : theme_accent(), 0);
     theme_status = status;
-    set_label_text(recognition_status, recognition_feedback::text(status, has_track));
+    set_label_text(recognition_status, microphone_privacy::muted() ? "Microphone muted" : recognition_feedback::text(status, has_track));
 }
 
 lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font,
@@ -1166,6 +1167,7 @@ void create_product_screen()
 bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
                         const RecognitionArtwork *image)
 {
+    if (microphone_privacy::muted()) { status = RecognitionStatus::Waiting; track = nullptr; image = nullptr; }
     network_set_recognition(status, track);
     // The recognition/session mutex is acquired before this GUI lock everywhere.
     if (!bsp_display_lock(10)) {
@@ -1229,6 +1231,7 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
 
 extern "C" void app_main()
 {
+    microphone_privacy_start();
     ESP_ERROR_CHECK(xTaskCreate(update_boot_guard, "ota_boot", 4096, nullptr, 5, nullptr) == pdPASS
         ? ESP_OK : ESP_ERR_NO_MEM);
     log_board_identity();
@@ -1249,6 +1252,12 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(bsp_display_backlight_on());
     ESP_ERROR_CHECK(bsp_display_lock(-1) ? ESP_OK : ESP_ERR_TIMEOUT);
     create_product_screen();
+    if (microphone_privacy::installed.load()) {
+        // LVGL invokes timers under the display lock, including credential-free boots.
+        lv_timer_create([](lv_timer_t *) {
+            set_recognition_feedback(theme_status, displayed_track.title[0] != '\0');
+        }, 100, nullptr);
+    }
     bsp_display_unlock();
 
     ESP_LOGI(kTag, "Display and touch initialized");

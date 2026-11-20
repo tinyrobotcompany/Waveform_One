@@ -28,6 +28,9 @@ struct Body {
     size_t size = 0;
     const char *content_type = nullptr;
     bool shazam = false;  // the recognition service's own request headers
+    bool (*allowed)(void *) = nullptr;
+    void *permission_context = nullptr;
+    bool permitted() const { return !allowed || allowed(permission_context); }
 };
 
 // Keeps one HTTPS connection open to a single host between requests, saving
@@ -45,12 +48,13 @@ struct Connection {
     }
 };
 
-enum class Exchange { Ok, Stale, Failed };
+enum class Exchange { Ok, Stale, Failed, Cancelled };
 
 // One request on an open client. Stale means nothing came back: on a reused
 // connection the server may simply have closed it.
 inline Exchange exchange(esp_http_client_handle_t client, const Body &body, size_t limit, Response &response)
 {
+    if (!body.permitted()) return Exchange::Cancelled;
     const int64_t deadline = esp_timer_get_time() + kRequestTimeoutUs;
     const size_t length = body.data != nullptr ? body.size : 0;
     const char *bytes = static_cast<const char *>(body.data);
@@ -65,6 +69,7 @@ inline Exchange exchange(esp_http_client_handle_t client, const Body &body, size
     }
     // An eight-second 8 kHz clip is 128 KB; nothing legitimate is larger.
     if (length > 256 * 1024) return Exchange::Failed;
+    if (!body.permitted()) return Exchange::Cancelled;
     const esp_err_t opened = esp_http_client_open(client, static_cast<int>(length));
     if (opened != ESP_OK) {
         ESP_LOGW(kTag, "HTTP open failed: %s", esp_err_to_name(opened));
@@ -72,11 +77,13 @@ inline Exchange exchange(esp_http_client_handle_t client, const Body &body, size
     }
     size_t written = 0;
     while (written < length && esp_timer_get_time() < deadline) {
-        const int count = esp_http_client_write(client, bytes + written, length - written);
+        if (!body.permitted()) return Exchange::Cancelled;
+        const int count = esp_http_client_write(client, bytes + written, body.allowed ? std::min<size_t>(4096, length - written) : length - written);
         if (count <= 0) return Exchange::Stale;
         written += count;
     }
     if (written != length || esp_timer_get_time() >= deadline) return Exchange::Failed;
+    if (!body.permitted()) return Exchange::Cancelled;
     const int64_t declared = esp_http_client_fetch_headers(client);
     const int status = esp_http_client_get_status_code(client);
     if (declared < 0 && status == 0) return Exchange::Stale;
@@ -86,6 +93,7 @@ inline Exchange exchange(esp_http_client_handle_t client, const Body &body, size
         return Exchange::Failed;
     }
     while (esp_timer_get_time() < deadline) {
+        if (!body.permitted()) return Exchange::Cancelled;
         // Read one extra byte to detect bodies exceeding the maximum, including chunked bodies.
         const size_t room = limit + 1 - response.size;
         if (room == 0) return Exchange::Failed;
@@ -109,6 +117,7 @@ inline bool fetch(const char *url, const Body &body, size_t limit, Response &res
                   Connection *connection = nullptr)
 {
     response = {};
+    if (!body.permitted()) { if (connection) connection->drop(); return false; }
     response.bytes.reset(static_cast<char *>(heap_caps_malloc(limit + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
     if (!response.bytes) return false;
     Connection local;

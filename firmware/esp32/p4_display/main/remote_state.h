@@ -1,4 +1,5 @@
 #pragma once
+#include "microphone_privacy.h"
 
 #include <mutex>
 #include <cstdio>
@@ -40,10 +41,10 @@ public:
         cJSON *root = cJSON_CreateObject();
         if (root == nullptr) return {};
         // Recognition clears the track itself when the music stops.
-        const bool visible = track_.title[0] != '\0';
+        const bool visible = !microphone_privacy::muted() && track_.title[0] != '\0';
         const auto status = !visible && status_ == RecognitionStatus::Matched
             ? RecognitionStatus::Waiting : status_;
-        bool ok = cJSON_AddStringToObject(root, "status", status_name(status)) != nullptr
+        bool ok = cJSON_AddStringToObject(root, "status", microphone_privacy::muted() ? "muted" : status_name(status)) != nullptr
             && cJSON_AddStringToObject(root, "name", name_.c_str()) != nullptr
             && cJSON_AddNumberToObject(root, "brightness", brightness_) != nullptr
             && cJSON_AddStringToObject(root, "style", style_.c_str()) != nullptr;

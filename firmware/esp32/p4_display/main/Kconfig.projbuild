@@ -17,6 +17,15 @@ menu "Waveform recognition audio"
     config WAVEFORM_P4_MIC
         bool "Use onboard P4 microphones instead of S3 USB audio"
         default n
+    config WAVEFORM_PHYSICAL_MUTE
+        bool "Physical dual-microphone disconnect switch (7B GPIO36 sense)"
+        depends on WAVEFORM_P4_MIC && !WAVEFORM_RECOGNITION_DIAGNOSTIC_PCM
+        default n
+        help
+            Enable only with the documented mechanical microphone disconnect
+            wiring verified on a 7B board. GPIO36 senses a separate contact:
+            low permits capture; high/open is muted. Firmware cannot substitute
+            for the physical audio/power disconnect. No automatic USB fallback.
     config WAVEFORM_P4_MIC_CHANNEL
         int "Onboard stereo input channel (0 or 1)"
         depends on WAVEFORM_P4_MIC
