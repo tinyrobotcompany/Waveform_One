@@ -24,6 +24,7 @@
 #include "network.h"
 #include "setup_guide.h"
 #include "recognition.h"
+#include "owner_credentials_ui.h"
 #include "recognition_feedback.h"
 #include "display_schedule.h"
 #include "search_waveform.h"
@@ -1098,6 +1099,8 @@ void create_product_screen()
     lv_obj_add_event_cb(close, on_close_settings, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *close_text = make_label(close, "Done", &lv_font_montserrat_16, kForeground);
     lv_obj_center(close_text);
+
+    owner_credentials_ui_create(screen, settings_panel);
 
     lv_obj_t *profile_heading = make_label(settings_panel, "PROFILE", &lv_font_montserrat_16,
                                            kAccent);

@@ -73,6 +73,8 @@ update-setting edits are not overwritten by background polling.
   embedded credentials and load the existing ACRCloud configuration from device NVS.
   Recognition never falls back to Shazam.
 
+For owner-entered accounts, replacement and disabling, see [Your ACRCloud recognition account](owner-recognition-account.md). Owner settings take precedence over the bootstrap behavior below.
+
 ## ACRCloud credentials across updates
 
 A local USB provisioning build reads the existing untracked `acrcloud.local` and
@@ -98,7 +100,9 @@ startup on the running image. Storage failures never erase NVS. The local health
 check establishes worker startup, not a physical microphone/LED acceptance test.
 Valid embedded credentials whose durable write fails have an explicit
 `Unpersisted` state and diagnostic: they can serve recognition for that boot,
-but cannot authorize trial acceptance. Successful first provisioning moves
+but cannot authorize trial acceptance. If reading the owner override itself fails,
+cloud recognition stays off even with embedded credentials, since the device
+cannot safely determine which account the owner selected. Successful first provisioning moves
 directly to `Ready`; absent configuration is the separate supported `Missing` state.
 
 ## Flash addressing repair
