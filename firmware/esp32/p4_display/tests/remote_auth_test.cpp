@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "remote_auth.h"
+#include "remote_pairing.h"
 
 namespace {
 
@@ -111,7 +112,7 @@ int main()
     rebooted.disconnect();rebooted.connect("192.168.1.21", 100);
     assert(!rebooted.restore_sessions(stored, 100, epoch + 60));
     rebooted.disconnect();rebooted.connect(kHost, 100);
-    assert(rebooted.restore_sessions(stored, 100, epoch + 3601));
+    assert(rebooted.restore_sessions(stored, 100, epoch + kSessionLifetimeSeconds + 1));
     assert(!rebooted.authorize(kHost, kOrigin, cookie(session), csrf, 101));
     stored.entries[0].id[0] = '!';
     assert(!rebooted.restore_sessions(stored, 100, epoch + 60));
@@ -149,6 +150,58 @@ int main()
     for (std::size_t index = 1; index <= kMaxSessions; ++index) {
         assert(auth.session_csrf("192.168.1.21", cookie(sessions[index]), 7, evicted_csrf));
     }
+
+    // Durable pairing: later-day/reboot access, legacy expiry, failure rollback,
+    // and device-only revocation that also invalidates an already scanned QR.
+    RemoteAuth durable(deterministic_random);
+    durable.connect(kHost, 0);
+    StoredSessions disk{};
+    bool write_ok = true;
+    unsigned writes = 0;
+    auto save = [&](const StoredSessions &value) {
+        ++writes;
+        if (!write_ok) return false;
+        disk = value;
+        return true;
+    };
+    const auto initial_code = pairing_code(durable);
+    char persistent_id[kTokenSize]{}, persistent_csrf[kTokenSize]{};
+    assert(pair_saved(durable, kHost, initial_code, 1, 0, persistent_id, save) == PairResult::StorageUnavailable);
+    assert(writes == 0 && pairing_code(durable) == initial_code);
+    write_ok = false;
+    assert(pair_saved(durable, kHost, initial_code, 1, epoch, persistent_id, save) == PairResult::StorageUnavailable);
+    assert(!persistent_id[0] && pairing_code(durable) == initial_code);
+    write_ok = true;
+    assert(pair_saved(durable, kHost, initial_code, 1, epoch, persistent_id, save) == PairResult::Paired);
+    assert(durable.session_csrf(kHost, cookie(persistent_id), 2, persistent_csrf));
+    char response_cookie[112]{};
+    assert(session_cookie(response_cookie, sizeof(response_cookie), persistent_id));
+    const std::string cookie_header(response_cookie);
+    assert(cookie_header.find("Max-Age=7776000; HttpOnly; SameSite=Strict") != std::string::npos);
+    assert(!session_cookie(response_cookie, 8, persistent_id));
+    assert(pair_saved(durable, kHost, initial_code, 2, epoch, replay, save) == PairResult::InvalidCode);
+    RemoteAuth next_day(deterministic_random);
+    next_day.connect(kHost, 0);
+    assert(next_day.restore_sessions(disk, 0, epoch + 86400));
+    assert(next_day.authorize(kHost, kOrigin, cookie(persistent_id), persistent_csrf, 1));
+    auto legacy = disk;
+    legacy.entries[0].expires_epoch = epoch + 3600;
+    assert(next_day.restore_sessions(legacy, 0, epoch + 3601));
+    assert(!next_day.authorize(kHost, kOrigin, cookie(persistent_id), persistent_csrf, 1));
+    assert(next_day.restore_sessions(disk, 0, epoch + 86400));
+    const auto before_forget = pairing_code(next_day);
+    write_ok = false;
+    assert(!forget_saved(next_day, 2, save));
+    assert(pairing_code(next_day) == before_forget);
+    assert(next_day.authorize(kHost, kOrigin, cookie(persistent_id), persistent_csrf, 3));
+    write_ok = true;
+    assert(forget_saved(next_day, 4, save));
+    assert(!next_day.authorize(kHost, kOrigin, cookie(persistent_id), persistent_csrf, 5));
+    assert(!next_day.pair(kHost, before_forget, 5, replay));
+    RemoteAuth after_forget(deterministic_random);
+    after_forget.connect(kHost, 0);
+    after_forget.restore_sessions(disk, 0, epoch + 86401);
+    assert(!after_forget.authorize(kHost, kOrigin, cookie(persistent_id), persistent_csrf, 1));
 
     // An address that does not fit is never bound.
     auth.connect("this-address-is-too-long", 8);

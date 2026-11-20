@@ -20,7 +20,7 @@ let update = {state:2,installed:'0.0.0',available:'1.2.3',message:'Update availa
 const server = http.createServer((req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (req.url === '/pair') {
-        res.writeHead(303, { 'Set-Cookie': 'wf1_session=fixture; Path=/; HttpOnly; SameSite=Strict', Location: '/' });
+        res.writeHead(303, { 'Set-Cookie': 'wf1_session=fixture; Path=/; Max-Age=7776000; HttpOnly; SameSite=Strict', Location: '/' });
         return res.end();
     }
     if (req.url === '/') {
@@ -68,6 +68,14 @@ const server = http.createServer((req, res) => {
     const browser = await chromium.launch({ executablePath: process.env.CHROME_BIN, headless: true });
     try {
         const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+        await page.addInitScript(() => {
+            window.pollDelays = [];
+            const original = window.setTimeout;
+            window.setTimeout = (callback, delay, ...args) => {
+                if (callback && callback.name === 'poll') window.pollDelays.push(delay);
+                return original(callback, delay, ...args);
+            };
+        });
         const errors = [];
         page.on('pageerror', error => errors.push(error.message));
         await page.route('https://is1-ssl.mzstatic.com/test.svg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400"><rect width="400" height="400" fill="#baa988"/><path d="M80 120h100v140H80zm140 0h100v140H220z" fill="#eee9dc"/><path d="M95 135h70v110H95zm140 0h70v110h-70z" fill="#758c8b"/><text x="200" y="320" text-anchor="middle" font-size="20" fill="#29332d">LED ZEPPELIN</text></svg>' }));
@@ -78,6 +86,7 @@ const server = http.createServer((req, res) => {
         await page.goto(base + '/pair');
         await page.getByText('Finding your song…').waitFor();
         assert(await page.locator('#wave').isVisible());
+        assert(!(await page.evaluate(() => document.cookie)).includes('wf1_session'));
         await page.screenshot({ path: path.join(output, 'phone-search.png'), fullPage: true });
         state = { ...state, status: 'matched', track };
         await page.getByRole('heading', { name: track.title }).waitFor();
@@ -129,6 +138,7 @@ const server = http.createServer((req, res) => {
         await page.locator('[data-update=install]').click();
         await page.getByText('Downloading update… Keep Waveform One powered on.',{exact:true}).waitFor();
         assert(await page.locator('[data-update=install]').isDisabled());
+        await page.waitForFunction(()=>window.pollDelays.includes(1000));
         // A failed install remains visible even when a new check reports availability.
         update={...update,state:2,last_install_message:'Download interrupted. Current firmware is unchanged.',message:'Update available'};
         await page.getByText(update.last_install_message,{exact:true}).waitFor();
@@ -184,6 +194,7 @@ const server = http.createServer((req, res) => {
         sessionFailing=false;
         await page.getByRole('heading',{name:'Listening for music'}).waitFor({timeout:15000});
         await page.waitForFunction(()=>document.querySelector('#update-version').textContent==='Installed: 1.2.3');
+        await page.waitForFunction(()=>window.pollDelays.includes(2000));
         assert.deepEqual(errors, []);
         console.log('PASS: native phone album-first layouts, artwork fallback, search/check retention, settings/CSRF, safe text and session loss');
         console.log('Screenshots: ' + output);

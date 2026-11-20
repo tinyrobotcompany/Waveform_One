@@ -26,6 +26,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "remote_auth.h"
+#include "remote_pairing.h"
 #include "update_service.h"
 #include "update_platform.h"
 #include "remote_page.h"
@@ -63,15 +64,20 @@ void restore_phone_sessions()
     sessions_restored = true;
 }
 
+bool store_phone_sessions(const remote_auth::StoredSessions &stored)
+{
+    nvs_handle_t handle;
+    if (nvs_open("waveform_remote", NVS_READWRITE, &handle) != ESP_OK) return false;
+    const bool saved = nvs_set_blob(handle, "sessions", &stored, sizeof(stored)) == ESP_OK && nvs_commit(handle) == ESP_OK;
+    nvs_close(handle);
+    return saved;
+}
+
 void save_phone_sessions()
 {
     remote_auth::StoredSessions stored{};
     if (!sessions_need_save || !auth.export_sessions(stored, esp_timer_get_time(), std::time(nullptr))) return;
-    nvs_handle_t handle;
-    if (nvs_open("waveform_remote", NVS_READWRITE, &handle) != ESP_OK) return;
-    const bool saved = nvs_set_blob(handle, "sessions", &stored, sizeof(stored)) == ESP_OK && nvs_commit(handle) == ESP_OK;
-    nvs_close(handle);
-    if (saved) sessions_need_save = false;
+    if (store_phone_sessions(stored)) sessions_need_save = false;
     else ESP_LOGW(kTag, "Phone pairing persistence failed; will retry");
 }
 
@@ -425,24 +431,30 @@ esp_err_t pair_handler(httpd_req_t *request)
     char presented[65]{};
     char session_id[remote_auth::kTokenSize]{};
     bool paired = false;
+    bool storage_failed = false;
     if (query_length > 0 && query_length < sizeof(query) &&
         httpd_req_get_url_query_str(request, query, sizeof(query)) == ESP_OK &&
         httpd_query_key_value(query, "code", presented, sizeof(presented)) == ESP_OK) {
         const std::lock_guard<std::mutex> lock(auth_mutex);
         restore_phone_sessions();
-        paired = auth.pair(headers.host, presented, esp_timer_get_time(), session_id);
-        if (paired) { sessions_restored = true; sessions_need_save = true; save_phone_sessions(); }
+        const auto result = remote_auth::pair_saved(auth, headers.host, presented,
+            esp_timer_get_time(), std::time(nullptr), session_id, store_phone_sessions);
+        paired = result == remote_auth::PairResult::Paired;
+        storage_failed = result == remote_auth::PairResult::StorageUnavailable;
+        if (paired) { sessions_restored = true; sessions_need_save = false; }
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
     httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
+    if (storage_failed) return service_unavailable(request,
+        "Could not save pairing yet. Wait for the device clock/network, then scan again. If this persists, check device storage.");
     if (!paired) {
         return httpd_resp_send_err(request, HTTPD_403_FORBIDDEN,
                                    "This pairing code has expired. Scan the QR code on "
                                    "Waveform One again.");
     }
     char cookie[112]{};
-    std::snprintf(cookie, sizeof(cookie),
-                  "wf1_session=%s; Path=/; Max-Age=3600; HttpOnly; SameSite=Strict", session_id);
+    if (!remote_auth::session_cookie(cookie, sizeof(cookie), session_id))
+        return service_unavailable(request, "Could not create pairing cookie");
     httpd_resp_set_hdr(request, "Set-Cookie", cookie);
     httpd_resp_set_hdr(request, "Location", "/");
     httpd_resp_set_status(request, "303 See Other");
@@ -817,6 +829,21 @@ void network_task(void *)
     }
 }
 
+std::atomic_bool forgetting_phones{false};
+void forget_phones_task(void *)
+{
+    bool saved;
+    {
+        const std::lock_guard<std::mutex> lock(auth_mutex);
+        saved = remote_auth::forget_saved(auth, esp_timer_get_time(), store_phone_sessions);
+        if (saved) { sessions_restored = true; sessions_need_save = false; }
+    }
+    if (saved) publish_remote();
+    if (controls.phone_pairing_forgotten) controls.phone_pairing_forgotten(saved);
+    forgetting_phones.store(false);
+    vTaskDelete(nullptr);
+}
+
 struct CandidateWifi {
     std::string ssid;
     std::string password;
@@ -932,4 +959,14 @@ extern "C" void waveform_update_network(waveform_update_network_t *out)
 extern "C" bool waveform_update_local_ready(void)
 {
     return update_local_ready.load();
+}
+
+bool network_forget_paired_phones()
+{
+    if (forgetting_phones.exchange(true)) return false;
+    if (xTaskCreate(forget_phones_task, "forget_phones", 4096, nullptr, 4, nullptr) != pdPASS) {
+        forgetting_phones.store(false);
+        return false;
+    }
+    return true;
 }

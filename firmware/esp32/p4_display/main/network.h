@@ -20,6 +20,7 @@ enum class WifiConfigurationState {
 };
 
 struct RemoteCallbacks {
+    void (*phone_pairing_forgotten)(bool saved) = nullptr;
     bool (*set_appearance)(bool album_colours) = nullptr;
     bool (*set_style)(LedStyle style) = nullptr;
     bool (*set_brightness)(int percent) = nullptr;
@@ -40,3 +41,6 @@ bool network_configure_home(const control_policy::WifiNetwork &network, const ch
 
 void network_set_palette(const album_palette::Palette &palette);
 bool network_set_appearance(bool album_colours);
+
+// Device-screen action; deliberately not exposed as a phone HTTP endpoint.
+bool network_forget_paired_phones();
