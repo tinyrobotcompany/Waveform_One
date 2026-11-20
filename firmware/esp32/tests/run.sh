@@ -7,21 +7,19 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 
 sh "$esp_dir/mic_test/tests/run.sh"
 
-
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/credential_stubs" -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/recognition_credentials_test.cpp" \
     "$esp_dir/p4_display/main/recognition_credentials.cpp" -o "$build_dir/p4_credentials"
+"$build_dir/p4_credentials"
+printf '%s\n' 'PASS: ACRCloud provisioning, OTA persistence, corruption and storage failures'
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pthread \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/main" "$esp_dir/p4_display/tests/microphone_privacy_test.cpp" -o "$build_dir/p4_privacy"
 "$build_dir/p4_privacy"
 printf '%s\n' 'PASS: mute epochs, direct inhibit, buffer scrubbing and fresh audio segments'
-
-"$build_dir/p4_credentials"
-printf '%s\n' 'PASS: ACRCloud provisioning, OTA persistence, corruption and storage failures'
 
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
@@ -280,4 +278,3 @@ done
     -I "$esp_dir/p4_display/tests/dma_stubs" -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/hosted_dma_memory_test.c" -o "$build_dir/p4_hosted_dma"
 "$build_dir/p4_hosted_dma"
-

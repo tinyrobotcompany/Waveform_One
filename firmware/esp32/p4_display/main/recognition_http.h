@@ -152,7 +152,10 @@ inline bool fetch(const char *url, const Body &body, size_t limit, Response &res
     const Exchange result = exchange(link.client, body, limit, response);
     link.response = nullptr;
     if (result == Exchange::Ok && connection != nullptr) return true;
+    // Every unsuccessful exchange, including cancellation after a partial upload
+    // or response read, closes and destroys the client before returning.
     link.drop();
+    if (result == Exchange::Cancelled) return false;
     // A kept connection the server had closed: try once on a fresh one.
     if (result == Exchange::Stale && reused) return fetch(url, body, limit, response, connection);
     return result == Exchange::Ok;
