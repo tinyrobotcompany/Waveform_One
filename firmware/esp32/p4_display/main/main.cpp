@@ -22,6 +22,7 @@
 #include "display_text.h"
 #include "src/misc/cache/instance/lv_image_cache.h"
 #include "network.h"
+#include "setup_guide.h"
 #include "recognition.h"
 #include "recognition_feedback.h"
 #include "search_waveform.h"
@@ -74,6 +75,14 @@ lv_obj_t *clock_label = nullptr;
 lv_obj_t *wifi_indicator = nullptr;
 lv_obj_t *wifi_header_button = nullptr;
 lv_obj_t *network_qr = nullptr;
+lv_obj_t *setup_panel = nullptr, *setup_qr = nullptr, *setup_instructions = nullptr;
+lv_obj_t *setup_step = nullptr;
+setup_guide::Guide setup;
+std::string setup_address;
+void refresh_setup_guide();
+void create_setup_guide(lv_obj_t *screen);
+void on_open_setup(lv_event_t *);
+
 lv_obj_t *network_heading = nullptr;
 lv_obj_t *network_instructions = nullptr;
 lv_obj_t *forget_phones_button = nullptr, *forget_phones_text = nullptr;
@@ -354,6 +363,7 @@ void on_close_settings(lv_event_t *event)
     if (forget_phones_text && !lv_obj_has_state(forget_phones_button, LV_STATE_DISABLED))
         lv_label_set_text(forget_phones_text, "Forget paired phones");
     if (lv_event_get_code(event) == LV_EVENT_CLICKED) {
+        setup.settings_closed(); refresh_setup_guide();
         lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     }
 }
@@ -598,6 +608,10 @@ void remote_set_network(NetworkMode mode, const char *address)
 {
     recognition_set_network(mode == NetworkMode::HomeWifi, address);
     if (!bsp_display_lock(1000)) return;
+    setup_address = mode == NetworkMode::HomeWifi && address ? address : "";
+    setup.network(!setup_address.empty() ? setup_guide::Network::Ready :
+        mode == NetworkMode::Reconnecting ? setup_guide::Network::Reconnecting : setup_guide::Network::Unconfigured);
+    refresh_setup_guide();
     wifi_online = mode == NetworkMode::HomeWifi;
     paint_palette();
     if (mode == NetworkMode::Unconfigured) {
@@ -659,6 +673,8 @@ void remote_set_wifi_configuration(WifiConfigurationState state)
     lv_obj_add_flag(wifi_entry_spinner, LV_OBJ_FLAG_HIDDEN);
     lv_obj_remove_state(wifi_entry_cancel, LV_STATE_DISABLED);
     lv_obj_remove_state(wifi_entry_connect, LV_STATE_DISABLED);
+    setup.joined(state == WifiConfigurationState::Connected);
+    refresh_setup_guide();
     if (state == WifiConfigurationState::Connected) {
         lv_label_set_text(wifi_entry_status, "Connected to home Wi-Fi.");
         lv_label_set_text(wifi_status, "Connected to home Wi-Fi.");
@@ -741,6 +757,86 @@ void style_update_button(lv_obj_t *button)
     lv_obj_set_style_bg_color(button, kPanel, LV_STATE_DISABLED);
     lv_obj_set_style_border_color(button, kLine, LV_STATE_DISABLED);
     lv_obj_set_style_opa(button, LV_OPA_50, LV_STATE_DISABLED);
+}
+
+void refresh_setup_guide()
+{
+    if (!setup_panel) return;
+    if (setup.visible()) {
+        lv_obj_remove_flag(setup_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(setup_panel);
+    } else lv_obj_add_flag(setup_panel, LV_OBJ_FLAG_HIDDEN);
+    if (setup.qr_ready() && !setup_address.empty()) {
+        lv_qrcode_set_data(setup_qr, setup_address.c_str());
+        lv_obj_remove_flag(setup_qr, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(setup_step, "Step 2 of 2 — Connect your phone");
+        lv_label_set_text(setup_instructions,
+            "1. Connect your phone to the same home Wi-Fi.\n\n"
+            "2. Scan this QR with your phone camera.\n\n"
+            "3. Open the link to control Waveform One.\n\n"
+            "No app download is needed. If a link expires,\nscan the current QR again.");
+    } else {
+        lv_obj_add_flag(setup_qr, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(setup_step, setup.reconnecting() ? "Reconnecting to home Wi-Fi" : "Step 1 of 2 — Connect to home Wi-Fi");
+        lv_label_set_text(setup_instructions, setup.reconnecting()
+            ? "Waiting for the saved network.\n\nThe QR will return when connected.\n\nTo use another network, choose Wi-Fi below."
+            : "1. Tap Choose Wi-Fi below.\n\n2. Select your home network in Settings.\n\n3. Enter its password on the touchscreen.\n\nAfter connection, return here to scan the QR.\nYou can also set up your phone later.");
+    }
+}
+
+void on_open_setup(lv_event_t *) { setup.open(); refresh_setup_guide(); }
+
+void create_setup_guide(lv_obj_t *screen)
+{
+    auto *open = lv_button_create(settings_panel);
+    lv_obj_set_size(open, 180, 52);
+    style_update_button(open);
+    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 420, 26);
+    lv_obj_center(make_label(open, "Phone setup", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(open, on_open_setup, LV_EVENT_CLICKED, nullptr);
+
+    setup_panel = lv_obj_create(screen);
+    lv_obj_set_size(setup_panel, 1024, 600);
+    lv_obj_center(setup_panel);
+    lv_obj_set_style_bg_color(setup_panel, kBackground, 0);
+    lv_obj_set_style_bg_opa(setup_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(setup_panel, 0, 0);
+    lv_obj_set_style_pad_all(setup_panel, 0, 0);
+    lv_obj_clear_flag(setup_panel, LV_OBJ_FLAG_SCROLLABLE);
+    auto *title = make_label(setup_panel, "Set up your phone", &lv_font_montserrat_32, kForeground);
+    lv_obj_align(title, LV_ALIGN_TOP_LEFT, 48, 35);
+    setup_step = make_label(setup_panel, "Starting Wi-Fi…", &lv_font_montserrat_20, kAccent);
+    lv_obj_align(setup_step, LV_ALIGN_TOP_LEFT, 48, 95);
+    setup_qr = lv_qrcode_create(setup_panel);
+    lv_qrcode_set_size(setup_qr, 300);
+    lv_qrcode_set_dark_color(setup_qr, lv_color_black());
+    lv_qrcode_set_light_color(setup_qr, lv_color_white());
+    lv_qrcode_set_quiet_zone(setup_qr, true);
+    lv_obj_align(setup_qr, LV_ALIGN_TOP_LEFT, 48, 165);
+    lv_obj_add_flag(setup_qr, LV_OBJ_FLAG_HIDDEN);
+    setup_instructions = make_label(setup_panel, "", &lv_font_montserrat_20, kForeground);
+    lv_obj_set_width(setup_instructions, 570);
+    lv_label_set_long_mode(setup_instructions, LV_LABEL_LONG_WRAP);
+    lv_obj_align(setup_instructions, LV_ALIGN_TOP_LEFT, 400, 155);
+    auto *wifi = lv_button_create(setup_panel);
+    lv_obj_set_size(wifi, 220, 52);
+    style_update_button(wifi);
+    lv_obj_align(wifi, LV_ALIGN_BOTTOM_LEFT, 400, -45);
+    lv_obj_center(make_label(wifi, "Choose Wi-Fi", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(wifi, [](lv_event_t *) {
+        setup.choose_wifi(); refresh_setup_guide();
+        lv_obj_remove_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
+        network_request_scan();
+    }, LV_EVENT_CLICKED, nullptr);
+    auto *done = lv_button_create(setup_panel);
+    lv_obj_set_size(done, 220, 52);
+    style_update_button(done);
+    lv_obj_align(done, LV_ALIGN_BOTTOM_LEFT, 650, -45);
+    lv_obj_center(make_label(done, "Done / later", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(done, [](lv_event_t *) {
+        setup.dismiss(); refresh_setup_guide();
+    }, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_flag(setup_panel, LV_OBJ_FLAG_HIDDEN);
 }
 
 void create_updates_screen(lv_obj_t *screen)
@@ -1082,6 +1178,8 @@ void create_product_screen()
     lv_qrcode_set_light_color(network_qr, kForeground);
     lv_qrcode_set_quiet_zone(network_qr, true);
     lv_obj_align(network_qr, LV_ALIGN_TOP_LEFT, 48, 420);
+    lv_obj_add_flag(network_qr, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(network_qr, on_open_setup, LV_EVENT_CLICKED, nullptr);
     lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
     network_qr_placeholder = lv_obj_create(settings_panel);
     lv_obj_set_size(network_qr_placeholder, 145, 145);
@@ -1091,6 +1189,8 @@ void create_product_screen()
     lv_obj_set_style_radius(network_qr_placeholder, 8, 0);
     lv_obj_clear_flag(network_qr_placeholder, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_align(network_qr_placeholder, LV_ALIGN_TOP_LEFT, 48, 420);
+    lv_obj_add_flag(network_qr_placeholder, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(network_qr_placeholder, on_open_setup, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *qr_waiting = make_label(network_qr_placeholder, "APP QR\nAFTER WI-FI",
                                       &lv_font_montserrat_16, kMuted);
     lv_obj_set_style_text_align(qr_waiting, LV_TEXT_ALIGN_CENTER, 0);
@@ -1099,6 +1199,8 @@ void create_product_screen()
                                       &lv_font_montserrat_20, kForeground);
     lv_obj_set_style_text_line_space(network_instructions, 8, 0);
     lv_obj_align(network_instructions, LV_ALIGN_TOP_LEFT, 215, 430);
+    lv_obj_add_flag(network_instructions, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(network_instructions, on_open_setup, LV_EVENT_CLICKED, nullptr);
 
     forget_phones_button = lv_button_create(settings_panel);
     lv_obj_set_size(forget_phones_button, 285, 44);
@@ -1188,6 +1290,7 @@ void create_product_screen()
     lv_obj_add_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(update_clock, 1000, nullptr);
     create_updates_screen(screen);
+    create_setup_guide(screen);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,

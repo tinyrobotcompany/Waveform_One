@@ -9,6 +9,13 @@ sh "$esp_dir/mic_test/tests/run.sh"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/setup_guide_test.cpp" -o "$build_dir/p4_setup_guide"
+"$build_dir/p4_setup_guide"
+printf '%s\n' 'PASS: phone setup guide, saved Wi-Fi gating, reconnect and dismissal'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/credential_stubs" -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/recognition_credentials_test.cpp" \
     "$esp_dir/p4_display/main/recognition_credentials.cpp" -o "$build_dir/p4_credentials"

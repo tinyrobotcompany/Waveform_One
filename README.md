@@ -30,6 +30,7 @@ accuracy percentage or a complete offline guarantee.
 - [Legacy Pi over-the-air updates](pi/updater/README.md)
 - [CI and releases](docs/delivery.md)
 - [Pi setup and visual-style controls](pi/README.md)
+- [Wi-Fi and QR phone setup](docs/setup.md)
 
 Native P4 signed updates follow Tempo: monthly checks, an overnight installation
 window, countdown and postponement, with controls on the touchscreen and paired phone.
