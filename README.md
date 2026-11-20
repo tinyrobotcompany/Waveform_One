@@ -14,6 +14,12 @@ style control are working. Native music recognition has host/reference
 verification and awaits physical P4 acceptance. The working
 ESP32-S3 audio and HUB75 engine remains intact during this migration.
 
+## Licence and independent maintenance
+
+Original software is licensed under [Apache 2.0](LICENSE). Original hardware and mechanical designs are licensed under [CERN-OHL-W 2.0](LICENSES/CERN-OHL-W-2.0.txt). See [licensing scope and third-party exclusions](LICENSING.md). These licences allow independent maintenance and commercial use; they do not provide recognition-service accounts or rights to our trademarks.
+
+## Documentation
+
 - [Wiring, firmware programs and build instructions](firmware/esp32/README.md)
 - [ESP32-P4 display bring-up and wiring](firmware/esp32/p4_display/README.md)
 - [ESP32-P4 controller architecture decision](docs/architecture/0001-esp32-p4-display-controller.md)
@@ -28,7 +34,3 @@ Native P4 signed updates follow Tempo: monthly checks, an overnight installation
 window, countdown and postponement, with controls on the touchscreen and paired phone.
 The P4 needs a one-time USB bootstrap into the A/B layout before OTA updates.
 Legacy commissioned Pi/S3 devices retain their existing updater.
-
-## Licence and independent maintenance
-
-Original software is licensed under [Apache 2.0](LICENSE). Original hardware and mechanical designs are licensed under [CERN-OHL-W 2.0](LICENSES/CERN-OHL-W-2.0.txt). See [licensing scope and third-party exclusions](LICENSING.md). These licences allow independent maintenance and commercial use; they do not provide recognition-service accounts or rights to our trademarks.
