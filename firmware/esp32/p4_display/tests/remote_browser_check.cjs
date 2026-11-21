@@ -154,6 +154,17 @@ const server = http.createServer((req, res) => {
         assert(await page.locator('#update-wave').isHidden());
         assert(!await page.locator('[data-update=check]').isDisabled());
         await page.unroute('**/api/updates/action');
+        await page.route('**/api/updates/action', route => {
+            unauthorized=true;
+            return route.fulfill({status:403,body:'Pair again'});
+        });
+        await page.locator('[data-update=check]').click();
+        await page.waitForFunction(()=>document.querySelector('#controls').disabled);
+        assert.equal(await page.locator('#update-version').textContent(),'');
+        assert(await page.locator('#update-wave').isHidden());
+        unauthorized=false;
+        await page.unroute('**/api/updates/action');
+        await page.waitForFunction(()=>!document.querySelector('#controls').disabled && document.querySelector('#update-version').textContent.includes('1.2.3'));
         let releaseInstall;
         const installGate = new Promise(resolve => { releaseInstall = resolve; });
         await page.route('**/api/updates/action', async route => {

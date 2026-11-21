@@ -112,6 +112,7 @@ document.querySelectorAll('[data-update]').forEach(button=>button.onclick=async(
  $('update-message').textContent=button.dataset.update==='check'?'Checking for updates…':button.dataset.update==='install'?'Requesting installation…':'Postponing installation…';
  const accepted=await post('/api/updates/action',{action:button.dataset.update});
  updateRequestPending=false;
+ if(!csrf)return;
  if(lastUpdate)renderUpdates(lastUpdate);
  if(accepted){$('update-message').textContent='Request accepted. Waiting for device…';poll()}
  else $('update-message').textContent='Request failed. Check the connection and try again.';
