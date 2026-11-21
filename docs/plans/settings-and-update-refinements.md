@@ -42,13 +42,13 @@ Use focused pull requests and regression tests before production changes.
 
 - [#37 — OTA activity feedback](https://github.com/tinyrobotcompany/Waveform_One/pull/37)
 - [#38 — Settings, appearance and phone guidance](https://github.com/tinyrobotcompany/Waveform_One/pull/38)
-- Idle dimming and clock customization: PR pending.
+- [#39 — Idle dimming and clock customization](https://github.com/tinyrobotcompany/Waveform_One/pull/39)
 
 ## Verification and delivery
 
 - [x] Record failing regression tests before implementing each behaviour change.
 - [x] Run applicable host, browser and firmware-build checks and the normal commit hook.
-- [ ] Open focused PRs: OTA feedback; settings navigation and phone guidance;
+- [x] Open focused PRs: OTA feedback; settings navigation and phone guidance;
       idle dimming and customizable clock. Appearance feedback belongs with settings navigation.
 - [x] Document hardware acceptance checks separately from automated verification.
 
