@@ -86,13 +86,13 @@ void position_settings_tile(lv_obj_t *button, unsigned index) {
 lv_obj_t *brightness_label = nullptr;
 lv_obj_t *brightness_slider = nullptr;
 lv_obj_t *welcome_label = nullptr;
-lv_obj_t *clock_label = nullptr, *idle_clock = nullptr;
+lv_obj_t *clock_label = nullptr;
 lv_obj_t *display_panel = nullptr, *night_enabled = nullptr, *night_start = nullptr, *night_end = nullptr;
 lv_obj_t *night_level = nullptr, *night_level_label = nullptr, *night_status = nullptr;
 display_schedule::Config night_config;
 idle_display::Config idle_config;
 idle_display::Policy idle_policy;
-lv_obj_t *dimmed_screen = nullptr, *dimmed_clock = nullptr;
+lv_obj_t *dimmed_screen = nullptr, *dimmed_clock = nullptr, *dimmed_period = nullptr;
 bool night_storage_ready = true;
 std::atomic_int effective_brightness{100};
 std::atomic<int64_t> manual_brightness_until{0};
@@ -172,7 +172,6 @@ lv_color_t theme_search() { return lv_color_hex(current_palette.search); }
     lv_obj_set_style_text_color(brand_label, theme_accent(), 0);
     lv_obj_set_style_text_color(welcome_label, colour(p.tertiary), 0);
     lv_obj_set_style_text_color(clock_label, colour(p.text), 0);
-    if (idle_clock) lv_obj_set_style_text_color(idle_clock, colour(p.text), 0);
     lv_obj_set_style_text_color(wifi_indicator, wifi_online ? theme_accent() : colour(p.tertiary), 0);
     lv_obj_set_style_bg_color(wifi_header_button, colour(p.panel), 0);
     lv_obj_set_style_border_color(wifi_header_button, theme_accent(), 0);
@@ -629,16 +628,8 @@ void update_clock(lv_timer_t *)
     if (valid_time) {
         localtime_r(&now, &local);
         lv_label_set_text_fmt(clock_label, "%02d:%02d", local.tm_hour, local.tm_min);
-        lv_label_set_text_fmt(idle_clock, "%02d:%02d", local.tm_hour, local.tm_min);
     }
     const bool idle = !recognition_music_heard() && !displayed_track.title[0] && !search_wave_active;
-    if (valid_time && idle) {
-        lv_obj_remove_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
-        if (!displayed_track.title[0]) lv_obj_remove_flag(artwork_mark, LV_OBJ_FLAG_HIDDEN);
-    }
     const bool interaction = lv_display_get_inactive_time(nullptr) < 60000 ||
         esp_timer_get_time() < manual_brightness_until.load();
     const int night_target = display_schedule::brightness(night_config,
@@ -650,13 +641,16 @@ void update_clock(lv_timer_t *)
         current_brightness.load(), night_target);
     char clock_text[16];
     idle_display::format_clock(clock_text,sizeof(clock_text),valid_time?local.tm_hour:-1,local.tm_min,idle_config.twelve_hour);
+    // Keep AM/PM separate so the digits can fill the screen in either time format.
+    char *period = std::strchr(clock_text,' ');
+    if (period) *period++ = '\0';
     lv_label_set_text(dimmed_clock,clock_text);
-    lv_label_set_text(idle_clock,clock_text);
-    lv_obj_set_style_text_font(idle_clock,display_font(idle_config.large?&lv_font_montserrat_48:&lv_font_montserrat_32),0);
-    lv_obj_set_style_text_color(idle_clock,idle_config.accent?kAccent:kForeground,0);
-    lv_obj_set_style_text_font(dimmed_clock,display_font(idle_config.large?&lv_font_montserrat_48:&lv_font_montserrat_32),0);
+    lv_label_set_text(dimmed_period,period?period:"");
+    lv_obj_set_style_text_font(dimmed_clock,idle_config.large?&waveform_clock_224:&waveform_clock_128,0);
+    lv_obj_set_style_text_color(dimmed_period,idle_config.accent?kAccent:kForeground,0);
     lv_obj_set_style_text_color(dimmed_clock,idle_config.accent?kAccent:kForeground,0);
-    lv_obj_center(dimmed_clock);
+    lv_obj_align(dimmed_clock,LV_ALIGN_CENTER,0,period?-36:0);
+    lv_obj_align_to(dimmed_period,dimmed_clock,LV_ALIGN_OUT_BOTTOM_MID,0,12);
     if (target<current_brightness.load()) lv_obj_remove_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
     if (target != effective_brightness.load() && bsp_display_brightness_set(target) == ESP_OK) {
@@ -1165,9 +1159,6 @@ void create_product_screen()
     artwork_mark = make_label(artwork, "WAVEFORM\nONE", &lv_font_montserrat_48, kMuted);
     lv_obj_set_style_text_align(artwork_mark, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(artwork_mark);
-    idle_clock = make_label(artwork, "--:--", &lv_font_montserrat_48, kForeground);
-    lv_obj_center(idle_clock);
-    lv_obj_add_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
 
     search_wave_pixels = static_cast<uint16_t *>(heap_caps_aligned_alloc(64,
         search_waveform::kPixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -1254,7 +1245,8 @@ void create_product_screen()
     lv_obj_set_style_border_width(dimmed_screen,0,0);
     lv_obj_remove_flag(dimmed_screen,LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_CLICKABLE); // Explicit full-screen wake target.
-    dimmed_clock = make_label(dimmed_screen,"--:--",&lv_font_montserrat_48,kForeground);
+    dimmed_clock = make_label(dimmed_screen,"--:--",&waveform_clock_224,kForeground);
+    dimmed_period = make_label(dimmed_screen,"",&lv_font_montserrat_48,kForeground);
     lv_obj_center(dimmed_clock);
     lv_obj_add_event_cb(dimmed_screen,[](lv_event_t *) {
         idle_policy.wake(esp_timer_get_time()/1000);
@@ -1667,7 +1659,6 @@ bool update_recognition(RecognitionStatus status, const RecognitionTrack *track,
         ESP_LOGW(kTag, "Recognition display update deferred: GUI busy");
         return false;
     }
-    if (track || recognition_feedback::searching(status)) lv_obj_add_flag(idle_clock, LV_OBJ_FLAG_HIDDEN);
     const bool same_cover = track != nullptr
         && std::strcmp(displayed_track.artwork_url, track->artwork_url) == 0;
     const bool same_track = track != nullptr

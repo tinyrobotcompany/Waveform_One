@@ -1,9 +1,9 @@
 # Idle clock and night dimming
 
-When no song is displayed, recognition is not searching, and local audio is not
-classified as music, the artwork placeholder shows the configured clock. The clock
-only appears with valid device time. Song identification/artwork and search
-feedback take precedence when music returns.
+The active player keeps the Waveform One branding when artwork is unavailable,
+with its normal waveform feedback during recognition. Time remains in the header;
+there is no second clock in the artwork area. The large clock appears only when
+automatic dimming lowers the main-screen brightness.
 
 Open **Settings → Display → Clock & night dimming** to enable/disable automatic dimming,
 choose start/end times in 15-minute increments, and select a night brightness
@@ -15,7 +15,7 @@ to turn the schedule off. A failed save leaves the previous configuration active
 The schedule uses the device's existing local timezone (currently Central
 European time with the existing daylight-saving rule). This change does not add
 a timezone selector or a real-time clock battery. After a cold boot without a
-valid time source, the idle clock remains hidden and scheduled dimming stays off.
+valid time source, scheduled night dimming stays off.
 During a DST change the window follows displayed local time, including repeated
 or skipped clock hours. Overnight and same-day windows are both supported.
 
@@ -52,8 +52,9 @@ raises brightness above the selected level.
 Whenever automatic dimming lowers the main-screen brightness, a full-screen
 clock covers artwork, track information, controls and recognition indicators.
 Touch restores the main screen; music restores it on the next display tick.
-Choose a compact or large clock, soft white or Waveform green, and 12- or 24-hour
-time. The page previews these choices. Press **Save** to apply and persist them;
+Choose a compact (128px) or large (224px) full-screen clock, soft white or Waveform green, and 12- or 24-hour
+time. AM/PM appears beneath the large digits. The settings page shows a reduced
+preview; the active player retains its branding instead of an artwork-area clock. Press **Save** to apply and persist them;
 Back discards edits. These preferences apply to both idle and night clock views.
 
 Idle timing uses monotonic uptime and works without internet or a valid clock.
