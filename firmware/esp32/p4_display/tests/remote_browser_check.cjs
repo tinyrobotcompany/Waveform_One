@@ -148,7 +148,24 @@ const server = http.createServer((req, res) => {
         await page.waitForFunction(()=>document.querySelector('#update-version').textContent.includes('1.2.3'));
         assert.equal(await page.locator('#update-hours').inputValue(),'720');
         assert.equal(await page.locator('#update-notes').getAttribute('href'), update.notes_url);
+        await page.route('**/api/updates/action', route => route.fulfill({status:503,body:'Busy'}));
+        await page.locator('[data-update=check]').click();
+        await page.getByText('Request failed. Check the connection and try again.', {exact:true}).waitFor();
+        assert(await page.locator('#update-wave').isHidden());
+        assert(!await page.locator('[data-update=check]').isDisabled());
+        await page.unroute('**/api/updates/action');
+        let releaseInstall;
+        const installGate = new Promise(resolve => { releaseInstall = resolve; });
+        await page.route('**/api/updates/action', async route => {
+            if (route.request().postData() === 'action=install') await installGate;
+            await route.continue();
+        });
         await page.locator('[data-update=install]').click();
+        assert(await page.locator('#update-wave').isVisible(), 'OTA wave appears before HTTP response');
+        assert(await page.locator('[data-update=install]').isDisabled(), 'duplicate install blocked while pending');
+        assert.match(await page.locator('#update-message').textContent(), /Requesting installation/);
+        releaseInstall();
+
         await page.getByText('Downloading update… Keep Waveform One powered on.',{exact:true}).waitFor();
         assert(await page.locator('[data-update=install]').isDisabled());
         await page.waitForFunction(()=>window.pollDelays.includes(1000));

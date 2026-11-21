@@ -29,6 +29,7 @@
 #include "recognition_feedback.h"
 #include "display_schedule.h"
 #include "search_waveform.h"
+#include "update_feedback.h"
 #include "album_palette.h"
 #include "usb_controller.h"
 #include "music_detector.h"
@@ -776,7 +777,22 @@ void remote_set_wifi_configuration(WifiConfigurationState state)
 lv_obj_t *updates_panel = nullptr, *updates_status = nullptr, *updates_version = nullptr;
 lv_obj_t *updates_progress = nullptr, *updates_result = nullptr;
 lv_obj_t *update_buttons[3]{};
-int64_t update_feedback_until = 0;
+update_feedback::Pending update_pending;
+lv_obj_t *update_wave = nullptr;
+lv_image_dsc_t update_wave_descriptor{};
+uint16_t *update_wave_pixels = nullptr;
+unsigned update_wave_phase = 0;
+bool update_wave_active = false;
+
+void tick_update_wave(lv_timer_t *)
+{
+    if (!update_wave || !update_wave_active || lv_obj_has_flag(updates_panel, LV_OBJ_FLAG_HIDDEN)) return;
+    update_wave_phase = (update_wave_phase + 16) % 1024;
+    search_waveform::render(update_wave_pixels, search_waveform::kPixels, update_wave_phase, 0xa8d57a, 0x080d0a);
+    lv_image_cache_drop(&update_wave_descriptor);
+    lv_obj_invalidate(update_wave);
+}
+
 std::atomic<unsigned> ui_health_ticks{0};
 
 void update_boot_guard(void *)
@@ -806,12 +822,18 @@ void refresh_updates(lv_timer_t *)
     waveform_update_status(&value);
     lv_label_set_text_fmt(updates_version, "Installed: %s    Available: %s",
         value.installed[0] ? value.installed : "Starting", value.available[0] ? value.available : "None");
-    if (esp_timer_get_time() >= update_feedback_until)
-        lv_label_set_text(updates_status, value.message);
+
     lv_label_set_text(updates_result, value.last_install_message);
     lv_bar_set_value(updates_progress, value.progress, LV_ANIM_OFF);
-    const bool busy = value.state == UPDATE_CHECKING || value.state == UPDATE_DOWNLOADING
+    const bool worker_busy = value.state == UPDATE_CHECKING || value.state == UPDATE_DOWNLOADING
         || value.state == UPDATE_VERIFYING || value.state == UPDATE_RESTARTING;
+    const bool busy = update_pending.active(esp_timer_get_time(), worker_busy, value.message);
+    update_wave_active = busy;
+    if (update_wave) {
+        if (busy) lv_obj_remove_flag(update_wave, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(update_wave, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (worker_busy || !busy) lv_label_set_text(updates_status, value.message);
     for (unsigned i = 0; i < 3; ++i) {
         const bool disabled = busy || (i == 0 && value.countdown_seconds > 0)
             || (i == 1 && !value.available[0]);
@@ -823,9 +845,15 @@ void refresh_updates(lv_timer_t *)
 void on_update_action(lv_event_t *event)
 {
     const char *action = static_cast<const char *>(lv_event_get_user_data(event));
+    waveform_update_status_t before{};
+    waveform_update_status(&before);
     const bool queued = waveform_update_request(action);
-    lv_label_set_text(updates_status, queued ? "Request queued…" : "Update service busy");
-    update_feedback_until = esp_timer_get_time() + 5000000;
+    if (queued) {
+        update_pending.begin(esp_timer_get_time(), before.message);
+        refresh_updates(nullptr);
+        lv_label_set_text(updates_status, strcmp(action, "check") == 0 ? "Checking for updates…"
+            : strcmp(action, "install") == 0 ? "Requesting installation…" : "Postponing installation…");
+    } else lv_label_set_text(updates_status, "Update service busy. Please try again.");
 }
 
 void style_update_button(lv_obj_t *button)
@@ -956,12 +984,29 @@ void create_updates_screen(lv_obj_t *screen)
     lv_obj_set_width(updates_status, 900);
     lv_label_set_long_mode(updates_status, LV_LABEL_LONG_WRAP);
     lv_obj_align(updates_status, LV_ALIGN_TOP_LEFT, 32, 175);
+    update_wave_pixels = static_cast<uint16_t *>(heap_caps_aligned_alloc(64,
+        search_waveform::kPixels * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (update_wave_pixels) {
+        search_waveform::render(update_wave_pixels, search_waveform::kPixels, 0, 0xa8d57a, 0x080d0a);
+        update_wave_descriptor.header.magic = LV_IMAGE_HEADER_MAGIC;
+        update_wave_descriptor.header.cf = LV_COLOR_FORMAT_RGB565;
+        update_wave_descriptor.header.w = search_waveform::kWidth;
+        update_wave_descriptor.header.h = search_waveform::kHeight;
+        update_wave_descriptor.header.stride = search_waveform::kWidth * sizeof(uint16_t);
+        update_wave_descriptor.data_size = search_waveform::kPixels * sizeof(uint16_t);
+        update_wave_descriptor.data = reinterpret_cast<uint8_t *>(update_wave_pixels);
+        update_wave = lv_image_create(updates_panel);
+        lv_image_set_src(update_wave, &update_wave_descriptor);
+        lv_obj_align(update_wave, LV_ALIGN_TOP_MID, 0, 235);
+        lv_obj_add_flag(update_wave, LV_OBJ_FLAG_HIDDEN);
+        lv_timer_create(tick_update_wave, 40, nullptr);
+    }
     updates_progress = lv_bar_create(updates_panel);
     lv_obj_set_style_bg_color(updates_progress, kLine, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(updates_progress, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_bg_color(updates_progress, kAccent, LV_PART_INDICATOR);
     lv_obj_set_size(updates_progress, 900, 20);
-    lv_obj_align(updates_progress, LV_ALIGN_TOP_LEFT, 32, 290);
+    lv_obj_align(updates_progress, LV_ALIGN_TOP_LEFT, 32, 325);
     const char *labels[] = {"Check now", "Install now", "Postpone 24 hours"};
     static const char *actions[] = {"check", "install", "postpone"};
     for (unsigned i = 0; i < 3; ++i) {
