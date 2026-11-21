@@ -1,3 +1,4 @@
+#include "idle_display_ui.h"
 #include "microphone_privacy.h"
 #include <algorithm>
 #include <atomic>
@@ -28,7 +29,6 @@
 #include "owner_credentials_ui.h"
 #include "recognition_feedback.h"
 #include "display_schedule.h"
-#include "idle_display_ui.h"
 #include "search_waveform.h"
 #include "album_palette.h"
 #include "usb_controller.h"
