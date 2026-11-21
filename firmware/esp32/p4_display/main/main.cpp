@@ -1006,7 +1006,7 @@ void create_updates_screen(lv_obj_t *screen)
     lv_obj_set_style_bg_color(open, kAccent, LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(open, LV_OPA_COVER, LV_STATE_PRESSED);
     position_settings_tile(open, settings_layout::Updates);
-    lv_obj_center(make_label(open, "Software updates", &lv_font_montserrat_16, kForeground));
+    lv_obj_center(make_label(open, "Software updates", &lv_font_montserrat_20, kForeground));
     lv_obj_add_event_cb(open, [](lv_event_t *) { lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
     updates_panel = lv_obj_create(screen);
     lv_obj_set_size(updates_panel, 1024, 600);
