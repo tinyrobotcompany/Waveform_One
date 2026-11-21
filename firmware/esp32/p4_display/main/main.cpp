@@ -1153,6 +1153,7 @@ void create_product_screen()
     lv_obj_set_style_bg_opa(dimmed_screen,LV_OPA_COVER,0);
     lv_obj_set_style_border_width(dimmed_screen,0,0);
     lv_obj_remove_flag(dimmed_screen,LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_CLICKABLE); // Explicit full-screen wake target.
     dimmed_clock = make_label(dimmed_screen,"--:--",&lv_font_montserrat_48,kForeground);
     lv_obj_center(dimmed_clock);
     lv_obj_add_event_cb(dimmed_screen,[](lv_event_t *) {
