@@ -5,6 +5,14 @@ esp_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/waveform-firmware-tests.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/idle_display_test.cpp" -o "$build_dir/idle_display"
+"$build_dir/idle_display"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -I "$esp_dir/p4_display/tests/credential_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/idle_display_storage_test.cpp" "$esp_dir/p4_display/main/idle_display.cpp" -o "$build_dir/idle_storage"
+"$build_dir/idle_storage"
+
 sh "$esp_dir/mic_test/tests/run.sh"
 
 
