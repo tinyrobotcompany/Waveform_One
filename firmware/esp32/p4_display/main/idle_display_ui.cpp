@@ -1,7 +1,7 @@
 #include "idle_display_ui.h"
 #include "display_fonts.h"
 namespace {
-lv_obj_t *panel, *delay, *custom, *level, *level_text, *format, *size, *colour, *preview, *status;
+lv_obj_t *panel, *delay, *custom, *level, *level_text, *format, *size, *colour, *preview, *preview_caption, *status;
 idle_display::Config *saved;
 constexpr unsigned minutes[] = {0,1,2,5,10};
 lv_color_t background=lv_color_hex(0x080d0a), ink=lv_color_hex(0xedf3e8), accent=lv_color_hex(0xa8d57a);
@@ -29,6 +29,7 @@ lv_obj_t *dropdown(const char *options,int x,int y,int width) {
 void render(lv_event_t *) {
     char text[16]; idle_display::format_clock(text,sizeof(text),23,8,lv_dropdown_get_selected(format)==1);
     lv_label_set_text(preview,text);
+    lv_label_set_text(preview_caption,lv_dropdown_get_selected(size) ? "224px on the dimmed screen\nReduced preview" : "128px on the dimmed screen\nReduced preview");
     lv_obj_set_style_text_font(preview,display_font(lv_dropdown_get_selected(size) ? &lv_font_montserrat_48 : &lv_font_montserrat_32),0);
     lv_obj_set_style_text_color(preview,lv_dropdown_get_selected(colour) ? accent : ink,0);
     lv_label_set_text_fmt(level_text,"Idle brightness: %d%%",int(lv_slider_get_value(level)));
@@ -73,7 +74,7 @@ void idle_display_ui_create(lv_obj_t *screen,lv_obj_t *display_page,idle_display
     colour=dropdown("Soft white\nWaveform green",550,220,300);
     preview=label(panel,"",550,330);
     for(auto *control:{format,size,colour}) lv_obj_add_event_cb(control,render,LV_EVENT_VALUE_CHANGED,nullptr);
-    label(panel,"Clock preview",550,405);
+    preview_caption=label(panel,"Reduced preview",550,405);
     status=label(panel,"",320,535); lv_obj_set_width(status,650);
     lv_obj_set_style_text_font(status,display_font(&lv_font_montserrat_16),0);
     button(panel,"Save",48,525,220,[](lv_event_t *) {

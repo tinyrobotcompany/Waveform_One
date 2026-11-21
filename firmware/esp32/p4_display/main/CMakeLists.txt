@@ -5,6 +5,7 @@ idf_component_register(
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
          "fonts/waveform_font_24.c" "fonts/waveform_font_32.c"
          "fonts/waveform_font_40.c" "fonts/waveform_font_48.c"
+         "fonts/waveform_clock_128.c" "fonts/waveform_clock_224.c"
          "owner_credentials_ui.cpp"
     INCLUDE_DIRS "." "../third_party" "../../visualizer/main" "../../mic_test/main"
                  "../../common" "../../common/music_model"

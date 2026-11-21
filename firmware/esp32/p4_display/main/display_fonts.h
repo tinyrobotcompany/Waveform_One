@@ -8,6 +8,8 @@ LV_FONT_DECLARE(waveform_font_24);
 LV_FONT_DECLARE(waveform_font_32);
 LV_FONT_DECLARE(waveform_font_40);
 LV_FONT_DECLARE(waveform_font_48);
+LV_FONT_DECLARE(waveform_clock_128);
+LV_FONT_DECLARE(waveform_clock_224);
 
 inline const lv_font_t *display_font(const lv_font_t *font)
 {

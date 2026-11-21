@@ -52,8 +52,9 @@ raises brightness above the selected level.
 Whenever automatic dimming lowers the main-screen brightness, a full-screen
 clock covers artwork, track information, controls and recognition indicators.
 Touch restores the main screen; music restores it on the next display tick.
-Choose a compact or large clock, soft white or Waveform green, and 12- or 24-hour
-time. The page previews these choices. Press **Save** to apply and persist them;
+Choose a compact (128px) or large (224px) full-screen clock, soft white or Waveform green, and 12- or 24-hour
+time. AM/PM appears beneath the large digits. The settings page shows a reduced
+preview; the undimmed artwork-area clock retains its smaller size. Press **Save** to apply and persist them;
 Back discards edits. These preferences apply to both idle and night clock views.
 
 Idle timing uses monotonic uptime and works without internet or a valid clock.

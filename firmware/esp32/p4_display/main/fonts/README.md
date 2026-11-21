@@ -77,3 +77,20 @@ cmake --build /tmp/waveform-native-display-build -j 8
 It checks real glyph descriptors/bitmaps, missing-glyph fallback and long-text
 separation from the status row, and writes PPM previews of an apostrophe title,
 long accented metadata, international characters and initial-search feedback.
+
+## Full-screen clock fonts
+
+`waveform_clock_128.c` and `waveform_clock_224.c` contain native-size Montserrat
+Medium clock glyphs for the compact and large dimmed-screen clock. The small
+ASCII range 45–58 includes the hyphen, digits and colon. AM/PM uses a separate
+existing 48px label. Plain 4bpp static bitmaps avoid enlarging small glyphs or
+introducing a decompressor. Kerning is disabled for predictable clock layout.
+
+Regenerate with the same pinned converter:
+
+```sh
+node generate_clock.cjs /tmp/waveform-font-tools/node_modules/.bin/lv_font_conv
+```
+
+The clock font tests check actual generated glyph advances for every 12/24-hour
+time and the unknown-time placeholder against the 1024×600 screen margins.
