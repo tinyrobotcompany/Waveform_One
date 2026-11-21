@@ -15,7 +15,10 @@ lv_obj_t *button(lv_obj_t *parent,const char *text,int x,int y,int width,lv_even
     lv_obj_set_style_bg_color(out,lv_color_hex(0x121a13),0);
     lv_obj_set_style_border_color(out,accent,0); lv_obj_set_style_border_width(out,1,0);
     lv_obj_set_style_shadow_width(out,0,0);
-    lv_obj_center(label(out,text,0,0)); lv_obj_add_event_cb(out,callback,LV_EVENT_CLICKED,nullptr); return out;
+    auto *caption = label(out,text,0,0);
+    lv_obj_center(caption);
+    lv_obj_add_event_cb(out,callback,LV_EVENT_CLICKED,nullptr);
+    return out;
 }
 lv_obj_t *dropdown(const char *options,int x,int y,int width) {
     auto *out=lv_dropdown_create(panel); lv_dropdown_set_options(out,options);
