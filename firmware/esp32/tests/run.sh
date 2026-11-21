@@ -6,6 +6,12 @@ build_dir=$(mktemp -d "${TMPDIR:-/tmp}/waveform-firmware-tests.XXXXXX")
 trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 
 sh "$esp_dir/mic_test/tests/run.sh"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -fsanitize=address,undefined -fno-omit-frame-pointer \
+    -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/update_feedback_test.cpp" -o "$build_dir/p4_update_feedback"
+"$build_dir/p4_update_feedback"
+
 
 
 

@@ -30,7 +30,7 @@ body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:b
 <div class="section"><h3>DISPLAY</h3><label for="brightness">Brightness <output id="brightness-value">100%</output></label><input id="brightness" type="range" min="10" max="100" value="100"><p id="display-brightness" role="status"></p></div>
 <div class="section"><h3>SOFTWARE UPDATES</h3>
 <p id="update-version"></p><p id="update-result" role="status" hidden></p><p id="update-message" role="status">Checking update status…</p>
-<progress id="update-progress" max="100" value="0" aria-label="Download progress"></progress>
+<div class="wave" id="update-wave" hidden aria-hidden="true"><i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i><i style="--i:5"></i><i style="--i:6"></i><i style="--i:7"></i><i style="--i:8"></i></div><progress id="update-progress" max="100" value="0" aria-label="Download progress"></progress>
 <p><a id="update-notes" target="_blank" rel="noopener noreferrer" hidden>What’s new</a></p>
 <div class="styles"><button data-update="check">Check now</button><button data-update="install">Install now</button><button data-update="postpone">Postpone 24h</button></div>
 <p><label><input id="update-auto" type="checkbox"> Install automatically</label></p>
@@ -40,10 +40,11 @@ body,.cover,.dot,.eyebrow,.brand,h1,.artist,.album,.activity,button{transition:b
 </div></fieldset><p class="feedback" id="feedback" role="status"></p></section></div>
 <script>
 const $=id=>document.getElementById(id);
-let updateSettingsLoaded=false,updateSettingsDirty=false,activeUpdate=false;
+let updateSettingsLoaded=false,updateSettingsDirty=false,activeUpdate=false,updateRequestPending=false;
+let lastUpdate=null;
 let csrf='',pollTimer,artworkUrl='',requestActive=false,settingsOpen=false,failures=0,fieldKey='',fieldFront=false;
 function pairedMessage(){return 'Scan the QR code on Waveform One to connect.'}
-function loseSession(){activeUpdate=false;csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
+function loseSession(){updateRequestPending=false;$('update-wave').hidden=true;activeUpdate=false;csrf='';$('controls').disabled=true;updateSettingsLoaded=false;$('connection').textContent=pairedMessage();$('feedback').textContent=pairedMessage();$('activity-text').textContent='Connection required';$('update-version').textContent='';$('update-message').textContent='Not connected. Scan the device QR code to see live update status.';$('update-next').textContent='';$('update-result').hidden=true;$('update-progress').value=0;$('update-notes').hidden=true}
 function reconnecting(){$('connection').textContent='Reconnecting to Waveform One…';$('update-message').textContent='Update status unavailable. Reconnecting…'}
 function showSettings(open){settingsOpen=open;$('settings').hidden=!open;$('open-settings').setAttribute('aria-expanded',String(open));document.body.style.overflow=open?'hidden':'';(open?$('close-settings'):$('open-settings')).focus()}
 $('open-settings').onclick=()=>showSettings(true);$('close-settings').onclick=()=>showSettings(false);
@@ -71,15 +72,16 @@ function render(state){
  const actual=state.display_brightness??state.brightness;$('display-brightness').textContent=actual<state.brightness?'Night dimming: screen '+actual+'% (selected '+state.brightness+'%)':'';
  document.querySelectorAll('[data-style]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.style===state.style)));
 }
-async function post(path,data){if(!csrf){loseSession();return false}try{const response=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams(data)});if(response.status===403){loseSession();return false}if(!response.ok)throw Error();$('feedback').textContent=path==='/api/style'?'Applying LED style…':'Saved';return true}catch{$('feedback').textContent='Could not save. Please try again.';return false}}
+async function post(path,data){if(!csrf){loseSession();return false}try{const response=await fetch(path,{method:'POST',credentials:'same-origin',signal:AbortSignal.timeout(8000),headers:{'Content-Type':'application/x-www-form-urlencoded','X-Waveform-CSRF':csrf},body:new URLSearchParams(data)});if(response.status===403){loseSession();return false}if(!response.ok)throw Error();$('feedback').textContent=path==='/api/style'?'Applying LED style…':'Saved';return true}catch{$('feedback').textContent='Could not save. Please try again.';return false}}
 $('save-name').onclick=()=>{const name=$('name').value.trim();if(name)post('/api/name',{name});else $('feedback').textContent='Enter your name first.'};document.querySelectorAll('[data-style]').forEach(button=>button.onclick=()=>post('/api/style',{style:button.dataset.style}));
 document.querySelectorAll('[data-appearance]').forEach(button=>button.onclick=async()=>{if(await post('/api/appearance',{value:button.dataset.appearance}))poll()});
 // Commit a slider change once; dragging never creates overlapping device requests.
 $('brightness').oninput=()=>{$('brightness-value').textContent=$('brightness').value+'%'};$('brightness').onchange=()=>post('/api/brightness',{value:$('brightness').value});
 function renderUpdates(value){
+ lastUpdate=value;
  activeUpdate=value.countdown_seconds>0||[1,3,4,5].includes(value.state);
  $('update-version').textContent='Installed: '+value.installed+(value.available?' · Available: '+value.available:'');
- $('update-message').textContent=value.message;
+ if(!updateRequestPending)$('update-message').textContent=value.message;
  $('update-result').textContent=value.last_install_message||'';$('update-result').hidden=!value.last_install_message;
  $('update-progress').value=value.progress;
  const notes=$('update-notes');
@@ -91,7 +93,9 @@ function renderUpdates(value){
   $('update-auto').checked=value.automatic;$('update-hours').value=String(value.interval_hours);
   $('update-start').value=clock(value.window_start);$('update-end').value=clock(value.window_end);updateSettingsLoaded=true;
  }
- const busy=[1,3,4,5].includes(value.state);
+ const busy=updateRequestPending||[1,3,4,5].includes(value.state);
+ $('update-wave').hidden=!busy;
+ $('update-message').setAttribute('aria-busy',String(busy));
  document.querySelector('[data-update="install"]').disabled=!value.available||busy;
  document.querySelector('[data-update="check"]').disabled=busy||value.countdown_seconds>0;
  document.querySelector('[data-update="postpone"]').disabled=busy;
@@ -101,7 +105,18 @@ async function pollUpdates(){
  if(response.status===401){loseSession();return}if(!response.ok)throw Error();const value=await response.json();if(csrf)renderUpdates(value);
 }
 for(const id of ['update-auto','update-hours','update-start','update-end'])$(id).addEventListener('change',()=>{updateSettingsDirty=true});
-document.querySelectorAll('[data-update]').forEach(button=>button.onclick=async()=>{if(await post('/api/updates/action',{action:button.dataset.update})){$('feedback').textContent='Request queued…';poll()}});
+document.querySelectorAll('[data-update]').forEach(button=>button.onclick=async()=>{
+ if(updateRequestPending)return;
+ updateRequestPending=true;
+ if(lastUpdate)renderUpdates(lastUpdate);
+ $('update-message').textContent=button.dataset.update==='check'?'Checking for updates…':button.dataset.update==='install'?'Requesting installation…':'Postponing installation…';
+ const accepted=await post('/api/updates/action',{action:button.dataset.update});
+ updateRequestPending=false;
+ if(!csrf)return;
+ if(lastUpdate)renderUpdates(lastUpdate);
+ if(accepted){$('update-message').textContent='Request accepted. Waiting for device…';poll()}
+ else $('update-message').textContent='Request failed. Check the connection and try again.';
+});
 $('save-updates').onclick=async()=>{
  const minutes=id=>{const parts=$(id).value.split(':').map(Number);return parts.length===2?parts[0]*60+parts[1]:NaN};
  const start=minutes('update-start'),end=minutes('update-end');
