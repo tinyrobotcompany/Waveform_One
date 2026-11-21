@@ -5,6 +5,7 @@
 #include <memory>
 #include <strings.h>
 #include "recognition_policy.h"
+#include "network_activity.h"
 #include "esp_crt_bundle.h"
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
@@ -38,14 +39,21 @@ struct Body {
 struct Connection {
     esp_http_client_handle_t client = nullptr;
     Response *response = nullptr;  // the request in progress, for header events
+    bool leased = false;
+    Connection() = default;
+    Connection(const Connection &) = delete;
+    Connection &operator=(const Connection &) = delete;
     ~Connection() { drop(); }
     void drop()
     {
         // response is only header-callback state; cleanup never depends on it.
-        if (client == nullptr) return;
-        esp_http_client_close(client);
-        esp_http_client_cleanup(client);
-        client = nullptr;
+        if (client != nullptr) {
+            esp_http_client_close(client);
+            esp_http_client_cleanup(client);
+            client = nullptr;
+        }
+        response = nullptr;
+        if (leased) { waveform_network_release(); leased = false; }
     }
 };
 
@@ -119,10 +127,15 @@ inline bool fetch(const char *url, const Body &body, size_t limit, Response &res
 {
     response = {};
     if (!body.permitted()) { if (connection) connection->drop(); return false; }
-    response.bytes.reset(static_cast<char *>(heap_caps_malloc(limit + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
-    if (!response.bytes) return false;
     Connection local;
     Connection &link = connection != nullptr ? *connection : local;
+    if (waveform_network_paused()) { link.drop(); return false; }
+    if (!link.leased) {
+        if (!waveform_network_acquire()) return false;
+        link.leased = true;
+    }
+    response.bytes.reset(static_cast<char *>(heap_caps_malloc(limit + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)));
+    if (!response.bytes) { link.drop(); return false; }
     const bool reused = link.client != nullptr;
     link.response = &response;
     const auto method = body.data == nullptr ? HTTP_METHOD_GET : HTTP_METHOD_POST;
@@ -148,7 +161,7 @@ inline bool fetch(const char *url, const Body &body, size_t limit, Response &res
         config.user_agent = body.shazam ? "Dalvik/2.1.0 (Linux; U; Android 5.0.2; VS980 4G Build/LRX22G)"
             : "WaveformOne/1.0";
         link.client = esp_http_client_init(&config);
-        if (link.client == nullptr) return false;
+        if (link.client == nullptr) { link.drop(); return false; }
     }
     const Exchange result = exchange(link.client, body, limit, response);
     link.response = nullptr;

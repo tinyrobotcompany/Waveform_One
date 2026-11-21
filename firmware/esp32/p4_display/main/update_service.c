@@ -1,5 +1,6 @@
 #include "update_service.h"
 #include "update_platform.h"
+#include "network_activity.h"
 #include "esp_app_desc.h"
 #include "esp_ota_ops.h"
 #include "esp_http_client.h"
@@ -8,6 +9,7 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "nvs.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -205,23 +207,30 @@ static const char *write_image(const esp_partition_t *partition)
  if(!h||http!=200){if(h)esp_http_client_cleanup(h);return "Download unavailable. Current firmware is unchanged.";}
  /* Require the signed size before erasing flash. */
  if(body_length<=0||(uint64_t)body_length!=candidate.size){esp_http_client_cleanup(h);return "Download size mismatch or unknown. Current firmware is unchanged.";}
- esp_ota_handle_t ota=0;esp_err_t begin_error=esp_ota_begin(partition,candidate.size,&ota);
+ esp_ota_handle_t ota=0;esp_err_t begin_error=esp_ota_begin(partition,OTA_WITH_SEQUENTIAL_WRITES,&ota);
  bool begun=begin_error==ESP_OK;
  mbedtls_md_context_t hash;mbedtls_md_init(&hash);
  bool ok=begun&&mbedtls_md_setup(&hash,mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),0)==0&&mbedtls_md_starts(&hash)==0;
  const char *failure=begun?"Firmware checksum verification failed. Current firmware is unchanged.":"Could not prepare update slot. Current firmware is unchanged. Try Install now again.";
- size_t total=0;unsigned char buffer[4096],digest[32]={0};int64_t deadline=esp_timer_get_time()+300000000;
+ size_t total=0;unsigned char buffer[4096],digest[32]={0};int64_t started=esp_timer_get_time(),deadline=started+300000000;
  while(ok&&total<candidate.size){size_t wanted=candidate.size-total;if(wanted>sizeof(buffer))wanted=sizeof(buffer);
-  int n=esp_http_client_read(h,(char *)buffer,(int)wanted);if(n<=0||esp_timer_get_time()>deadline){failure="Download interrupted. Current firmware is unchanged. Try Install now again.";ok=false;break;}
+  int n=esp_http_client_read(h,(char *)buffer,(int)wanted);
+  if(n<=0||esp_timer_get_time()>deadline){
+   const bool timed_out=esp_timer_get_time()>deadline;
+   ESP_LOGE(TAG,"Download stopped: read=%d bytes=%u/%u elapsed_ms=%lld deadline_exceeded=%d",n,(unsigned)total,(unsigned)candidate.size,(long long)((esp_timer_get_time()-started)/1000),timed_out);
+   failure=timed_out?"Download timed out. Current firmware is unchanged.":"Download interrupted. Current firmware is unchanged. Try Install now again.";
+   ok=false;break;
+  }
   ok=mbedtls_md_update(&hash,buffer,(size_t)n)==0&&esp_ota_write(ota,buffer,(size_t)n)==ESP_OK;total+=(size_t)n;
   portENTER_CRITICAL(&lock);status.progress=(unsigned)(total*100/candidate.size);portEXIT_CRITICAL(&lock);
+  vTaskDelay(1); /* Let idle/network tasks run between flash writes. */
  }
  bool extra_bytes=false;
  if(ok){char extra;int n=esp_http_client_read(h,&extra,1);extra_bytes=n>0;
   /* Require EOF and complete framing. */
   ok=n==0&&esp_http_client_is_complete_data_received(h);
  }
- message(UPDATE_VERIFYING,"Verifying downloaded firmware…");
+ if(ok&&total==candidate.size)message(UPDATE_VERIFYING,"Verifying downloaded firmware…");
  ok=ok&&total==candidate.size&&mbedtls_md_finish(&hash,digest)==0;
  char hex[65];for(unsigned i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);ok=ok&&!strcmp(hex,candidate.sha256);
  /* esp_ota_end() only finalises and validates the written image; it never changes the boot
@@ -253,9 +262,26 @@ static bool perform_install(void)
  if(esp_ota_set_boot_partition(partition)!=ESP_OK){saved.pending[0]=0;persist();message(UPDATE_ERROR,"Could not activate update. Current firmware is unchanged.");return false;}
  message(UPDATE_RESTARTING,"Update verified. Restarting Waveform One…");vTaskDelay(pdMS_TO_TICKS(1500));esp_restart();return true;
 }
+static void log_memory(const char *phase)
+{
+ ESP_LOGI(TAG,"%s: internal_free=%u internal_min=%u dma_largest=%u psram_free=%u ota_stack_free=%u",
+  phase,(unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
+  (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT),
+  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_DMA),
+  (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),(unsigned)uxTaskGetStackHighWaterMark(NULL));
+}
 static bool install(void)
 {
- const bool ok=perform_install();
+ message(UPDATE_DOWNLOADING,"Preparing update… Waiting for background connections to close.");
+ log_memory("Before background drain");
+ waveform_network_pause();
+ const int64_t drain_deadline=esp_timer_get_time()+45000000;
+ while(!waveform_network_drained()&&esp_timer_get_time()<drain_deadline)vTaskDelay(pdMS_TO_TICKS(20));
+ bool ok=false;
+ if(waveform_network_drained()){log_memory("After background drain");ok=perform_install();}
+ else message(UPDATE_ERROR,"Background connection is still busy. Current firmware is unchanged.");
+ log_memory("After installation attempt");
+ waveform_network_resume();
  if(!ok){
   portENTER_CRITICAL(&lock);
   snprintf(status.last_install_message,sizeof(status.last_install_message),"%s",status.message);

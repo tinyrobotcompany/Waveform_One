@@ -158,11 +158,12 @@ printf '%s\n' 'PASS: audio presence independent of lookup, absolute positions an
 "$build_dir/p4_fingerprint"
 printf '%s\n' 'PASS: streaming fingerprints against upstream reference, recordings and binary encoding'
 
+"${CC:-cc}" -std=c11 -Wall -Wextra -Werror -c "$esp_dir/p4_display/main/network_activity.c" -o "$build_dir/network_activity.o"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/visualizer/tests/stubs" \
     -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/recognition_http_test.cpp" -o "$build_dir/p4_http"
+    "$esp_dir/p4_display/tests/recognition_http_test.cpp" "$build_dir/network_activity.o" -o "$build_dir/p4_http"
 "$build_dir/p4_http"
 printf '%s\n' 'PASS: production recognition HTTP chunked reads, size bounds, errors and Retry-After'
 
@@ -307,7 +308,7 @@ for suite in policy service; do
         -I "$esp_dir/p4_display/tests/ota_stubs" -I "$esp_dir/p4_display/main" \
         -I "$esp_dir/p4_display/third_party" \
         "$esp_dir/p4_display/tests/update_${suite}_test.c" \
-        "$esp_dir/p4_display/main/update_policy.c" "$esp_dir/p4_display/third_party/cJSON.c" \
+        "$esp_dir/p4_display/main/network_activity.c" "$esp_dir/p4_display/main/update_policy.c" "$esp_dir/p4_display/third_party/cJSON.c" \
         -lm -o "$build_dir/p4_update_$suite"
     "$build_dir/p4_update_$suite"
 done

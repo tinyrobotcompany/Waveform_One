@@ -232,3 +232,34 @@ the onboard microphone and direct P4 LED controller configured. A bounded test o
 assertion or reboot occurred during that test. This is a network/memory smoke test,
 not a completed signed-OTA install or power-loss qualification. Serial diagnostics
 remain available for the touchscreen Check now validation.
+
+
+### OTA memory-pressure recovery
+
+Installation temporarily stops admitting new background recognition/artwork HTTPS
+connections. Existing exchanges can finish; the recognition task closes its own
+persistent ACRCloud connection. OTA waits up to 45 seconds for these clients to
+release their network resources, then starts downloading. If preparation or
+installation fails, background networking resumes without changing microphone
+privacy, recognition credentials, or saved settings. Local audio capture and LED
+visualization continue. Recognition can temporarily stop identifying new songs
+while installation is in progress.
+
+The inactive slot is erased incrementally as firmware is written, rather than
+bulk-erasing it after opening the HTTP connection. Each written chunk yields to
+other tasks. Signed size, checksum, image validation, rollback protection, and the
+five-minute download limit remain enforced. Verification is shown only after a
+complete transfer; a deadline failure is distinguished from an interrupted read.
+
+Serial diagnostics record internal free/minimum memory, largest DMA-capable block,
+external free memory, and OTA stack headroom before/after background draining and
+after a returning installation attempt. Download errors include the read result,
+bytes received, elapsed time, and whether the deadline expired. These logs contain
+no request bodies or credentials.
+
+Hardware acceptance is still required: compare these measurements under music and
+artwork load, install a signed release, confirm its version and boot acceptance,
+then interrupt another transfer and verify recognition resumes with unchanged
+credentials/settings. Repeat attempts to detect a declining memory baseline.
+An existing device with the old failing downloader may require a cable-installed
+test build first. Do not infer hardware success from host tests or a firmware build.
