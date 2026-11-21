@@ -20,6 +20,15 @@ int main() {
     assert(policy.brightness(config,240004,true,180003,false,80,10)==10);
     config.enabled=0;
     assert(policy.brightness(config, 240005, true, 180004, false, 80, 30) == 30);
+    // Even a stale LVGL inactivity value cannot shorten a ten-minute delay after wake.
+    Policy long_delay;
+    config.enabled=1; config.minutes=10;
+    assert(long_delay.brightness(config,0,true,0,false,80,80)==80);
+    assert(long_delay.brightness(config,600000,true,600000,false,80,80)==10);
+    long_delay.wake(600001);
+    assert(long_delay.brightness(config,660001,true,9000000,false,80,80)==80);
+    assert(long_delay.brightness(config,1200000,true,9000000,false,80,80)==80);
+    assert(long_delay.brightness(config,1200001,true,9000000,false,80,80)==10);
     config.minutes=0; assert(!config.valid());
     config.minutes=241; assert(!config.valid());
     config.minutes=37; assert(config.valid());
