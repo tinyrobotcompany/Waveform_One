@@ -14,8 +14,12 @@ int main() {
     assert(policy.brightness(config, 120002, false, 60001, false, 80, 10) == 80);
     assert(policy.brightness(config, 120003, true, 60002, false, 80, 80) == 80);
     assert(policy.brightness(config, 180003, true, 120002, false, 80, 30) == 10);
+    policy.wake(180004);
+    assert(policy.brightness(config,180004,true,120003,false,80,10)==80);
+    assert(policy.brightness(config,240003,true,180002,false,80,10)==80);
+    assert(policy.brightness(config,240004,true,180003,false,80,10)==10);
     config.enabled=0;
-    assert(policy.brightness(config, 180004, true, 120003, false, 80, 30) == 30);
+    assert(policy.brightness(config, 240005, true, 180004, false, 80, 30) == 30);
     config.minutes=0; assert(!config.valid());
     config.minutes=241; assert(!config.valid());
     config.minutes=37; assert(config.valid());

@@ -1156,6 +1156,8 @@ void create_product_screen()
     dimmed_clock = make_label(dimmed_screen,"--:--",&lv_font_montserrat_48,kForeground);
     lv_obj_center(dimmed_clock);
     lv_obj_add_event_cb(dimmed_screen,[](lv_event_t *) {
+        idle_policy.wake(esp_timer_get_time()/1000);
+        lv_display_trigger_activity(nullptr);
         lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
         update_clock(nullptr);
     },LV_EVENT_CLICKED,nullptr);
