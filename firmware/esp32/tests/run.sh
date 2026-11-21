@@ -317,3 +317,7 @@ done
     "$esp_dir/p4_display/main/display_schedule.cpp" -o "$build_dir/p4_display_schedule"
 "$build_dir/p4_display_schedule"
 printf '%s\n' 'PASS: night schedule boundaries, overrides, persistence and failure rollback'
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/settings_layout_test.cpp" -o "$build_dir/settings_layout"
+"$build_dir/settings_layout"
