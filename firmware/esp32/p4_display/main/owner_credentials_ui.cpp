@@ -31,7 +31,7 @@ lv_obj_t *label(lv_obj_t *parent, const char *text, const lv_font_t *font) {
     return object;
 }
 lv_obj_t *button(lv_obj_t *parent, const char *text, int x, int y, int width,
-                 lv_event_cb_t callback) {
+                 lv_event_cb_t callback, const lv_font_t *font = &lv_font_montserrat_16) {
     auto *object = lv_button_create(parent);
     lv_obj_set_pos(object, x, y);
     lv_obj_set_size(object, width, 48);
@@ -42,7 +42,7 @@ lv_obj_t *button(lv_obj_t *parent, const char *text, int x, int y, int width,
     lv_obj_set_style_shadow_width(object, 0, 0);
     lv_obj_set_style_bg_color(object, accent, LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(object, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_center(label(object, text, &lv_font_montserrat_16));
+    lv_obj_center(label(object, text, font));
     lv_obj_add_event_cb(object, callback, LV_EVENT_CLICKED, nullptr);
     return object;
 }
@@ -123,7 +123,7 @@ void disable(lv_event_t *) {
 }
 void owner_credentials_ui_create(lv_obj_t *screen, lv_obj_t *settings) {
     const auto tile = settings_layout::tile(settings_layout::Account);
-    auto *entry = button(settings, "Recognition account", tile.x, tile.y, tile.w, open);
+    auto *entry = button(settings, "Recognition account", tile.x, tile.y, tile.w, open, &lv_font_montserrat_20);
     lv_obj_set_height(entry, tile.h);
     panel = lv_obj_create(screen);
     lv_obj_set_size(panel, 1024, 600);
