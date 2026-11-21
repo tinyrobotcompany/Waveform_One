@@ -1,3 +1,4 @@
+#include "idle_display_ui.h"
 #include "microphone_privacy.h"
 #include <algorithm>
 #include <atomic>
@@ -89,6 +90,9 @@ lv_obj_t *clock_label = nullptr, *idle_clock = nullptr;
 lv_obj_t *display_panel = nullptr, *night_enabled = nullptr, *night_start = nullptr, *night_end = nullptr;
 lv_obj_t *night_level = nullptr, *night_level_label = nullptr, *night_status = nullptr;
 display_schedule::Config night_config;
+idle_display::Config idle_config;
+idle_display::Policy idle_policy;
+lv_obj_t *dimmed_screen = nullptr, *dimmed_clock = nullptr;
 bool night_storage_ready = true;
 std::atomic_int effective_brightness{100};
 std::atomic<int64_t> manual_brightness_until{0};
@@ -637,9 +641,24 @@ void update_clock(lv_timer_t *)
     }
     const bool interaction = lv_display_get_inactive_time(nullptr) < 60000 ||
         esp_timer_get_time() < manual_brightness_until.load();
-    const int target = display_schedule::brightness(night_config,
+    const int night_target = display_schedule::brightness(night_config,
         valid_time ? local.tm_hour * 60 + local.tm_min : -1,
         idle, interaction, current_brightness.load());
+    const int target = idle_policy.brightness(idle_config, esp_timer_get_time()/1000, idle,
+        lv_display_get_inactive_time(nullptr), esp_timer_get_time()<manual_brightness_until.load()
+            || !lv_obj_has_flag(settings_panel, LV_OBJ_FLAG_HIDDEN),
+        current_brightness.load(), night_target);
+    char clock_text[16];
+    idle_display::format_clock(clock_text,sizeof(clock_text),valid_time?local.tm_hour:-1,local.tm_min,idle_config.twelve_hour);
+    lv_label_set_text(dimmed_clock,clock_text);
+    lv_label_set_text(idle_clock,clock_text);
+    lv_obj_set_style_text_font(idle_clock,display_font(idle_config.large?&lv_font_montserrat_48:&lv_font_montserrat_32),0);
+    lv_obj_set_style_text_color(idle_clock,idle_config.accent?kAccent:kForeground,0);
+    lv_obj_set_style_text_font(dimmed_clock,display_font(idle_config.large?&lv_font_montserrat_48:&lv_font_montserrat_32),0);
+    lv_obj_set_style_text_color(dimmed_clock,idle_config.accent?kAccent:kForeground,0);
+    lv_obj_center(dimmed_clock);
+    if (target<current_brightness.load()) lv_obj_remove_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
     if (target != effective_brightness.load() && bsp_display_brightness_set(target) == ESP_OK) {
         effective_brightness.store(target);
         network_set_display_brightness(target);
@@ -1227,6 +1246,24 @@ void create_product_screen()
     lv_obj_center(artwork_image);
     lv_obj_add_flag(artwork_image, LV_OBJ_FLAG_HIDDEN);
 
+    // Full-screen clock sits above the player and below all settings panels.
+    dimmed_screen = lv_obj_create(screen);
+    lv_obj_set_size(dimmed_screen,1024,600); lv_obj_center(dimmed_screen);
+    lv_obj_set_style_bg_color(dimmed_screen,kBackground,0);
+    lv_obj_set_style_bg_opa(dimmed_screen,LV_OPA_COVER,0);
+    lv_obj_set_style_border_width(dimmed_screen,0,0);
+    lv_obj_remove_flag(dimmed_screen,LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_CLICKABLE); // Explicit full-screen wake target.
+    dimmed_clock = make_label(dimmed_screen,"--:--",&lv_font_montserrat_48,kForeground);
+    lv_obj_center(dimmed_clock);
+    lv_obj_add_event_cb(dimmed_screen,[](lv_event_t *) {
+        idle_policy.wake(esp_timer_get_time()/1000);
+        lv_display_trigger_activity(nullptr);
+        lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
+        update_clock(nullptr);
+    },LV_EVENT_CLICKED,nullptr);
+    lv_obj_add_flag(dimmed_screen,LV_OBJ_FLAG_HIDDEN);
+
     settings_panel = lv_obj_create(screen);
     lv_obj_set_size(settings_panel, 1024, 600);
     lv_obj_set_style_bg_color(settings_panel, kBackground, 0);
@@ -1568,10 +1605,10 @@ void create_display_preferences(lv_obj_t *screen)
         lv_label_set_text_fmt(night_level_label, "Night brightness: %d%%", int(lv_slider_get_value(night_level)));
     }, LV_EVENT_VALUE_CHANGED, nullptr);
     auto *help = make_label(display_panel,
-        "The idle clock uses device local time (24-hour).\n"
+        "Clock appearance and idle delay are customizable.\n"
         "Touch or music restores your selected brightness.\n"
         "Automatic dimming waits 60 seconds after interaction.\n"
-        "Without valid time, automatic dimming stays off.", &lv_font_montserrat_16, kMuted);
+        "Without valid time, night dimming stays off.", &lv_font_montserrat_16, kMuted);
     lv_obj_align(help, LV_ALIGN_TOP_LEFT, 70, 405);
     auto *save = lv_button_create(display_panel);
     lv_obj_set_size(save, 220, 52); style_update_button(save);
@@ -1607,6 +1644,7 @@ void create_display_preferences(lv_obj_t *screen)
         lv_obj_move_foreground(display_panel);
     }, LV_EVENT_CLICKED, nullptr);
     lv_obj_add_flag(display_panel, LV_OBJ_FLAG_HIDDEN);
+    idle_display_ui_create(screen,display_panel,idle_config);
 }
 
 [[gnu::noinline]] void update_cover_palette(const RecognitionTrack *track, const RecognitionArtwork *image,
@@ -1691,6 +1729,7 @@ extern "C" void app_main()
     ESP_ERROR_CHECK(xTaskCreate(update_boot_guard, "ota_boot", 4096, nullptr, 5, nullptr) == pdPASS
         ? ESP_OK : ESP_ERR_NO_MEM);
     log_board_identity();
+    if (!idle_display::load(idle_config)) idle_config.enabled=0;
     night_storage_ready = display_schedule::load(night_config);
     if (!night_storage_ready) {
         night_config.enabled = 0;
