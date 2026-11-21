@@ -28,6 +28,7 @@
 #include "owner_credentials_ui.h"
 #include "recognition_feedback.h"
 #include "display_schedule.h"
+#include "settings_layout.h"
 #include "search_waveform.h"
 #include "album_palette.h"
 #include "usb_controller.h"
@@ -71,6 +72,15 @@ uint8_t *artwork_pixels = nullptr;
 const uint8_t *artwork_source = nullptr;
 RecognitionTrack displayed_track{};
 lv_obj_t *settings_panel = nullptr;
+lv_obj_t *wifi_settings = nullptr, *display_settings = nullptr, *phone_settings = nullptr;
+lv_obj_t *microphone_hub_label = nullptr;
+void style_update_button(lv_obj_t *button);
+void position_settings_tile(lv_obj_t *button, unsigned index) {
+    const auto rect = settings_layout::tile(index);
+    lv_obj_set_size(button, rect.w, rect.h);
+    lv_obj_align(button, LV_ALIGN_TOP_LEFT, rect.x, rect.y);
+}
+
 lv_obj_t *brightness_label = nullptr;
 lv_obj_t *brightness_slider = nullptr;
 lv_obj_t *welcome_label = nullptr;
@@ -121,6 +131,7 @@ bool album_colours = true;
 bool wifi_online = false;
 RecognitionStatus theme_status = RecognitionStatus::Waiting;
 album_palette::Palette cover_palette{}, current_palette{}, target_palette{}, fade_from{};
+lv_obj_t *appearance_preview = nullptr, *appearance_preview_title = nullptr, *appearance_feedback = nullptr;
 lv_obj_t *appearance_buttons[2]{};
 lv_obj_t *wifi_header_text = nullptr, *settings_button = nullptr, *settings_text = nullptr, *header_rule = nullptr;
 // The album colour field fills the screen behind everything. field_back
@@ -223,6 +234,12 @@ void create_field(lv_obj_t *screen)
     const auto next = album_colours ? cover_palette : album_palette::Palette{};
     for (unsigned i=0; i<2; ++i) if (appearance_buttons[i])
         lv_obj_set_style_border_color(appearance_buttons[i], album_colours == (i==0) ? kAccent : kLine, 0);
+    if (appearance_preview) {
+        lv_obj_set_style_bg_color(appearance_preview, lv_color_hex(next.background), 0);
+        lv_obj_set_style_border_color(appearance_preview, lv_color_hex(next.accent), 0);
+        lv_obj_set_style_text_color(appearance_preview_title, lv_color_hex(next.text), 0);
+        lv_label_set_text(appearance_preview_title, album_colours ? "Album colours selected" : "Classic black selected");
+    }
     // Status callbacks must not redraw the whole background or restart its fade.
     if (next == target_palette) return;
     lv_anim_delete(nullptr, fade_palette);
@@ -247,7 +264,12 @@ bool remote_set_appearance(bool value)
 void on_appearance(lv_event_t *event)
 {
     const bool value = reinterpret_cast<intptr_t>(lv_event_get_user_data(event)) == 0;
-    if (network_set_appearance(value)) { album_colours = value; apply_palette(); }
+    if (network_set_appearance(value)) {
+        album_colours = value; apply_palette();
+        if (appearance_feedback) lv_label_set_text(appearance_feedback, value
+            ? "Saved. Colours follow the current artwork on the main screen and phone.\nWithout artwork, the neutral theme is used."
+            : "Saved. The main screen and phone use the classic dark theme.");
+    } else if (appearance_feedback) lv_label_set_text(appearance_feedback, "Could not save. Your previous appearance remains selected.");
 }
 
 void pulse_artwork(void *object, int32_t opacity)
@@ -363,6 +385,8 @@ lv_obj_t *make_label(lv_obj_t *parent, const char *text, const lv_font_t *font,
 
 lv_obj_t *microphone_panel = nullptr, *microphone_button_label = nullptr, *microphone_message = nullptr;
 void refresh_microphone() {
+    if (microphone_hub_label) set_label_text(microphone_hub_label,
+        microphone_privacy::muted() ? "Microphone: muted" : "Microphone: on");
     set_label_text(microphone_button_label, microphone_privacy::storage_error.load() ? "Save muted setting" : microphone_privacy::muted() ? "Unmute microphone" : "Mute microphone");
     set_label_text(microphone_message, microphone_privacy::storage_error.load()
         ? "Microphone muted. Setting could not be saved.\nRetry before restarting; the previous saved setting may return."
@@ -372,12 +396,12 @@ void refresh_microphone() {
 }
 void create_microphone_controls(lv_obj_t *screen) {
     auto *open = lv_button_create(settings_panel);
-    lv_obj_set_size(open, 210, 36);
-    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 245, 215);
+    position_settings_tile(open, settings_layout::Microphone);
     lv_obj_set_style_bg_color(open, kPanel, 0);
     lv_obj_set_style_border_width(open, 2, 0);
     lv_obj_set_style_border_color(open, kLine, 0);
-    lv_obj_center(make_label(open, "Microphone", &lv_font_montserrat_16, kForeground));
+    microphone_hub_label = make_label(open, "Microphone", &lv_font_montserrat_20, kForeground);
+    lv_obj_center(microphone_hub_label);
     lv_obj_add_event_cb(open, [](lv_event_t *) { refresh_microphone(); lv_obj_remove_flag(microphone_panel, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(microphone_panel); }, LV_EVENT_CLICKED, nullptr);
     microphone_panel = lv_obj_create(screen);
     lv_obj_set_size(microphone_panel, 1024, 600);
@@ -871,11 +895,11 @@ void on_open_setup(lv_event_t *) { setup.open(); refresh_setup_guide(); }
 
 void create_setup_guide(lv_obj_t *screen)
 {
-    auto *open = lv_button_create(settings_panel);
-    lv_obj_set_size(open, 180, 52);
+    auto *open = lv_button_create(phone_settings);
+    lv_obj_set_size(open, 230, 52);
     style_update_button(open);
-    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 420, 26);
-    lv_obj_center(make_label(open, "Phone setup", &lv_font_montserrat_16, kForeground));
+    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 48, 470);
+    lv_obj_center(make_label(open, "Show pairing QR", &lv_font_montserrat_16, kForeground));
     lv_obj_add_event_cb(open, on_open_setup, LV_EVENT_CLICKED, nullptr);
 
     setup_panel = lv_obj_create(screen);
@@ -909,6 +933,8 @@ void create_setup_guide(lv_obj_t *screen)
     lv_obj_add_event_cb(wifi, [](lv_event_t *) {
         setup.choose_wifi(); refresh_setup_guide();
         lv_obj_remove_flag(settings_panel, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(wifi_settings, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(wifi_settings);
         network_request_scan();
     }, LV_EVENT_CLICKED, nullptr);
     auto *done = lv_button_create(setup_panel);
@@ -932,7 +958,7 @@ void create_updates_screen(lv_obj_t *screen)
     lv_obj_set_style_shadow_width(open, 0, LV_STATE_DEFAULT);
     lv_obj_set_style_bg_color(open, kAccent, LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(open, LV_OPA_COVER, LV_STATE_PRESSED);
-    lv_obj_align(open, LV_ALIGN_TOP_RIGHT, -180, 26);
+    position_settings_tile(open, settings_layout::Updates);
     lv_obj_center(make_label(open, "Software updates", &lv_font_montserrat_16, kForeground));
     lv_obj_add_event_cb(open, [](lv_event_t *) { lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
     updates_panel = lv_obj_create(screen);
@@ -980,6 +1006,35 @@ void create_updates_screen(lv_obj_t *screen)
     lv_obj_align(help, LV_ALIGN_TOP_LEFT, 32, 490);
     lv_obj_add_flag(updates_panel, LV_OBJ_FLAG_HIDDEN);
     lv_timer_create(refresh_updates, 1000, nullptr);
+}
+
+lv_obj_t *create_settings_page(const char *name, unsigned slot)
+{
+    auto *page = lv_obj_create(settings_panel);
+    lv_obj_set_size(page, 1024, 600);
+    lv_obj_center(page);
+    lv_obj_set_style_pad_all(page, 0, 0);
+    lv_obj_set_style_bg_color(page, kBackground, 0);
+    lv_obj_set_style_bg_opa(page, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(page, 0, 0);
+    lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(make_label(page, name, &lv_font_montserrat_32, kForeground), LV_ALIGN_TOP_LEFT, 48, 35);
+    auto *back = lv_button_create(page);
+    style_update_button(back); lv_obj_set_size(back, 120, 52);
+    lv_obj_align(back, LV_ALIGN_TOP_RIGHT, -48, 26);
+    lv_obj_center(make_label(back, "Back", &lv_font_montserrat_16, kForeground));
+    lv_obj_add_event_cb(back, [](lv_event_t *event) {
+        lv_obj_add_flag(static_cast<lv_obj_t *>(lv_event_get_user_data(event)), LV_OBJ_FLAG_HIDDEN);
+    }, LV_EVENT_CLICKED, page);
+    auto *open = lv_button_create(settings_panel);
+    style_update_button(open); position_settings_tile(open, slot);
+    lv_obj_center(make_label(open, name, &lv_font_montserrat_20, kForeground));
+    lv_obj_add_event_cb(open, [](lv_event_t *event) {
+        auto *target = static_cast<lv_obj_t *>(lv_event_get_user_data(event));
+        lv_obj_remove_flag(target, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(target);
+    }, LV_EVENT_CLICKED, page);
+    lv_obj_add_flag(page, LV_OBJ_FLAG_HIDDEN);
+    return page;
 }
 
 void create_product_screen()
@@ -1152,26 +1207,24 @@ void create_product_screen()
 
     owner_credentials_ui_create(screen, settings_panel);
 
-    lv_obj_t *profile_heading = make_label(settings_panel, "PROFILE", &lv_font_montserrat_16,
-                                           kAccent);
-    lv_obj_align(profile_heading, LV_ALIGN_TOP_LEFT, 48, 125);
-    lv_obj_t *profile = make_label(settings_panel, "Name: Simon",
-                                   &lv_font_montserrat_20, kForeground);
-    lv_obj_set_style_text_line_space(profile, 12, 0);
-    lv_obj_align(profile, LV_ALIGN_TOP_LEFT, 48, 160);
+    auto *led_settings = create_settings_page("LED style", settings_layout::Leds);
+    auto *appearance_settings = create_settings_page("Appearance", settings_layout::Appearance);
+    display_settings = create_settings_page("Display", settings_layout::Display);
+    wifi_settings = create_settings_page("Wi-Fi", settings_layout::Wifi);
+    phone_settings = create_settings_page("Phone setup", settings_layout::Phone);
 
-    lv_obj_t *style_heading = make_label(settings_panel, "LED STYLE", &lv_font_montserrat_16,
+    lv_obj_t *style_heading = make_label(led_settings, "LED STYLE", &lv_font_montserrat_16,
                                          kAccent);
-    lv_obj_align(style_heading, LV_ALIGN_TOP_LEFT, 48, 255);
+    lv_obj_align(style_heading, LV_ALIGN_TOP_LEFT, 48, 130);
     constexpr const char *style_names[] = {"Classic", "Mirrored", "Waterfall"};
     for (int index = 0; index < 3; ++index) {
-        style_buttons[index] = lv_button_create(settings_panel);
-        lv_obj_set_size(style_buttons[index], 130, 60);
+        style_buttons[index] = lv_button_create(led_settings);
+        lv_obj_set_size(style_buttons[index], 260, 75);
         lv_obj_set_style_bg_color(style_buttons[index], kPanel, 0);
         lv_obj_set_style_border_color(style_buttons[index], kLine, 0);
         lv_obj_set_style_border_width(style_buttons[index], 2, 0);
         lv_obj_set_style_radius(style_buttons[index], 9, 0);
-        lv_obj_align(style_buttons[index], LV_ALIGN_TOP_LEFT, 48 + index * 145, 290);
+        lv_obj_align(style_buttons[index], LV_ALIGN_TOP_LEFT, 48 + index * 300, 190);
         lv_obj_add_event_cb(style_buttons[index], on_style, LV_EVENT_CLICKED,
                             reinterpret_cast<void *>(static_cast<intptr_t>(index)));
         lv_obj_t *label = make_label(style_buttons[index], style_names[index],
@@ -1180,35 +1233,50 @@ void create_product_screen()
     }
     create_microphone_controls(screen);
 
-    style_status = make_label(settings_panel, "Waiting for LED controller…",
+    style_status = make_label(led_settings, "Waiting for LED controller…",
                               &lv_font_montserrat_16, kMuted);
-    lv_obj_align(style_status, LV_ALIGN_TOP_LEFT, 48, 355);
+    lv_obj_align(style_status, LV_ALIGN_TOP_LEFT, 48, 300);
 
-    lv_obj_t *appearance_heading = make_label(settings_panel, "APPEARANCE", &lv_font_montserrat_16, kAccent);
-    lv_obj_align(appearance_heading, LV_ALIGN_TOP_LEFT, 245, 125);
+    lv_obj_t *appearance_heading = make_label(appearance_settings, "APPEARANCE", &lv_font_montserrat_16, kAccent);
+    lv_obj_align(appearance_heading, LV_ALIGN_TOP_LEFT, 48, 130);
     constexpr const char *appearance_names[] = {"Album colours", "Classic black"};
     for (unsigned i=0; i<2; ++i) {
-        appearance_buttons[i] = lv_button_create(settings_panel);
-        lv_obj_set_size(appearance_buttons[i], 135, 52);
+        appearance_buttons[i] = lv_button_create(appearance_settings);
+        lv_obj_set_size(appearance_buttons[i], 300, 70);
         lv_obj_set_style_bg_color(appearance_buttons[i], kPanel, 0);
         lv_obj_set_style_border_width(appearance_buttons[i], 2, 0);
         lv_obj_set_style_border_color(appearance_buttons[i], i==0 ? kAccent : kLine, 0);
-        lv_obj_align(appearance_buttons[i], LV_ALIGN_TOP_LEFT, 245+int(i)*140, 158);
+        lv_obj_align(appearance_buttons[i], LV_ALIGN_TOP_LEFT, 48+int(i)*330, 190);
         lv_obj_add_event_cb(appearance_buttons[i], on_appearance, LV_EVENT_CLICKED,
             reinterpret_cast<void *>(static_cast<intptr_t>(i)));
         lv_obj_center(make_label(appearance_buttons[i], appearance_names[i], &lv_font_montserrat_16, kForeground));
     }
 
-    lv_obj_t *display_heading = make_label(settings_panel, "DISPLAY", &lv_font_montserrat_16,
+    appearance_preview = lv_obj_create(appearance_settings);
+    lv_obj_set_size(appearance_preview, 850, 120);
+    lv_obj_align(appearance_preview, LV_ALIGN_TOP_LEFT, 48, 300);
+    lv_obj_set_style_bg_opa(appearance_preview, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(appearance_preview, 2, 0);
+    lv_obj_remove_flag(appearance_preview, LV_OBJ_FLAG_SCROLLABLE);
+    appearance_preview_title = make_label(appearance_preview, "", &lv_font_montserrat_32, kForeground);
+    lv_obj_center(appearance_preview_title);
+    appearance_feedback = make_label(appearance_settings,
+        "Preview of your main screen theme. Album colours follow artwork.\nSettings keep a consistent dark background for readability.",
+        &lv_font_montserrat_20, kMuted);
+    lv_obj_set_width(appearance_feedback, 850);
+    lv_obj_align(appearance_feedback, LV_ALIGN_TOP_LEFT, 48, 450);
+    apply_palette();
+
+    lv_obj_t *display_heading = make_label(display_settings, "DISPLAY", &lv_font_montserrat_16,
                                            kAccent);
-    lv_obj_align(display_heading, LV_ALIGN_TOP_LEFT, 535, 125);
-    lv_obj_t *brightness_text = make_label(settings_panel, "Brightness", &lv_font_montserrat_20,
+    lv_obj_align(display_heading, LV_ALIGN_TOP_LEFT, 48, 125);
+    lv_obj_t *brightness_text = make_label(display_settings, "Brightness", &lv_font_montserrat_20,
                                            kForeground);
-    lv_obj_align(brightness_text, LV_ALIGN_TOP_LEFT, 535, 162);
-    brightness_label = make_label(settings_panel, "100%", &lv_font_montserrat_20, kAccent);
-    lv_obj_align(brightness_label, LV_ALIGN_TOP_RIGHT, -60, 162);
-    brightness_slider = lv_slider_create(settings_panel);
-    lv_obj_set_size(brightness_slider, 425, 54);
+    lv_obj_align(brightness_text, LV_ALIGN_TOP_LEFT, 48, 162);
+    brightness_label = make_label(display_settings, "100%", &lv_font_montserrat_20, kAccent);
+    lv_obj_align(brightness_label, LV_ALIGN_TOP_RIGHT, -170, 162);
+    brightness_slider = lv_slider_create(display_settings);
+    lv_obj_set_size(brightness_slider, 800, 54);
     lv_slider_set_range(brightness_slider, 10, 100);
     lv_slider_set_value(brightness_slider, 100, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(brightness_slider, kLine, LV_PART_MAIN);
@@ -1217,90 +1285,98 @@ void create_product_screen()
     lv_obj_set_style_pad_all(brightness_slider, 12, LV_PART_MAIN);
     lv_obj_set_style_width(brightness_slider, 34, LV_PART_KNOB);
     lv_obj_set_style_height(brightness_slider, 34, LV_PART_KNOB);
-    lv_obj_align(brightness_slider, LV_ALIGN_TOP_LEFT, 535, 205);
+    lv_obj_align(brightness_slider, LV_ALIGN_TOP_LEFT, 48, 205);
     lv_obj_add_event_cb(brightness_slider, on_brightness, LV_EVENT_VALUE_CHANGED, nullptr);
 
-    lv_obj_t *wifi_heading = make_label(settings_panel, "HOME WI-FI",
+    lv_obj_t *wifi_heading = make_label(wifi_settings, "HOME WI-FI",
                                          &lv_font_montserrat_16, kAccent);
-    lv_obj_align(wifi_heading, LV_ALIGN_TOP_LEFT, 535, 285);
+    lv_obj_align(wifi_heading, LV_ALIGN_TOP_LEFT, 48, 130);
 
-    wifi_dropdown = lv_dropdown_create(settings_panel);
+    wifi_dropdown = lv_dropdown_create(wifi_settings);
     lv_dropdown_set_options(wifi_dropdown, "Scanning…");
     lv_obj_set_size(wifi_dropdown, 315, 54);
     lv_obj_set_style_bg_color(wifi_dropdown, kPanel, 0);
     lv_obj_set_style_text_color(wifi_dropdown, kForeground, 0);
     lv_obj_set_style_border_color(wifi_dropdown, kLine, 0);
-    lv_obj_align(wifi_dropdown, LV_ALIGN_TOP_LEFT, 535, 315);
+    lv_obj_align(wifi_dropdown, LV_ALIGN_TOP_LEFT, 48, 180);
 
-    lv_obj_t *refresh = lv_button_create(settings_panel);
+    lv_obj_t *refresh = lv_button_create(wifi_settings);
     lv_obj_set_size(refresh, 95, 54);
     lv_obj_set_style_bg_color(refresh, kPanel, 0);
     lv_obj_set_style_border_color(refresh, kLine, 0);
     lv_obj_set_style_border_width(refresh, 1, 0);
-    lv_obj_align(refresh, LV_ALIGN_TOP_LEFT, 865, 315);
+    lv_obj_align(refresh, LV_ALIGN_TOP_LEFT, 400, 180);
     lv_obj_add_event_cb(refresh, on_wifi_refresh, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *refresh_text = make_label(refresh, "Scan", &lv_font_montserrat_16, kForeground);
     lv_obj_center(refresh_text);
 
-    lv_obj_t *password_button = lv_button_create(settings_panel);
+    lv_obj_t *password_button = lv_button_create(wifi_settings);
     lv_obj_set_size(password_button, 205, 54);
     lv_obj_set_style_bg_color(password_button, kPanel, 0);
     lv_obj_set_style_border_color(password_button, kAccent, 0);
     lv_obj_set_style_border_width(password_button, 1, 0);
-    lv_obj_align(password_button, LV_ALIGN_TOP_LEFT, 535, 382);
+    lv_obj_align(password_button, LV_ALIGN_TOP_LEFT, 48, 260);
     lv_obj_add_event_cb(password_button, on_wifi_password, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *password_text = make_label(password_button, "Enter password",
                                          &lv_font_montserrat_16, kForeground);
     lv_obj_center(password_text);
 
-    wifi_status = make_label(settings_panel, "Scanning for networks…",
+    wifi_status = make_label(wifi_settings, "Scanning for networks…",
                              &lv_font_montserrat_16, kMuted);
     lv_obj_set_width(wifi_status, 425);
     lv_label_set_long_mode(wifi_status, LV_LABEL_LONG_WRAP);
-    lv_obj_align(wifi_status, LV_ALIGN_TOP_LEFT, 535, 455);
+    lv_obj_align(wifi_status, LV_ALIGN_TOP_LEFT, 48, 350);
 
-    network_heading = make_label(settings_panel, "PHONE REMOTE",
+    network_heading = make_label(phone_settings, "PHONE REMOTE",
                                  &lv_font_montserrat_16, kAccent);
-    lv_obj_align(network_heading, LV_ALIGN_TOP_LEFT, 48, 390);
-    network_qr = lv_qrcode_create(settings_panel);
+    lv_obj_align(network_heading, LV_ALIGN_TOP_LEFT, 48, 130);
+    network_qr = lv_qrcode_create(phone_settings);
     lv_qrcode_set_size(network_qr, 145);
     lv_qrcode_set_dark_color(network_qr, kBackground);
     lv_qrcode_set_light_color(network_qr, kForeground);
     lv_qrcode_set_quiet_zone(network_qr, true);
-    lv_obj_align(network_qr, LV_ALIGN_TOP_LEFT, 48, 420);
+    lv_obj_align(network_qr, LV_ALIGN_TOP_LEFT, 48, 170);
     lv_obj_add_flag(network_qr, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(network_qr, on_open_setup, LV_EVENT_CLICKED, nullptr);
     lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
-    network_qr_placeholder = lv_obj_create(settings_panel);
+    network_qr_placeholder = lv_obj_create(phone_settings);
     lv_obj_set_size(network_qr_placeholder, 145, 145);
     lv_obj_set_style_bg_color(network_qr_placeholder, kPanel, 0);
     lv_obj_set_style_border_color(network_qr_placeholder, kLine, 0);
     lv_obj_set_style_border_width(network_qr_placeholder, 1, 0);
     lv_obj_set_style_radius(network_qr_placeholder, 8, 0);
     lv_obj_clear_flag(network_qr_placeholder, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_align(network_qr_placeholder, LV_ALIGN_TOP_LEFT, 48, 420);
+    lv_obj_align(network_qr_placeholder, LV_ALIGN_TOP_LEFT, 48, 170);
     lv_obj_add_flag(network_qr_placeholder, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(network_qr_placeholder, on_open_setup, LV_EVENT_CLICKED, nullptr);
     lv_obj_t *qr_waiting = make_label(network_qr_placeholder, "APP QR\nAFTER WI-FI",
                                       &lv_font_montserrat_16, kMuted);
     lv_obj_set_style_text_align(qr_waiting, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(qr_waiting);
-    network_instructions = make_label(settings_panel, "Starting Wi-Fi…",
+    network_instructions = make_label(phone_settings, "Starting Wi-Fi…",
                                       &lv_font_montserrat_20, kForeground);
     lv_obj_set_style_text_line_space(network_instructions, 8, 0);
-    lv_obj_align(network_instructions, LV_ALIGN_TOP_LEFT, 215, 430);
+    lv_obj_align(network_instructions, LV_ALIGN_TOP_LEFT, 215, 180);
     lv_obj_add_flag(network_instructions, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(network_instructions, on_open_setup, LV_EVENT_CLICKED, nullptr);
 
-    forget_phones_button = lv_button_create(settings_panel);
+    forget_phones_button = lv_button_create(phone_settings);
     lv_obj_set_size(forget_phones_button, 285, 44);
     style_update_button(forget_phones_button);
-    lv_obj_align(forget_phones_button, LV_ALIGN_TOP_LEFT, 215, 525);
+    lv_obj_align(forget_phones_button, LV_ALIGN_TOP_LEFT, 640, 470);
     forget_phones_text = make_label(forget_phones_button, "Forget paired phones", &lv_font_montserrat_16, kForeground);
     lv_obj_center(forget_phones_text);
     lv_obj_add_event_cb(forget_phones_button, on_forget_phones, LV_EVENT_CLICKED, nullptr);
 
-    wifi_entry_panel = lv_obj_create(settings_panel);
+    auto *phone_help = make_label(phone_settings,
+        "On your phone: now playing, artwork and recognition status;\n"
+        "appearance, brightness, LED style and software updates.\n"
+        "Listening history: enable it in phone Settings to view the last 50\n"
+        "tracks, export JSON or clear it. History is in memory and is\n"
+        "cleared on restart or when disabled. No account or app needed.",
+        &lv_font_montserrat_20, kMuted);
+    lv_obj_align(phone_help, LV_ALIGN_TOP_LEFT, 48, 325);
+    wifi_entry_panel = lv_obj_create(wifi_settings);
     lv_obj_set_size(wifi_entry_panel, 1024, 600);
     lv_obj_set_style_bg_color(wifi_entry_panel, kBackground, 0);
     lv_obj_set_style_bg_opa(wifi_entry_panel, LV_OPA_COVER, 0);
@@ -1386,10 +1462,10 @@ void create_product_screen()
 
 void create_display_preferences(lv_obj_t *screen)
 {
-    auto *open = lv_button_create(settings_panel);
-    lv_obj_set_size(open, 235, 38);
+    auto *open = lv_button_create(display_settings);
+    lv_obj_set_size(open, 340, 60);
     style_update_button(open);
-    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 725, 115);
+    lv_obj_align(open, LV_ALIGN_TOP_LEFT, 48, 350);
     lv_obj_center(make_label(open, "Clock & night dimming", &lv_font_montserrat_16, kForeground));
     display_panel = lv_obj_create(screen);
     lv_obj_set_size(display_panel, 1024, 600);

@@ -1,4 +1,5 @@
 #include "owner_credentials_ui.h"
+#include "settings_layout.h"
 #include "recognition_credentials.h"
 #include "display_fonts.h"
 #include <cstring>
@@ -121,7 +122,9 @@ void disable(lv_event_t *) {
 }
 }
 void owner_credentials_ui_create(lv_obj_t *screen, lv_obj_t *settings) {
-    button(settings, "Recognition account", 48, 198, 280, open);
+    const auto tile = settings_layout::tile(settings_layout::Account);
+    auto *entry = button(settings, "Recognition account", tile.x, tile.y, tile.w, open);
+    lv_obj_set_height(entry, tile.h);
     panel = lv_obj_create(screen);
     lv_obj_set_size(panel, 1024, 600);
     lv_obj_center(panel);
