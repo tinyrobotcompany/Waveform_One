@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 for git_variable in $(git rev-parse --local-env-vars); do
     unset "$git_variable"
 done
+python3 -m unittest discover -s mechanical/mini -v
 node --test .github/scripts/*.test.mjs pi/web/*.test.mjs
 python3 -m unittest discover -s scripts/tests -v
 PYTHONPATH=pi/recognition python3 -m unittest discover -s pi/recognition/tests -v
