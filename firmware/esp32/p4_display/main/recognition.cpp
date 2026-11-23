@@ -213,6 +213,8 @@ void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognitio
 }
 #endif
 
+static recognition_http::Connection recognition_connection;
+
 // Identifies a stretch of audio with ACRCloud. pcm holds 16 kHz samples.
 Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64_t &service_delay, microphone_privacy::Permit permit)
 {
@@ -232,7 +234,7 @@ Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64
     const std::string url = std::string("https://") + kAcrcloud.host + "/v1/identify";
     Response response;
     // One connection kept open: no TCP/TLS handshake per lookup.
-    static recognition_http::Connection connection;
+    auto &connection = recognition_connection;
     if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::Permit::check, &permit}, 64 * 1024,
                response, &connection)) {
         service_delay = response.retry_after_us;
@@ -617,6 +619,13 @@ void recognition_task(void *)
         track = {}; image = {};
     };
     while (true) {
+        if (waveform_network_paused()) {
+            // Only this task owns the persistent connection. Drop it here,
+            // never from the OTA task while an exchange may be using it.
+            recognition_connection.drop();
+            vTaskDelay(pdMS_TO_TICKS(20));
+            continue;
+        }
         microphone_privacy::Permit audio_permit;
         if (!audio_permit.valid()) {
             microphone_privacy::wipe(clip.get(), recognition_policy::Planner::kMaxWindow * fingerprint::kHopSamples * sizeof(int16_t));

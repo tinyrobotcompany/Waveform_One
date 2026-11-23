@@ -1,5 +1,6 @@
 // Exercise the production fetch routine through fake ESP-IDF network I/O.
 #include "recognition_http.h"
+#include "network_activity.h"
 #include <cassert>
 
 int main()
@@ -60,6 +61,22 @@ int main()
     }
     assert(test_http.closed == 3 && test_http.cleaned == 3);
     assert(test_allocations.empty());
+    // Pausing drains persistent clients and rejects new allocations until resume.
+    test_http = {}; test_http.body = "ok";
+    {
+        Response response; Connection link;
+        assert(fetch("https://service.test/", Body{}, 8, response, &link));
+        waveform_network_pause();
+        assert(!waveform_network_drained());
+        assert(!fetch("https://service.test/", Body{}, 8, response, &link));
+        assert(link.client == nullptr && waveform_network_drained());
+        const auto inits = test_http_inits;
+        assert(!fetch("https://service.test/", Body{}, 8, response));
+        assert(test_http_inits == inits);
+        waveform_network_resume();
+        test_http.offset = 0;
+        assert(fetch("https://service.test/", Body{}, 8, response));
+    }
     // Revoking upload permission stops at a bounded chunk and never retries.
     test_http = {}; test_http_inits = 0;
     std::string audio(12000, 'a'); int checks = 0;

@@ -23,6 +23,9 @@ static unsigned release_checks;
 static unsigned accepted;static int accept_error;static bool cleanup_fails;
 static unsigned writes,begins,activated,boot_calls,aborted,restarted,cleanup_count,loops,stop_loop,md_frees;
 static int md_setup_error;
+static unsigned verifying_messages;
+static int64_t read_step_us;
+static unsigned download_yields;
 static saved_t persisted,staged;
 static jmp_buf done;
 struct test_queue {command_t item[8];unsigned n;} q;
@@ -48,11 +51,11 @@ int xQueueSend(QueueHandle_t handle,const void *v,unsigned ticks){(void)handle;(
 int xQueueReceive(QueueHandle_t handle,void *v,unsigned ticks){(void)handle;(void)ticks;if(!q.n)return 0;*(command_t *)v=q.item[0];memmove(q.item,q.item+1,--q.n*sizeof(command_t));return pdTRUE;}
 void vQueueDelete(QueueHandle_t h){(void)h;}
 int xTaskCreate(void (*fn)(void *),const char *name,unsigned stack,void *arg,unsigned priority,void *handle){(void)fn;(void)arg;(void)handle;assert(!strcmp(name,"ota")&&stack==16384&&priority==1);return task_fail?0:pdPASS;}
-void vTaskDelay(unsigned ticks){mono+=(int64_t)ticks*1000;test_clock+=ticks/1000;if(stop_loop&&ticks==1000&&++loops>=stop_loop)longjmp(done,1);}
+void vTaskDelay(unsigned ticks){if(ticks==1)download_yields++;mono+=(int64_t)ticks*1000;test_clock+=ticks/1000;if(stop_loop&&ticks==1000&&++loops>=stop_loop)longjmp(done,1);}
 const esp_partition_t *esp_ota_get_running_partition(void){return &part;}
 const esp_partition_t *esp_ota_get_next_update_partition(const void *p){(void)p;return no_partition?NULL:&part;}
 int esp_ota_get_state_partition(const esp_partition_t *p,esp_ota_img_states_t *s){(void)p;*s=trial_aborted?ESP_OTA_IMG_ABORTED:active_pending?ESP_OTA_IMG_PENDING_VERIFY:ESP_OTA_IMG_VALID;return 0;}
-int esp_ota_begin(const esp_partition_t *p,unsigned size,esp_ota_handle_t *h){(void)p;begins++;assert(size==1024);*h=1;return begin_error;}
+int esp_ota_begin(const esp_partition_t *p,unsigned size,esp_ota_handle_t *h){(void)p;begins++;assert(size==OTA_WITH_SEQUENTIAL_WRITES);*h=1;return begin_error;}
 int esp_ota_write(esp_ota_handle_t h,const void *data,size_t n){assert(h==1&&data&&n>0);writes++;return ota_error;}
 int esp_ota_end(esp_ota_handle_t h){assert(h==1);return end_error?end_error:ota_error;}
 int esp_ota_abort(esp_ota_handle_t h){assert(h==1);aborted++;return 0;}
@@ -70,9 +73,9 @@ int esp_http_client_set_header(void *h,const char *key,const char *value){(void)
 int64_t esp_http_client_fetch_headers(void *h){(void)h;return declared_size==-2?(int64_t)response_size:declared_size;}
 int esp_http_client_get_status_code(void *h){(void)h;if(has_redirect){has_redirect=false;return 302;}return http_code;}
 void esp_http_client_cleanup(void *h){(void)h;cleanup_count++;}
-int esp_http_client_read(void *h,char *out,int n){(void)h;assert(allowed_url(client_url,!strcmp(client_url,LATEST),0)||allowed_url(client_url,false,1));if(read_failed)return -1;size_t take=response_size-offset;if(take>(size_t)n)take=(size_t)n;memcpy(out,response+offset,take);offset+=take;return (int)take;}
+int esp_http_client_read(void *h,char *out,int n){mono+=read_step_us;(void)h;assert(allowed_url(client_url,!strcmp(client_url,LATEST),0)||allowed_url(client_url,false,1));if(read_failed)return -1;size_t take=response_size-offset;if(take>(size_t)n)take=(size_t)n;memcpy(out,response+offset,take);offset+=take;return (int)take;}
 bool esp_http_client_is_complete_data_received(void *h){(void)h;return !truncated&&offset==response_size;}
-void mbedtls_md_init(mbedtls_md_context_t *c){(void)c;}void mbedtls_md_free(mbedtls_md_context_t *c){(void)c;md_frees++;}
+void mbedtls_md_init(mbedtls_md_context_t *c){(void)c;}void mbedtls_md_free(mbedtls_md_context_t *c){(void)c;md_frees++;if(status.state==UPDATE_VERIFYING)verifying_messages++;}
 void *mbedtls_md_info_from_type(int t){assert(t==MBEDTLS_MD_SHA256);return (void *)1;}
 int mbedtls_md_setup(mbedtls_md_context_t *c,const void *t,int n){(void)c;(void)t;(void)n;return md_setup_error?md_setup_error:crypto_error;}
 int mbedtls_md_starts(mbedtls_md_context_t *c){(void)c;return 0;}
@@ -131,6 +134,12 @@ int main(void){
  redirect_to="https://release-assets.githubusercontent.com/test";
  char ver[32];strcpy(ver,candidate.version);candidate.version[0]=0;assert(!install());strcpy(candidate.version,ver);
  active_pending=true;assert(!install());active_pending=false;no_partition=true;assert(!install());no_partition=false;
+ /* A busy background client prevents erasing or opening an OTA connection;
+    a timeout always releases the pause so recognition can recover. */
+ assert(waveform_network_acquire());
+ {unsigned b=begins;assert(!install());assert(begins==b&&!waveform_network_paused());
+  assert(strstr(status.message,"Background connection"));}
+ waveform_network_release();
  /* Reject bad lengths before flash writes. */
  unsigned begin_count=begins,write_count=writes;
  const int64_t bad_lengths[]={1023,1025,0,-1};
@@ -154,9 +163,13 @@ int main(void){
  /* esp_ota_end() validation failure: boot selection is never touched; the running image stays selected. */
  {unsigned calls=boot_calls,abort_count=aborted;end_error=0x1503 /* ESP_ERR_OTA_VALIDATE_FAILED */;
   assert(!install()&&boot_calls==calls&&activated==0&&aborted==abort_count&&!persisted.pending[0]);end_error=0;}
+{unsigned v=verifying_messages;read_failed=true;assert(!install());read_failed=false;assert(verifying_messages==v);}
 truncated=true;assert(!install());truncated=false;
  candidate.sha256[0]='1';assert(!install());candidate.sha256[0]='0';commit_error=-1;assert(!install());commit_error=0;boot_error=-1;assert(!install()&&!persisted.pending[0]);boot_error=0;
- assert(activated==0);assert(install()&&activated==1&&restarted==1);
+ {unsigned v=verifying_messages;read_step_us=301000000;
+  assert(!install()&&!waveform_network_paused());
+  assert(strstr(status.message,"Download timed out")&&verifying_messages==v);read_step_us=0;}
+ assert(activated==0);{unsigned yields=download_yields;assert(install()&&activated==1&&restarted==1);assert(download_yields>yields&&!waveform_network_paused());}
  /* Manual installation starts in this worker turn, outside the automatic window. */
  assert(waveform_update_request("install"));run(1);assert(restarted==2&&status.countdown_seconds==0);
  /* Automatic installs retain the cancellation countdown; Install now skips the remainder. */
