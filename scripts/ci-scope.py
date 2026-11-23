@@ -10,7 +10,7 @@ APPS = ['led_test', 'mic_test', 'visualizer', 'kovi_scroll', 'quinie_scroll', 'p
 
 def select(paths):
     apps = set()
-    pi = tests = False
+    tests = False
     for path in paths:
         if path == 'docs/release-evidence.md':
             tests = True
@@ -21,7 +21,7 @@ def select(paths):
             continue
         if path in {'scripts/ci-scope.py', '.github/workflows/validate.yml',
                     '.github/workflows/pr-checks.yml', '.github/workflows/release.yml'}:
-            return {'firmware': APPS.copy(), 'pi': True, 'tests': True}
+            return {'firmware': APPS.copy(), 'tests': True}
         if path.startswith('firmware/esp32/'):
             tests = True
             app = path.split('/')[2]
@@ -33,14 +33,14 @@ def select(paths):
             elif app != 'tests':
                 apps.update(APPS)
         if path.startswith('pi/'):
-            pi = tests = True
+            tests = True
         if path.startswith(('scripts/', '.github/scripts/', '.githooks/')):
             tests = True
         if path == 'scripts/package-p4-update.py':
             apps.add('p4_display')
         if path == 'scripts/package-firmware.py':
             apps.add('visualizer')
-    return {'firmware': [app for app in APPS if app in apps], 'pi': pi, 'tests': tests}
+    return {'firmware': [app for app in APPS if app in apps], 'tests': tests}
 
 
 def main():
@@ -55,7 +55,7 @@ def main():
     elif args.base or args.head:
         parser.error('--base and --head must be supplied together')
     else:
-        result = {'firmware': APPS.copy(), 'pi': True, 'tests': True}
+        result = {'firmware': APPS.copy(), 'tests': True}
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
         for key, value in result.items():
             output.write(f'{key}={json.dumps(value)}\n')

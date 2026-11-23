@@ -45,27 +45,14 @@ jobs:
         run: |
           directory=$(mktemp -d "$RUNNER_TEMP/waveform-release.XXXXXX")
           echo "directory=$directory" >> "$GITHUB_OUTPUT"
-      # Both artifacts come from this run's successful validate job, not another run.
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: esp32-visualizer
-          path: ${{ steps.staging.outputs.directory }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: pi-controller
-          path: ${{ steps.staging.outputs.directory }}
+      # P4 artifacts come from this run’s successful validation.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: esp32-p4-ota
           path: ${{ steps.staging.outputs.directory }}
-      - name: Verify complete validated artifacts before signing
-        env:
-          RELEASE_DIST: ${{ steps.staging.outputs.directory }}
-        run: python3 scripts/package-update.py --verify "$RELEASE_DIST"
       - name: Compute version and publish assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPDATE_SEQUENCE_OFFSET: ${{ vars.UPDATE_SEQUENCE_OFFSET }}
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           RELEASE_DIST: ${{ steps.staging.outputs.directory }}
         run: |
@@ -79,7 +66,6 @@ jobs:
             echo 'Superseded main commit; the latest run will release accumulated changesets.'
             exit 0
           fi
-          python3 scripts/package-update.py "$RELEASE_DIST" /tmp/release-plan.json
           python3 scripts/package-p4-update.py package --dist "$RELEASE_DIST" --plan /tmp/release-plan.json
           # Validate the complete flat publication set before touching any draft.
           python3 scripts/verify-release-assets.py --dist "$RELEASE_DIST"

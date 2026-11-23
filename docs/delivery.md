@@ -5,16 +5,14 @@
 | Event | Behaviour |
 | --- | --- |
 | Local commit | All host unit tests run through `.githooks/pre-commit` after setup |
-| PR | Host tests, changeset validation, five ESP-IDF builds and an ARM64 Pi controller build |
+| PR | Host tests, changeset validation, six ESP-IDF builds |
 | Non-draft PR | Codex review of the diff using trusted base-branch code |
-| Push to main | The same tests/builds; publish pending notes, version tag, USB firmware bundle and Pi controller archive |
+| Push to main | The same tests/builds; publish pending notes, version tag, signed P4 OTA application and manifest |
 | Commissioned device | Monthly customer checks with Install/Later; automatic development deployment; recovery to previous application |
 
-The release ZIP contains the visualizer application, bootloader, partition table,
-flash arguments, installation instructions and a manifest identifying the commit
-and file hashes. `SHA256SUMS` checks the ZIP for corruption; it is **not a signature**. The separate
-`update.json` / `update.sig` authenticates the complete release assets.
-Demo programs are build-checked but are not distributed as production updates.
+The release contains the P4 application, signed manifest, checksums, build provenance,
+dependency lock and release notes. Demo programs are build-checked but are not published.
+The `production-ota` environment approval and signing key are still required.
 An interrupted release can resume its draft on a rerun; published assets are not
 overwritten. Docs-only pushes without new changesets publish nothing.
 
@@ -37,7 +35,7 @@ overwritten. Docs-only pushes without new changesets publish nothing.
    `15368`, with a role-only fallback if GitHub rejects the integration).
    Configure both secrets before merging to activate reviews and enforcement.
    Once checks have appeared, also protect `main` with required host tests,
-   changeset and all five firmware build checks.
+   changeset and all six firmware build checks.
    Inspect the review body before merging: the Voxa workflow can succeed after a
    skipped review or a fallback comment. It posts comments rather than approvals.
 
@@ -58,15 +56,8 @@ SHA in both the comment marker and GitHub’s `commit_id` field.
 
 ## Device updates
 
-See [Signed device updates](device-updates.md) for the release-signing secret,
-first-install preparation, one-time USB partition migration, device services and
-recovery procedure. Ordinary updates are outbound HTTPS downloads coordinated by
-the Pi, with the ESP application transferred over the internal USB connection.
-The USB provisioning bundle is never fed to the OTA installer.
-
-This is application updating, not a Raspberry Pi OS updater. Hardware acceptance
-and commissioning are still required before field distribution. Customer devices check monthly and use Install/Later. The development Pi can
-follow signed main releases automatically using its hourly deployment agent.
+See [Native P4 OTA](p4-ota.md) for signing, initial USB commissioning and recovery.
+Only P4 artifacts are published. Retired Pi runtime and updater code is available in Git history.
 
 ## Template provenance
 
@@ -90,8 +81,7 @@ and both sides of renames. Each ESP32 application builds only when its files
 change; mic-test changes also select the visualizer because it compiles the
 shared audio pipeline. Shared firmware code selects all firmware builds.
 Documentation and changeset-only edits skip builds and unit tests, while the
-changeset policy check still runs. Pi changes select the ARM64 build, automation
-changes select host tests, and firmware packaging changes select the visualizer.
+changeset policy check still runs. Automation changes select host tests, and firmware packaging changes select the visualizer.
 Changes to the validation workflows or scope selector run the complete suite.
 The complete PR diff is considered on every update, not only the latest commit.
 Main-branch release validation retains full builds to supply all release assets.

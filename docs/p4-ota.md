@@ -3,7 +3,7 @@
 Waveform One's current ESP32-P4 controller follows Tempo's OTA implementation.
 The reference is Tempo commit `2b80e871ef4c1dfcf44951d4b48efc55c8ada60a`
 ([runtime and operations](https://github.com/tinyrobotcompany/Tempo/blob/2b80e871ef4c1dfcf44951d4b48efc55c8ada60a/docs/OTA.md)).
-The older [Pi updater](../pi/updater/README.md) remains for legacy devices.
+The retired Pi updater is available only in Git history. Current releases target the P4.
 
 ## Owner experience
 
@@ -59,11 +59,9 @@ update-setting edits are not overwritten by background polling.
   partition table or bootloader. A future model/layout change needs an explicit
   compatibility migration, not an ordinary application release.
 - The existing Waveform One RSA/SHA-256 publisher key is retained instead of
-  copying Tempo's ECDSA key. `main/ota_public.pem` matches
-  `pi/updater/release-public.pem`; the private key never belongs on the device.
+  copying Tempo's ECDSA key. `main/ota_public.pem` remains the publisher trust anchor; the private key never belongs on the device.
 - The existing combined validation/release workflow allocates the version before
-  building. P4 assets join the same release as legacy Pi/S3 assets, avoiding two
-  workflows racing to publish the repository's latest release.
+  building. Only P4 assets are published by this workflow.
 - Local display timers and the initialized HTTP server establish trial-boot
   health. A separate task restarts an unaccepted trial after 120 seconds, allowing
   the bootloader to roll back. Internet, Shazam and the external S3 are not

@@ -143,10 +143,8 @@ class P4PackageTests(unittest.TestCase):
             self.assertEqual(manifest['layout'], p4.LAYOUT)
             self.assertEqual(manifest['version'], '1.2.3')
             self.assertTrue(manifest['url'].endswith('/v1.2.3/waveform-p4.bin'))
-            # The workflow combines P4 output and legacy assets into a single flat release.
+            # The complete release contains only the P4 publication contract.
             self.assertEqual({p.name for p in dist.iterdir()}, release_assets.P4_ASSETS)
-            for name in release_assets.LEGACY_ASSETS:
-                (dist / name).write_bytes(('legacy fixture: ' + name).encode())
             downloaded = root / 'downloaded'
             shutil.copytree(dist, downloaded)
             release_assets.verify_assets(dist, downloaded)
