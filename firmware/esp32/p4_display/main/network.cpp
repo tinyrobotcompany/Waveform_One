@@ -53,6 +53,7 @@ std::atomic_bool lan_connected{false}, phone_tls_ready{false};
 std::atomic<uint32_t> dns_address{0};
 std::atomic<int64_t> dns_valid_until{0};
 char acquired_host[16]{}; // guarded by auth_mutex
+char verified_phone_host[97]{}; // guarded by auth_mutex; never read mutable TLS buffers from Wi-Fi callbacks
 remote_auth::RemoteAuth auth{esp_fill_random};
 // Guarded by auth_mutex. Only pairing changes write NVS, never status polling.
 bool sessions_restored = false;
@@ -317,8 +318,8 @@ void bind_remote()
 {
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
-        const bool address_changed = !auth.matches_address(waveform_phone_tls_hostname());
-        auth.connect(waveform_phone_tls_hostname(), esp_timer_get_time());
+        const bool address_changed = !auth.matches_address(verified_phone_host);
+        auth.connect(verified_phone_host, esp_timer_get_time());
         if (sessions_restored && address_changed) { sessions_need_save = true; save_phone_sessions(); }
     }
     publish_remote();
@@ -782,20 +783,24 @@ void start_secure_phone_server(httpd_handle_t *server)
     phone_tls_ready.store(tls_result == ESP_OK);
     if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: provision a valid identity over USB (%s)", esp_err_to_name(tls_result));
     if (phone_tls_ready.load()) {
-    bind_remote();
-    register_uri(*server, "/api/history", HTTP_POST, history_handler);
-    register_uri(*server, "/", HTTP_GET, page_handler);
-    register_uri(*server, "/pair", HTTP_GET, pair_handler);
-    register_uri(*server, "/api/session", HTTP_GET, session_handler);
-    register_uri(*server, "/api/state", HTTP_GET, state_handler);
-    register_uri(*server, "/api/updates", HTTP_GET, update_status_handler);
-    register_uri(*server, "/api/updates/action", HTTP_POST, update_action_handler);
-    register_uri(*server, "/api/updates/config", HTTP_POST, update_config_handler);
-    register_uri(*server, "/api/style", HTTP_POST, style_handler);
-    register_uri(*server, "/api/brightness", HTTP_POST, brightness_handler);
-    register_uri(*server, "/api/name", HTTP_POST, name_handler);
-    register_uri(*server, "/api/appearance", HTTP_POST, appearance_handler);
-    register_uri(*server, "/api/time", HTTP_POST, time_handler);
+        {
+            const std::lock_guard<std::mutex> lock(auth_mutex);
+            std::snprintf(verified_phone_host, sizeof(verified_phone_host), "%s", waveform_phone_tls_hostname());
+        }
+        bind_remote();
+        register_uri(*server, "/api/history", HTTP_POST, history_handler);
+        register_uri(*server, "/", HTTP_GET, page_handler);
+        register_uri(*server, "/pair", HTTP_GET, pair_handler);
+        register_uri(*server, "/api/session", HTTP_GET, session_handler);
+        register_uri(*server, "/api/state", HTTP_GET, state_handler);
+        register_uri(*server, "/api/updates", HTTP_GET, update_status_handler);
+        register_uri(*server, "/api/updates/action", HTTP_POST, update_action_handler);
+        register_uri(*server, "/api/updates/config", HTTP_POST, update_config_handler);
+        register_uri(*server, "/api/style", HTTP_POST, style_handler);
+        register_uri(*server, "/api/brightness", HTTP_POST, brightness_handler);
+        register_uri(*server, "/api/name", HTTP_POST, name_handler);
+        register_uri(*server, "/api/appearance", HTTP_POST, appearance_handler);
+        register_uri(*server, "/api/time", HTTP_POST, time_handler);
     }
 }
 
