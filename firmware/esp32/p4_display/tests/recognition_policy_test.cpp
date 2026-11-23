@@ -1,11 +1,29 @@
 #include <cassert>
 #include "recognition_policy.h"
 #include "recognition_delivery.h"
+#include "recognition_gate.h"
 
 int main()
 {
     using namespace recognition_policy;
     constexpr uint32_t s = Planner::kHopsPerSecond;
+
+    // Confident speech must veto even an already-started PCM acquisition.
+    assert(!request_allowed(true, {1, true, true}, true, true, true));
+    assert(!request_allowed(false, {1, true, true}, true, true, true));
+    assert(request_allowed(true, {1, false, true}, true, true, false));
+
+    // Ten minutes of podcast cannot trigger the long-sound fallback, even
+    // with a stale visible song. Uncertain sound still gets a cautious lookup.
+    for (unsigned t = 0; t <= 600; ++t) {
+        const auto decision = recognition_gate::decide(true, MusicVerdict::Speech, true, t >= 30);
+        assert(!decision.active && !decision.led && !decision.cautious);
+    }
+    auto decision = recognition_gate::decide(true, MusicVerdict::Undecided, false, true);
+    assert(decision.active && decision.cautious && !decision.led);
+    decision = recognition_gate::decide(true, MusicVerdict::Music, false, false);
+    assert(decision.active && decision.led && !decision.cautious);
+    assert(!recognition_gate::decide(false, MusicVerdict::Music, true, true).active);
 
     // Sessions: network and controller changes invalidate work.
     Sessions sessions;
