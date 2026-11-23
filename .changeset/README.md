@@ -1,6 +1,6 @@
 # Changesets
 
-For firmware, Pi, protocol or automation changes, add a uniquely named Markdown file:
+For firmware, protocol or automation changes, add a uniquely named Markdown file:
 
 ```md
 ---

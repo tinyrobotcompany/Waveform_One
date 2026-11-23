@@ -1,22 +1,15 @@
 #!/usr/bin/env python3
-"""Validate the complete Pi/S3/P4 publication set before upload and after download."""
+"""Validate the P4 publication set before upload and after download."""
 import argparse
 import hashlib
 from pathlib import Path
 
-LEGACY_ASSETS = frozenset({
-    'waveform-control-linux-aarch64.tar.gz',
-    'waveform-control-linux-aarch64.tar.gz.sha256',
-    'waveform-one-pi.tar.gz', 'pi-update-build.json',
-    'waveform-one-esp32s3-ota.bin', 'waveform-one-esp32s3-usb.zip',
-    'esp-update-build.json', 'SHA256SUMS', 'update.json', 'update.sig',
-})
 P4_ASSETS = frozenset({
     'waveform-p4.bin', 'waveform-p4-manifest.json', 'waveform-p4-manifest.sig',
     'P4-SHA256SUMS', 'p4-dependencies.lock', 'p4-update-build.json',
     'p4-release.json', 'p4-notes.md',
 })
-RELEASE_ASSETS = LEGACY_ASSETS | P4_ASSETS
+RELEASE_ASSETS = P4_ASSETS
 
 
 def validate_staging(directory):

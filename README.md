@@ -6,9 +6,8 @@
 A music-reactive 64×32 HUB75 LED display with a touchscreen and local phone
 remote. The current P4 configuration uses the Waveshare
 ESP32-P4-WIFI6-Touch-LCD-7B, onboard ES7210 audio capture and direct P4 LED drive.
-It joins home Wi-Fi and uses ACRCloud for music identification. Legacy S3/USB
-and Pi configurations remain in the repository; their behavior and dependencies
-must not be confused with the current P4 product.
+It joins home Wi-Fi and uses ACRCloud for music identification. The retired Raspberry Pi runtime and its release artifacts have been removed.
+Standalone S3 hardware test programs remain for bench testing.
 
 Public source and local audio processing are foundations for long-term ownership.
 Cloud song identification still requires ACRCloud. A repeatable recognition
@@ -33,15 +32,12 @@ Original software is licensed under [Apache 2.0](LICENSE). Original hardware and
 - [Offline visualizer acceptance plan](docs/validation/offline-visualizer.md)
 - [Ownership and service continuity](docs/product/longevity.md)
 - [Buyer-readiness checklist](https://github.com/tinyrobotcompany/Waveform_One/issues/25)
-- [Legacy Pi over-the-air updates](pi/updater/README.md)
 - [CI and releases](docs/delivery.md)
-- [Pi setup and visual-style controls](pi/README.md)
 - [Wi-Fi and QR phone setup](docs/setup.md)
 
 Native P4 signed updates follow Tempo: monthly checks, an overnight installation
 window, countdown and postponement, with controls on the touchscreen and paired phone.
 The P4 needs a one-time USB bootstrap into the A/B layout before OTA updates.
-Legacy commissioned Pi/S3 devices retain their existing updater.
 
 <!-- privacy-notice:start -->
 ## Microphone and privacy
