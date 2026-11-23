@@ -26,21 +26,6 @@ key partition, require them before generating either identity, and test missing
 keys, plaintext storage rejection, reboot and power loss. Do not replace the
 current Waveform provisioning protections with Tempo's guard alone.
 
-### High — the enrollment branch still rejects a normal CA-issued certificate
-
-Verified in [phone_tls.c, lines 61–67](https://github.com/tinyrobotcompany/Tempo/blob/2c44bc292feb91b4688541bc8790942cfc512f1e/firmware/main/phone_tls.c#L61):
-the enrollment branch validates the leaf certificate against itself as its trust
-anchor. A temporary host build using the real ESP-IDF Mbed TLS libraries and
-Tempo's CA-issued fixture failed the successful-start assertion at this commit.
-The same test passed with local secure-phone-access commit `381a2ac`, including
-negative tests for wrong hostname, wrong key and malformed certificate.
-
-**Before adoption:** integrate the existing `381a2ac` correction into the enrollment
-branch and retain the real-library regression test. This is already fixed locally
-on another branch; it is not a request to invent a second fix. At review time that
-commit was absent from the remote secure-phone-access branch and enrollment branch.
-Waveform already has its own certificate validation implementation and should retain it.
-
 ### Medium — healthy devices poll the backend continuously
 
 Verified in [device_enrollment.c, lines 65–104](https://github.com/tinyrobotcompany/Tempo/blob/2c44bc292feb91b4688541bc8790942cfc512f1e/firmware/main/device_enrollment.c#L65):
@@ -71,6 +56,22 @@ failure must not be treated as success.
 
 **Before adoption:** retain Waveform's existing stop-result handling, ownership and
 retry tests. Keep the old handle and identity alive until successful shutdown.
+
+## Branch integration note: certificate acceptance
+
+The enrollment branch still contains the older leaf-as-trust-anchor check in
+[phone_tls.c, lines 61–67](https://github.com/tinyrobotcompany/Tempo/blob/2c44bc292feb91b4688541bc8790942cfc512f1e/firmware/main/phone_tls.c#L61).
+Using Tempo's regression fixture with the real ESP-IDF Mbed TLS libraries, a
+CA-issued **leaf-only** input fails startup at `2c44bc2` and passes with local
+secure-phone-access correction `381a2ac`. However, supplying the leaf together
+with its CA certificate also passes on the older code. This test does **not**
+establish that the backend's normal full-chain response fails; it identifies a
+branch-integration difference and a chain-format-dependent acceptance test.
+
+Integrate the existing correction and test the actual issued chain end to end,
+including wrong hostname, wrong key and malformed input. At review time `381a2ac`
+was absent from the remote secure-phone-access branch and enrollment branch.
+Waveform has its own certificate validation and should retain it.
 
 ## Recommendation
 
@@ -143,8 +144,9 @@ weather and transport features were not reviewed.
 
 - **Verified:** 35 backend tests passed from an exported committed snapshot; 39 passed
   against the local service work in progress, without modifying Tempo's source.
-- **Verified:** real-library certificate regression reproduced against enrollment
-  and passed with the local secure-phone-access correction.
+- **Verified:** real-library leaf-only certificate regression reproduced against enrollment
+  and passed with the local correction; the older implementation also passed when
+  the fixture included its CA certificate.
 - **Verified:** storage initialization and stop failure behavior checked against the
   installed ESP-IDF v6.1 implementation; official guidance checked on review date.
 - **Derived:** traffic estimate and reuse recommendation follow from inspected code;
