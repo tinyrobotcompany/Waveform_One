@@ -29,7 +29,10 @@ python scripts/phone-identity.py create --directory /private/operator/device-a -
 ```
 
 Submit `device.csr` to the chosen CA and place the returned leaf-first certificate
-chain at `fullchain.pem`. Supply the trusted issuer/root bundle explicitly:
+chain at `fullchain.pem`. Supply the trusted issuer/root bundle explicitly (less
+than 8 KiB, selected for this issuer rather than a system-wide CA store). This bundle
+is stored in the identity partition, and firmware verifies the chain against it
+independently of the provisioning-tool check. Self-signed device leaves are rejected:
 
 ```sh
 python scripts/phone-identity.py validate --directory /private/operator/device-a --trust /private/operator/issuer-roots.pem

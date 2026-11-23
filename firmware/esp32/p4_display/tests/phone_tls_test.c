@@ -4,7 +4,7 @@
 static int init_error,open_error,read_error,parse_error,key_error,pair_error,verify_error,start_error;
 static unsigned starts,stops;static uint32_t verify_flags;
 static const char *name="device-a7f3.waveform.tinyrobotcompany.io";
-static size_t fake_size;
+static size_t fake_size;static bool self_signed,ca_leaf;
 #ifdef CONFIG_NVS_ENCRYPTION
 static int key_error_read, missing_keys;
 static esp_partition_t keys;
@@ -21,11 +21,12 @@ int nvs_open_from_partition(const char *p,const char *ns,int mode,nvs_handle_t *
 void nvs_close(nvs_handle_t h){assert(h==1);}
 int nvs_get_str(nvs_handle_t h,const char *key,char *out,size_t *n){assert(h==1);if(read_error)return read_error;const char *value=!strcmp(key,"hostname")?name:!strcmp(key,"cert")?"certificate":"private key";size_t length=strlen(value)+1;if(!out){*n=fake_size?fake_size:length;return 0;}if(*n<length)return ESP_FAIL;memcpy(out,value,length);*n=length;return 0;}
 void mbedtls_pk_init(mbedtls_pk_context *p){(void)p;}void mbedtls_pk_free(mbedtls_pk_context *p){(void)p;}
-void mbedtls_x509_crt_init(mbedtls_x509_crt *p){(void)p;}void mbedtls_x509_crt_free(mbedtls_x509_crt *p){(void)p;}
-int mbedtls_x509_crt_parse(mbedtls_x509_crt *p,const unsigned char *s,size_t n){(void)p;assert(n==strlen((const char*)s)+1);return parse_error;}
+void mbedtls_x509_crt_init(mbedtls_x509_crt *p){memset(p,0,sizeof(*p));}
+int mbedtls_x509_crt_get_ca_istrue(const mbedtls_x509_crt *p){(void)p;return ca_leaf;}void mbedtls_x509_crt_free(mbedtls_x509_crt *p){(void)p;}
+int mbedtls_x509_crt_parse(mbedtls_x509_crt *p,const unsigned char *s,size_t n){p->issuer_raw=(mbedtls_x509_buf){(unsigned char*)"issuer",6};p->subject_raw=(mbedtls_x509_buf){(unsigned char*)(self_signed?"issuer":"device"),6};assert(n==strlen((const char*)s)+1);return parse_error;}
 int mbedtls_pk_parse_key(mbedtls_pk_context *p,const unsigned char *s,size_t n,const unsigned char *pwd,size_t len){(void)p;assert(n==strlen((const char*)s)+1&&!pwd&&!len);return key_error;}
 int mbedtls_pk_check_pair(const mbedtls_pk_context *a,const mbedtls_pk_context *b){(void)a;(void)b;return pair_error;}
-int mbedtls_x509_crt_verify(mbedtls_x509_crt *c,mbedtls_x509_crt *ca,void *crl,const char *host,uint32_t *flags,void *cb,void *ctx){assert(c==ca&&!crl&&!strcmp(host,name)&&!cb&&!ctx);*flags=verify_flags;return verify_error;}
+int mbedtls_x509_crt_verify(mbedtls_x509_crt *c,mbedtls_x509_crt *ca,void *crl,const char *host,uint32_t *flags,void *cb,void *ctx){assert(c!=ca&&!crl&&!strcmp(host,name)&&!cb&&!ctx);*flags=verify_flags;return verify_error;}
 int httpd_ssl_start(httpd_handle_t *server,const httpd_ssl_config_t *cfg){starts++;assert(cfg->transport_mode==HTTPD_SSL_TRANSPORT_SECURE&&cfg->port_secure==443);assert(cfg->servercert_len==strlen((const char*)cfg->servercert)+1&&cfg->prvtkey_len==strlen((const char*)cfg->prvtkey_pem)+1);*server=(void*)1;return start_error;}
 int httpd_ssl_stop(httpd_handle_t server){assert(server==(void*)1);stops++;return 0;}
 int main(void){httpd_handle_t server=NULL;httpd_config_t config=HTTPD_DEFAULT_CONFIG();
@@ -40,6 +41,8 @@ int main(void){httpd_handle_t server=NULL;httpd_config_t config=HTTPD_DEFAULT_CO
  read_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0);read_error=0;
  name="bad..example";assert(waveform_phone_tls_start(&server,&config)!=0);name="device-a7f3.waveform.tinyrobotcompany.io";
  fake_size=9000;assert(waveform_phone_tls_start(&server,&config)!=0);fake_size=1;assert(waveform_phone_tls_start(&server,&config)!=0);fake_size=0;
+ self_signed=true;assert(waveform_phone_tls_start(&server,&config)!=0);self_signed=false;
+ ca_leaf=true;assert(waveform_phone_tls_start(&server,&config)!=0);ca_leaf=false;
  parse_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0);parse_error=0;
  key_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0);key_error=0;
  pair_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0);pair_error=0;

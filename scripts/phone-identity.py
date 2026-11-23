@@ -79,12 +79,18 @@ def validate(directory, trust):
     key = directory/'device.key'
     if key.stat().st_mode & 0o077:
         raise ValueError('Private key must have permissions 0600.')
-    if not 0 < chain.stat().st_size < 8192 or not 0 < key.stat().st_size < 4096:
+    if not 0 < chain.stat().st_size < 8192 or not 0 < key.stat().st_size < 4096 or not 0 < trust.stat().st_size < 8192:
         raise ValueError('Identity exceeds firmware limits.')
     cert_public = run('openssl', 'x509', '-in', str(chain), '-pubkey', '-noout')
     key_public = run('openssl', 'pkey', '-in', str(key), '-pubout')
     if cert_public != key_public:
         raise ValueError('Certificate does not match this device private key.')
+    subjects = run('openssl', 'x509', '-in', str(chain), '-noout', '-issuer', '-subject', '-nameopt', 'RFC2253').decode().splitlines()
+    if len(subjects) != 2 or subjects[0].partition('=')[2] == subjects[1].partition('=')[2]:
+        raise ValueError('Device certificates must be issued by a separate CA')
+    constraints = run('openssl', 'x509', '-in', str(chain), '-noout', '-ext', 'basicConstraints').decode()
+    if 'CA:FALSE' not in constraints:
+        raise ValueError('A non-CA device leaf certificate is required')
     sans = run('openssl', 'x509', '-in', str(chain), '-noout', '-ext', 'subjectAltName').decode()
     names = re.findall(r'DNS:([^,\s]+)', sans)
     if names != [name]:
@@ -107,6 +113,7 @@ def image(directory, trust, idf, nvs_key=None):
             writer.writerows([['key','type','encoding','value'],['identity','namespace','',''],
                              ['hostname','data','string',name],
                              ['cert','file','string',str((directory/'fullchain.pem').resolve())],
+                             ['trust','file','string',str(trust.resolve())],
                              ['key','file','string',str((directory/'device.key').resolve())]])
         if nvs_key is None:
             run(sys.executable, str(generator), 'generate', str(source), str(directory/'phone_tls.bin'), '0x10000')

@@ -68,5 +68,15 @@ class IdentityTests(unittest.TestCase):
             (target/'fullchain.pem').write_text('x'*8192)
             with self.assertRaises(ValueError):identity.validate(target,target/'ca.pem')
 
+    def test_self_signed_leaf_cannot_be_its_own_trust_anchor(self):
+        with tempfile.TemporaryDirectory() as root:
+            target=self.copy(root)
+            identity.run('openssl','req','-x509','-new','-key',str(target/'device.key'),
+                '-subj','/CN=device-a7f3.waveform.tinyrobotcompany.io','-days','30',
+                '-addext','subjectAltName=DNS:device-a7f3.waveform.tinyrobotcompany.io',
+                '-addext','basicConstraints=critical,CA:FALSE','-out',str(target/'fullchain.pem'))
+            with self.assertRaisesRegex(ValueError,'separate CA'):
+                identity.validate(target,target/'fullchain.pem')
+
 
 if __name__=='__main__':unittest.main()

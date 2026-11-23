@@ -1,7 +1,9 @@
 #pragma once
 #include "pk.h"
 #include <stdint.h>
-typedef struct {mbedtls_pk_context pk;} mbedtls_x509_crt;
+typedef struct {unsigned char *p;size_t len;} mbedtls_x509_buf;
+typedef struct {mbedtls_pk_context pk;mbedtls_x509_buf issuer_raw,subject_raw;} mbedtls_x509_crt;
+int mbedtls_x509_crt_get_ca_istrue(const mbedtls_x509_crt *);
 #define MBEDTLS_ERR_X509_CERT_VERIFY_FAILED -9984
 #define MBEDTLS_X509_BADCERT_EXPIRED 1
 #define MBEDTLS_X509_BADCERT_FUTURE 2

@@ -14,11 +14,11 @@
 
 /* Separate from settings and OTA metadata; never erase on an initialization error. */
 static char hostname[97];
-static char *certificate, *private_key;
+static char *certificate, *private_key, *trust_bundle;
 static void clear_identity(void)
 {
     if(private_key){volatile char *p=private_key;size_t n=strlen(private_key);while(n--)*p++=0;}
-    free(private_key);free(certificate);private_key=certificate=NULL;hostname[0]=0;
+    free(private_key);free(certificate);free(trust_bundle);private_key=certificate=trust_bundle=NULL;hostname[0]=0;
 }
 static bool valid_hostname(const char *name)
 {
@@ -45,9 +45,16 @@ static int random_bytes(void *ctx,unsigned char *out,size_t n){(void)ctx;esp_fil
 #endif
 static bool matches_identity(void)
 {
-    mbedtls_x509_crt cert;mbedtls_pk_context key;
-    mbedtls_x509_crt_init(&cert);mbedtls_pk_init(&key);
+    mbedtls_x509_crt cert, trust;mbedtls_pk_context key;
+    mbedtls_x509_crt_init(&cert);mbedtls_x509_crt_init(&trust);mbedtls_pk_init(&key);
     int result=mbedtls_x509_crt_parse(&cert,(const unsigned char *)certificate,strlen(certificate)+1);
+    if(result==0)result=mbedtls_x509_crt_parse(&trust,(const unsigned char *)trust_bundle,strlen(trust_bundle)+1);
+    /* A device leaf must be CA-issued, never a self-signed trust anchor. */
+    if(result==0 && cert.issuer_raw.len==cert.subject_raw.len &&
+       !memcmp(cert.issuer_raw.p,cert.subject_raw.p,cert.issuer_raw.len))result=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
+#if MBEDTLS_VERSION_MAJOR >= 4
+    if(result==0 && mbedtls_x509_crt_get_ca_istrue(&cert))result=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
+#endif
     if(result==0){
 #if MBEDTLS_VERSION_MAJOR >= 4
         result=mbedtls_pk_parse_key(&key,(const unsigned char *)private_key,strlen(private_key)+1,NULL,0);
@@ -59,13 +66,13 @@ static bool matches_identity(void)
     }
     if(result==0){
         uint32_t flags=0;
-        /* The provisioner verifies the issuer chain. Here pin the provisioned leaf,
-           check the name/key, and let the browser enforce validity dates even before SNTP. */
-        result=mbedtls_x509_crt_verify(&cert,&cert,NULL,hostname,&flags,NULL,NULL);
+        /* Verify the chain against the separately provisioned issuer trust. The browser
+           additionally enforces validity dates even before this device has SNTP. */
+        result=mbedtls_x509_crt_verify(&cert,&trust,NULL,hostname,&flags,NULL,NULL);
         if(result==MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
            !(flags & ~(MBEDTLS_X509_BADCERT_EXPIRED|MBEDTLS_X509_BADCERT_FUTURE)))result=0;
     }
-    mbedtls_pk_free(&key);mbedtls_x509_crt_free(&cert);return result==0;
+    mbedtls_pk_free(&key);mbedtls_x509_crt_free(&cert);mbedtls_x509_crt_free(&trust);return result==0;
 }
 esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *config)
 {
@@ -88,8 +95,10 @@ esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *
     if(err==ESP_OK&&!valid_hostname(hostname))err=ESP_ERR_INVALID_ARG;
     if(err==ESP_OK)err=read_pem(h,"cert",8192,&certificate);
     if(err==ESP_OK)err=read_pem(h,"key",4096,&private_key);
+    if(err==ESP_OK)err=read_pem(h,"trust",8192,&trust_bundle);
     nvs_close(h);
     if(err==ESP_OK&&!matches_identity())err=ESP_ERR_INVALID_ARG;
+    free(trust_bundle);trust_bundle=NULL; // verification only; do not retain an extra CA buffer while serving
     if(err!=ESP_OK){clear_identity();return err;}
     httpd_ssl_config_t ssl=HTTPD_SSL_CONFIG_DEFAULT();ssl.httpd=*config;
     ssl.transport_mode=HTTPD_SSL_TRANSPORT_SECURE;ssl.port_secure=443;
