@@ -94,6 +94,8 @@ static bool matches_identity(void)
 }
 esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *config)
 {
+    if(!server||!config)return ESP_ERR_INVALID_ARG;
+    *server=NULL;
     clear_identity();
     esp_err_t err;
 #ifdef CONFIG_NVS_ENCRYPTION
@@ -123,8 +125,9 @@ esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *
     ssl.servercert=(const unsigned char *)certificate;ssl.servercert_len=strlen(certificate)+1;
     ssl.prvtkey_pem=(const unsigned char *)private_key;ssl.prvtkey_len=strlen(private_key)+1;
     err=httpd_ssl_start(server,&ssl);
+    if(err==ESP_OK&&!*server)err=ESP_FAIL;
     if(err!=ESP_OK)clear_identity();
     return err;
 }
-void waveform_phone_tls_stop(httpd_handle_t server){httpd_ssl_stop(server);clear_identity();}
+void waveform_phone_tls_stop(httpd_handle_t server){if(server)httpd_ssl_stop(server);clear_identity();}
 const char *waveform_phone_tls_hostname(void){return hostname;}

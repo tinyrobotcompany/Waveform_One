@@ -78,5 +78,29 @@ class IdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'separate CA'):
                 identity.validate(target,target/'fullchain.pem')
 
+    def test_intermediate_chain_and_extra_pem_rejection(self):
+        with tempfile.TemporaryDirectory() as root:
+            target=self.copy(root)
+            identity.run('openssl','req','-x509','-new','-key',str(target/'ca.key'),
+                '-subj','/CN=Root','-days','365','-addext','basicConstraints=critical,CA:TRUE,pathlen:1',
+                '-addext','keyUsage=critical,keyCertSign,cRLSign','-out',str(target/'ca.pem'))
+            intermediate=Path(root)/'intermediate'
+            identity.create(intermediate,'issuer.example.com')
+            ext=intermediate/'ca.cnf'
+            ext.write_text('basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer\n')
+            identity.run('openssl','x509','-req','-in',str(intermediate/'device.csr'),'-CA',str(target/'ca.pem'),
+                '-CAkey',str(target/'ca.key'),'-CAcreateserial','-days','90','-extfile',str(ext),'-out',str(intermediate/'issuer.pem'))
+            identity.run('openssl','x509','-req','-in',str(target/'device.csr'),'-CA',str(intermediate/'issuer.pem'),
+                '-CAkey',str(intermediate/'device.key'),'-CAcreateserial','-days','30','-extfile',str(target/'extensions.cnf'),'-out',str(target/'fullchain.pem'))
+            leaf=(target/'fullchain.pem').read_bytes()
+            chain=leaf+(intermediate/'issuer.pem').read_bytes()
+            (target/'fullchain.pem').write_bytes(chain)
+            self.assertEqual(identity.validate(target,target/'ca.pem'),'device-a7f3.waveform.tinyrobotcompany.io')
+            (target/'fullchain.pem').write_bytes(leaf)
+            with self.assertRaises(ValueError):identity.validate(target,target/'ca.pem')
+            for extra in (b'garbage', (target/'device.key').read_bytes(), b'-----BEGIN CERTIFICATE-----\ninvalid\n-----END CERTIFICATE-----'):
+                (target/'fullchain.pem').write_bytes(chain+extra)
+                with self.assertRaises(ValueError):identity.validate(target,target/'ca.pem')
+
 
 if __name__=='__main__':unittest.main()

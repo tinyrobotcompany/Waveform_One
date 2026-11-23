@@ -780,7 +780,7 @@ void start_secure_phone_server(httpd_handle_t *server)
     server_config.recv_wait_timeout = 5;
     server_config.send_wait_timeout = 5;
     const esp_err_t tls_result = waveform_phone_tls_start(server, &server_config);
-    phone_tls_ready.store(tls_result == ESP_OK);
+    phone_tls_ready.store(tls_result == ESP_OK && *server != nullptr);
     if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: provision a valid identity over USB (%s)", esp_err_to_name(tls_result));
     if (phone_tls_ready.load()) {
         {

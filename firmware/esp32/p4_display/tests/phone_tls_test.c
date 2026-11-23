@@ -4,7 +4,7 @@
 static int init_error,open_error,read_error,parse_error,key_error,pair_error,verify_error,start_error;
 static unsigned starts,stops;static uint32_t verify_flags;
 static const char *name="device-a7f3.waveform.tinyrobotcompany.io";
-static size_t fake_size;static bool self_signed,ca_leaf,clock_expired;
+static size_t fake_size;static bool self_signed,ca_leaf,clock_expired,start_null;
 int mbedtls_x509_time_is_past(const mbedtls_x509_time *t){(void)t;return clock_expired;}
 int mbedtls_x509_time_is_future(const mbedtls_x509_time *t){(void)t;return 0;}
 #ifdef CONFIG_NVS_ENCRYPTION
@@ -29,7 +29,7 @@ int mbedtls_x509_crt_parse(mbedtls_x509_crt *p,const unsigned char *s,size_t n){
 int mbedtls_pk_parse_key(mbedtls_pk_context *p,const unsigned char *s,size_t n,const unsigned char *pwd,size_t len){(void)p;assert(n==strlen((const char*)s)+1&&!pwd&&!len);return key_error;}
 int mbedtls_pk_check_pair(const mbedtls_pk_context *a,const mbedtls_pk_context *b){(void)a;(void)b;return pair_error;}
 int mbedtls_x509_crt_verify(mbedtls_x509_crt *c,mbedtls_x509_crt *ca,void *crl,const char *host,uint32_t *flags,void *cb,void *ctx){assert(c!=ca&&!crl&&!strcmp(host,name)&&!cb&&!ctx);*flags=verify_flags;return verify_error;}
-int httpd_ssl_start(httpd_handle_t *server,const httpd_ssl_config_t *cfg){starts++;assert(cfg->transport_mode==HTTPD_SSL_TRANSPORT_SECURE&&cfg->port_secure==443);assert(cfg->servercert_len==strlen((const char*)cfg->servercert)+1&&cfg->prvtkey_len==strlen((const char*)cfg->prvtkey_pem)+1);*server=(void*)1;return start_error;}
+int httpd_ssl_start(httpd_handle_t *server,const httpd_ssl_config_t *cfg){starts++;assert(cfg->transport_mode==HTTPD_SSL_TRANSPORT_SECURE&&cfg->port_secure==443);assert(cfg->servercert_len==strlen((const char*)cfg->servercert)+1&&cfg->prvtkey_len==strlen((const char*)cfg->prvtkey_pem)+1);*server=start_null?NULL:(void*)1;return start_error;}
 int httpd_ssl_stop(httpd_handle_t server){assert(server==(void*)1);stops++;return 0;}
 int main(void){httpd_handle_t server=NULL;httpd_config_t config=HTTPD_DEFAULT_CONFIG();
  assert(!valid_hostname("")&&!valid_hostname("single")&&!valid_hostname("-bad.example")&&!valid_hostname("bad-.example")&&!valid_hostname("bad..example")&&!valid_hostname("bad.example.")&&!valid_hostname("*.example")&&!valid_hostname("UPPER.example"));
@@ -52,5 +52,7 @@ int main(void){httpd_handle_t server=NULL;httpd_config_t config=HTTPD_DEFAULT_CO
  verify_flags=MBEDTLS_X509_BADCERT_FUTURE;assert(waveform_phone_tls_start(&server,&config)!=0);
  verify_flags=MBEDTLS_X509_BADCERT_EXPIRED;assert(waveform_phone_tls_start(&server,&config)!=0);
  verify_error=0;verify_flags=0;start_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0&&!waveform_phone_tls_hostname()[0]);start_error=0;
+ waveform_phone_tls_stop(NULL);
+ start_null=true;assert(waveform_phone_tls_start(&server,&config)!=0);start_null=false;
  assert(waveform_phone_tls_start(&server,&config)==0&&!strcmp(waveform_phone_tls_hostname(),name));assert(waveform_phone_tls_time_valid());clock_expired=true;assert(!waveform_phone_tls_time_valid());clock_expired=false;waveform_phone_tls_stop(server);assert(!waveform_phone_tls_time_valid());assert(stops==1&&!private_key&&!certificate);
  puts("PASS: HTTPS identity failures fail closed; keys match, hostname checked, TLS-only startup");}

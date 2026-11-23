@@ -73,9 +73,39 @@ def development_certificate(directory):
         '-extfile', str(extensions), '-out', str(directory/'fullchain.pem'))
 
 
+def certificate_blocks(path):
+    if not 0 < path.stat().st_size < 8192:
+        raise ValueError('Certificate bundle exceeds firmware limits')
+    data=path.read_bytes()
+    pattern=rb'-----BEGIN CERTIFICATE-----\s+[A-Za-z0-9+/=\r\n]+-----END CERTIFICATE-----'
+    blocks=re.findall(pattern,data)
+    if not blocks or re.sub(pattern,b'',data).strip():
+        raise ValueError('Certificate bundle contains malformed or extra PEM material')
+    return blocks
+
+
 def validate(directory, trust):
+    certificates=certificate_blocks(directory/'fullchain.pem')
+    roots=certificate_blocks(trust)
+    if len(certificates)+len(roots)>16:
+        raise ValueError('Too many certificates for firmware validity tracking')
+    with tempfile.TemporaryDirectory(dir=directory) as tmp:
+        temporary=Path(tmp)
+        # Parse every block: OpenSSL otherwise ignores trailing malformed/extra PEMs.
+        for index,block in enumerate(certificates+roots):
+            candidate=temporary/('certificate-'+str(index)+'.pem')
+            candidate.write_bytes(block+b'\n')
+            run('openssl','x509','-in',str(candidate),'-noout')
+        leaf=temporary/'certificate-0.pem'
+        intermediates=None
+        if len(certificates)>1:
+            intermediates=temporary/'intermediates.pem'
+            intermediates.write_bytes(b'\n'.join(certificates[1:])+b'\n')
+        return validate_leaf(directory, trust, leaf, intermediates)
+
+
+def validate_leaf(directory, trust, chain, intermediates):
     name = hostname(json.loads((directory/'identity.json').read_text())['hostname'])
-    chain = directory/'fullchain.pem'
     key = directory/'device.key'
     if key.stat().st_mode & 0o077:
         raise ValueError('Private key must have permissions 0600.')
@@ -96,8 +126,9 @@ def validate(directory, trust):
     if names != [name]:
         raise ValueError('Require exactly one DNS identity; shared/wildcard certificates are rejected.')
     run('openssl', 'x509', '-in', str(chain), '-checkend', '86400', '-noout')
-    run('openssl', 'verify', '-purpose', 'sslserver', '-verify_hostname', name,
-        '-CAfile', str(trust), '-untrusted', str(chain), str(chain))
+    arguments = ['openssl', 'verify', '-purpose', 'sslserver', '-verify_hostname', name, '-CAfile', str(trust)]
+    if intermediates is not None: arguments += ['-untrusted', str(intermediates)]
+    run(*arguments, str(chain))
     return name
 
 
