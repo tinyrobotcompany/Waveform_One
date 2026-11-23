@@ -20,6 +20,7 @@ class ProductionSecurity(unittest.TestCase):
             size=int(size[:-1])*1024*1024 if size.endswith('M') else int(size,0)
             entries.append((int(offset,0),size))
             if name=='nvs_keys':self.assertEqual((sub,size,flags),('nvs_keys',4096,'encrypted'))
+            if name in ('storage','phone_tls','nvs'):self.assertEqual(flags,'')
         entries.sort()
         self.assertGreaterEqual(entries[0][0],0x11000)
         for (a,n),(b,_) in zip(entries,entries[1:]):self.assertLessEqual(a+n,b)

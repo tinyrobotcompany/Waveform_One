@@ -27,6 +27,9 @@ Applications are at `0x20000` and `0x1000000`, model at `0x820000`, storage at
 `0xc20000`, identity at `0x1800000`, and encrypted NVS keys at `0x1810000`.
 The layout ID is `waveform-ab8-secure-v1`; development OTA manifests are incompatible.
 This is a fresh factory layout, not an in-place conversion of customer data.
+The reserved SPIFFS storage and public music model remain unencrypted: ESP-IDF
+SPIFFS rejects encrypted partitions. Credentials are stored exclusively in encrypted
+NVS, never this reserved filesystem.
 
 ## Build without provisioning hardware
 
