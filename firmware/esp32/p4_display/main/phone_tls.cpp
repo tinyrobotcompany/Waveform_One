@@ -55,7 +55,7 @@ static esp_err_t read_pem(nvs_handle_t h,const char *name,size_t maximum,char **
     size_t n=0;esp_err_t err=nvs_get_str(h,name,NULL,&n);
     if(err!=ESP_OK)return err;
     if(n<2||n>maximum)return ESP_ERR_INVALID_ARG;
-    *out=calloc(1,n);if(!*out)return ESP_ERR_NO_MEM;
+    *out=static_cast<char *>(calloc(1,n));if(!*out)return ESP_ERR_NO_MEM;
     err=nvs_get_str(h,name,*out,&n);
     return err;
 }

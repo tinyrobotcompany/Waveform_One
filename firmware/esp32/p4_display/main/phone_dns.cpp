@@ -5,7 +5,7 @@
 bool waveform_phone_dns_matches(const char *hostname,uint32_t station_address)
 {
     if(!hostname||!hostname[0]||!station_address)return false;
-    struct addrinfo hints={0},*addresses=NULL;
+    struct addrinfo hints={},*addresses=NULL;
     hints.ai_family=AF_UNSPEC;hints.ai_socktype=SOCK_STREAM;
     if(getaddrinfo(hostname,NULL,&hints,&addresses)!=0)return false;
     bool found=false,match=true;

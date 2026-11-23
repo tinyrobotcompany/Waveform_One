@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "phone_tls.c" "phone_dns.c" "network_activity.c" "update_service.c" "update_policy.c" "main.cpp" "display_schedule.cpp" "idle_display.cpp" "idle_display_ui.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
+    SRCS "phone_tls.cpp" "phone_dns.cpp" "network_activity.cpp" "update_service.cpp" "update_policy.cpp" "main.cpp" "display_schedule.cpp" "idle_display.cpp" "idle_display_ui.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
          "recognition.cpp" "recognition_credentials.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
          "music_detector.cpp" "microphone_privacy.cpp" "../../common/music_features.cpp"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"

@@ -1,4 +1,4 @@
-#include "../main/phone_tls.c"
+#include "../main/phone_tls.cpp"
 #include <assert.h>
 #include <stdio.h>
 #include <pthread.h>
@@ -31,7 +31,7 @@ int nvs_get_str(nvs_handle_t h,const char *key,char *out,size_t *n){assert(h==1)
 void mbedtls_pk_init(mbedtls_pk_context *p){(void)p;}void mbedtls_pk_free(mbedtls_pk_context *p){(void)p;}
 void mbedtls_x509_crt_init(mbedtls_x509_crt *p){memset(p,0,sizeof(*p));}
 int mbedtls_x509_crt_get_ca_istrue(const mbedtls_x509_crt *p){(void)p;return ca_leaf;}void mbedtls_x509_crt_free(mbedtls_x509_crt *p){(void)p;}
-int mbedtls_x509_crt_parse(mbedtls_x509_crt *p,const unsigned char *s,size_t n){p->issuer_raw=(mbedtls_x509_buf){(unsigned char*)"issuer",6};p->subject_raw=(mbedtls_x509_buf){(unsigned char*)(self_signed?"issuer":"device"),6};assert(n==strlen((const char*)s)+1);return parse_error;}
+int mbedtls_x509_crt_parse(mbedtls_x509_crt *p,const unsigned char *s,size_t n){p->issuer_raw=mbedtls_x509_buf{(unsigned char*)"issuer",6};p->subject_raw=mbedtls_x509_buf{(unsigned char*)(self_signed?"issuer":"device"),6};assert(n==strlen((const char*)s)+1);return parse_error;}
 int mbedtls_pk_parse_key(mbedtls_pk_context *p,const unsigned char *s,size_t n,const unsigned char *pwd,size_t len){(void)p;assert(n==strlen((const char*)s)+1&&!pwd&&!len);return key_error;}
 int mbedtls_pk_check_pair(const mbedtls_pk_context *a,const mbedtls_pk_context *b){(void)a;(void)b;return pair_error;}
 int mbedtls_x509_crt_verify(mbedtls_x509_crt *c,mbedtls_x509_crt *ca,void *crl,const char *host,uint32_t *flags,void *cb,void *ctx){assert(c!=ca&&!crl&&!strcmp(host,name)&&!cb&&!ctx);*flags=verify_flags;return verify_error;}

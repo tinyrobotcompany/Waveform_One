@@ -34,7 +34,7 @@ bool waveform_update_manifest(const char *text,const char *current,waveform_upda
   !strcmp(str(j,"target"),WAVEFORM_UPDATE_TARGET)&&!strcmp(str(j,"layout"),WAVEFORM_UPDATE_LAYOUT)&&
   waveform_update_newer(version,current)&&strlen(hash)==64&&!strcmp(str(j,"url"),expected);
  for(unsigned i=0;ok&&i<64;i++)if(!((hash[i]>='0'&&hash[i]<='9')||(hash[i]>='a'&&hash[i]<='f')))ok=false;
- if(ok){waveform_update_manifest_t result={.size=(unsigned)size->valuedouble};snprintf(result.version,sizeof(result.version),"%s",version);memcpy(result.sha256,hash,65);snprintf(result.url,sizeof(result.url),"%s",expected);*out=result;}
+ if(ok){waveform_update_manifest_t result{};result.size=(unsigned)size->valuedouble;snprintf(result.version,sizeof(result.version),"%s",version);memcpy(result.sha256,hash,65);snprintf(result.url,sizeof(result.url),"%s",expected);*out=result;}
  cJSON_Delete(j);return ok;
 }
 bool waveform_update_window(unsigned minute,unsigned start,unsigned end)

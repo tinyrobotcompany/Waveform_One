@@ -10,8 +10,8 @@ class PhoneFirmware(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             for suite in ('tls', 'dns', 'tls_encrypted'):
                 binary = str(Path(tmp)/suite)
-                subprocess.run([os.environ.get('CC','cc'), '-std=c11', '-pthread', '-D_POSIX_C_SOURCE=200112L', '-Wall', '-Wextra', '-Werror',
+                subprocess.run([os.environ.get('CXX','c++'), '-std=c++17', '-pedantic-errors', '-pthread', '-D_POSIX_C_SOURCE=200112L', '-Wall', '-Wextra', '-Werror',
                     *(['-DCONFIG_NVS_ENCRYPTION=1'] if suite == 'tls_encrypted' else []),
                     '-I'+str(APP/'tests/tls_stubs'), '-I'+str(APP/'main'),
-                    str(APP/'tests'/('phone_'+suite.replace('_encrypted', '')+'_test.c')), '-o', binary], check=True)
+                    str(APP/'tests'/('phone_'+suite.replace('_encrypted', '')+'_test.cpp')), '-o', binary], check=True)
                 subprocess.run([binary], check=True, timeout=15)

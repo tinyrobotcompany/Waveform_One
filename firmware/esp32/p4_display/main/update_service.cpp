@@ -70,7 +70,7 @@ static void accept_trial(void)
 bool waveform_update_validate_trial(void)
 {
  portENTER_CRITICAL(&lock);bool valid=trial_validated;portEXIT_CRITICAL(&lock);
- if(!valid&&commands){command_t cmd={.action=5};xQueueSend(commands,&cmd,0);}
+ if(!valid&&commands){command_t cmd{};cmd.action=5;xQueueSend(commands,&cmd,0);}
  return valid;
 }
 static void publish(void)
@@ -86,13 +86,13 @@ void waveform_update_status(waveform_update_status_t *out)
 bool waveform_update_request(const char *action)
 {
  if(!commands||!action)return false;
- command_t c={0};c.action=!strcmp(action,"check")?1:!strcmp(action,"install")?2:!strcmp(action,"postpone")?3:0;
+ command_t c={};c.action=!strcmp(action,"check")?1:!strcmp(action,"install")?2:!strcmp(action,"postpone")?3:0;
  return c.action&&xQueueSend(commands,&c,0)==pdTRUE;
 }
 bool waveform_update_configure(unsigned hours,bool automatic,unsigned start,unsigned end)
 {
  if(!commands||(hours!=1&&hours!=720)||start>=1440||end>=1440||start==end)return false;
- command_t c={.action=4,.hours=hours,.automatic=automatic,.start=start,.end=end};return xQueueSend(commands,&c,0)==pdTRUE;
+ command_t c{};c.action=4;c.hours=hours;c.automatic=automatic;c.start=start;c.end=end;return xQueueSend(commands,&c,0)==pdTRUE;
 }
 /* hop 0 is the URL we chose; later hops come from a Location header.
    Metadata never redirects. Release assets start at this repository's github.com release URL
@@ -111,7 +111,7 @@ static bool allowed_url(const char *url,bool metadata,unsigned hop)
 static esp_err_t response_header(esp_http_client_event_t *event)
 {
  if(event->event_id==HTTP_EVENT_ON_HEADER && event->header_key && event->header_value){
-  response_t *response=event->user_data;
+  auto *response=static_cast<response_t *>(event->user_data);
   if(!strcasecmp(event->header_key,"Location") && strlen(event->header_value)<sizeof(response->location))
    snprintf(response->location,sizeof(response->location),"%s",event->header_value);
   if(!strcasecmp(event->header_key,"Retry-After")){
@@ -136,8 +136,10 @@ static esp_http_client_handle_t open_url(const char *url,int *http,int64_t *body
  for(unsigned redirects=0;redirects<4;redirects++){
   if(!allowed_url(current,metadata,redirects))return NULL;
   memset(&response,0,sizeof(response));
-  esp_http_client_config_t config={.event_handler=response_header,.user_data=&response,.url=current,.timeout_ms=15000,.buffer_size=4096,.buffer_size_tx=2048,
-   .crt_bundle_attach=esp_crt_bundle_attach,.disable_auto_redirect=true};
+  esp_http_client_config_t config{};
+  config.event_handler=response_header;config.user_data=&response;config.url=current;
+  config.timeout_ms=15000;config.buffer_size=4096;config.buffer_size_tx=2048;
+  config.crt_bundle_attach=esp_crt_bundle_attach;config.disable_auto_redirect=true;
   esp_http_client_handle_t h=esp_http_client_init(&config);if(!h)return NULL;
   esp_http_client_set_header(h,"User-Agent","Waveform One-OTA/1");esp_http_client_set_header(h,"Accept-Encoding","identity");
   if(esp_http_client_open(h,0)!=ESP_OK){esp_http_client_cleanup(h);return NULL;}
@@ -155,7 +157,7 @@ static esp_http_client_handle_t open_url(const char *url,int *http,int64_t *body
 static unsigned char *download(const char *url,size_t limit,size_t *length,int *http)
 {
  *length=0;*http=0;esp_http_client_handle_t h=open_url(url,http,NULL);if(!h)return NULL;
- unsigned char *data=malloc(limit+1);bool ok=data!=NULL;int64_t deadline=esp_timer_get_time()+60000000;
+ auto *data=static_cast<unsigned char *>(malloc(limit+1));bool ok=data!=NULL;int64_t deadline=esp_timer_get_time()+60000000;
  while(ok&&*length<limit){int n=esp_http_client_read(h,(char *)data+*length,(int)(limit-*length));if(n<0){ok=false;break;}if(!n)break;*length+=(size_t)n;if(esp_timer_get_time()>deadline)ok=false;}
  ok=ok&&*length>0&&esp_http_client_is_complete_data_received(h);
  esp_http_client_cleanup(h);if(!ok){free(data);return NULL;}data[*length]=0;return data;
@@ -179,7 +181,7 @@ static bool check_release(void)
  cJSON *j=cJSON_ParseWithOpts((char *)data,NULL,true);free(data);
  if(!cJSON_IsObject(j)){cJSON_Delete(j);message(UPDATE_ERROR,"Invalid release metadata.");return false;}
  const cJSON *tag=cJSON_GetObjectItemCaseSensitive(j,"tag_name"),*draft=cJSON_GetObjectItemCaseSensitive(j,"draft"),*pre=cJSON_GetObjectItemCaseSensitive(j,"prerelease");
- char version[32]={0};unsigned parts[3];bool valid=cJSON_IsString(tag)&&tag->valuestring[0]=='v'&&
+ char version[32]={};unsigned parts[3];bool valid=cJSON_IsString(tag)&&tag->valuestring[0]=='v'&&
   waveform_update_version(tag->valuestring+1,parts)&&cJSON_IsFalse(draft)&&cJSON_IsFalse(pre);
  if(valid)snprintf(version,sizeof(version),"%s",tag->valuestring+1);
  cJSON_Delete(j);
@@ -212,7 +214,7 @@ static const char *write_image(const esp_partition_t *partition)
  mbedtls_md_context_t hash;mbedtls_md_init(&hash);
  bool ok=begun&&mbedtls_md_setup(&hash,mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),0)==0&&mbedtls_md_starts(&hash)==0;
  const char *failure=begun?"Firmware checksum verification failed. Current firmware is unchanged.":"Could not prepare update slot. Current firmware is unchanged. Try Install now again.";
- size_t total=0;unsigned char buffer[4096],digest[32]={0};int64_t started=esp_timer_get_time(),deadline=started+300000000;
+ size_t total=0;unsigned char buffer[4096],digest[32]={};int64_t started=esp_timer_get_time(),deadline=started+300000000;
  while(ok&&total<candidate.size){size_t wanted=candidate.size-total;if(wanted>sizeof(buffer))wanted=sizeof(buffer);
   int n=esp_http_client_read(h,(char *)buffer,(int)wanted);
   if(n<=0||esp_timer_get_time()>deadline){
@@ -319,7 +321,7 @@ static void worker(void *unused)
    if(!persist())message(UPDATE_ERROR,"Could not save update check history.");
    publish();
   }
-  time_t civil=(time_t)now;struct tm local={0};bool window=localtime_r(&civil,&local)&&waveform_update_window((unsigned)(local.tm_hour*60+local.tm_min),saved.start,saved.end);
+  time_t civil=(time_t)now;struct tm local={};bool window=localtime_r(&civil,&local)&&waveform_update_window((unsigned)(local.tm_hour*60+local.tm_min),saved.start,saved.end);
   if(ready&&candidate.version[0]&&!countdown&&saved.automatic&&window&&now>=postponed_until){countdown=mono+60000000;message(UPDATE_AVAILABLE,"Scheduled update in 60 seconds. Choose Postpone to cancel.");}
   if(countdown&&mono>=countdown){
    countdown=0;
@@ -339,7 +341,7 @@ esp_err_t waveform_update_start(void)
 {
  if(commands)return ESP_OK;
  trial_validated=trial_accepted=false;
- saved=(saved_t){.schema=1,.hours=720,.automatic=1,.start=180,.end=240};
+ saved={};saved.schema=1;saved.hours=720;saved.automatic=1;saved.start=180;saved.end=240;
  nvs_handle_t h;esp_err_t err=nvs_open("waveform_ota",NVS_READONLY,&h);
  if(err==ESP_OK){saved_t value;size_t n=sizeof(value);err=nvs_get_blob(h,"v1",&value,&n);nvs_close(h);
   if(err==ESP_OK){if(n!=sizeof(value)||value.schema!=1||(value.hours!=1&&value.hours!=720)||value.automatic>1||value.start>=1440||value.end>=1440||value.start==value.end||!memchr(value.pending,0,32)||!memchr(value.blocked,0,32))return ESP_ERR_INVALID_ARG;saved=value;}
