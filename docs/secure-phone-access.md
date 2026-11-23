@@ -94,3 +94,22 @@ and OTA under TLS memory load, reboot persistence and power-loss recovery. No
 hardware acceptance or eFuse provisioning is claimed by the implementation PR.
 
 See [production security](production-security.md) for secure boot and encrypted NVS.
+
+## HTTPS lifecycle safeguards
+
+Startup registers the HTTP handlers and refreshes DNS before publishing the pairing
+QR. The same DNS helper is used by maintenance, so a successful startup/retry does
+not depend on a later maintenance tick to become available.
+
+Expiry suspends phone authorization and hides the QR before attempting shutdown.
+The application retains the server handle and staging certificate/key buffers until
+`httpd_ssl_stop` succeeds. A failed stop is retried; it cannot trigger a second server
+start or re-enable phone authorization through a Wi-Fi reconnect. A failed start
+clears its output handle so later initialization can retry normally.
+
+ESP-IDF v6.1 additionally copies the supplied PEM buffers into server-owned storage
+in `esp_https_server/src/https_server.c`. Its stop operation delegates to `httpd_stop`,
+which waits for `THREAD_STOPPED`. Host regression tests hold shutdown open with a
+simulated active request, check buffer retention, inject a stop failure and verify
+safe retry/restart. These tests establish application lifecycle behavior; they do
+not replace physical-device TLS load/expiry acceptance.

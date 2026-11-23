@@ -6,6 +6,7 @@ enum class MusicVerdict {
     Unavailable, // no model or no memory: callers fall back to the level detector
     Undecided,   // silence, or sound not (yet) shown to be music: talk, appliances
     Music,
+    Speech,     // repeated speech-dominant windows; do not send song lookups
 };
 void music_detector_start();
 MusicVerdict music_detector_verdict();

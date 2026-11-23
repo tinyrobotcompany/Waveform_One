@@ -36,3 +36,18 @@ class ProductionSecurity(unittest.TestCase):
             args=run.call_args.args[0]
             self.assertIn('verify-signature',args)
             self.assertIn('public.pem',args)
+
+    def test_ci_version_fallback_handles_missing_and_empty_inputs(self):
+        import os
+        import re
+        import subprocess
+        workflow=(ROOT/'.github/workflows/validate.yml').read_text().split('  production-security:',1)[1]
+        self.assertIn("${{ inputs.release-version || '0.0.0' }}",workflow)
+        assignment=re.search(r'^\s*(version=.*)$',workflow,re.MULTILINE)
+        self.assertIsNotNone(assignment,'Production CI must also handle an explicitly empty shell value')
+        for value,expected in ((None,'0.0.0'),('','0.0.0'),('1.2.3','1.2.3')):
+            environment=dict(os.environ)
+            environment.pop('WAVEFORM_RELEASE_VERSION',None)
+            if value is not None: environment['WAVEFORM_RELEASE_VERSION']=value
+            result=subprocess.check_output(['sh','-eu','-c',assignment.group(1)+'\nprintf %s "$version"'],env=environment,text=True)
+            self.assertEqual(result,expected)

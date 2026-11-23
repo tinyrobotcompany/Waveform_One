@@ -318,6 +318,7 @@ void bind_remote()
 {
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
+        if (!phone_tls_ready.load()) { auth.suspend(); return; }
         const bool address_changed = !auth.matches_address(verified_phone_host);
         auth.connect(verified_phone_host, esp_timer_get_time());
         if (sessions_restored && address_changed) { sessions_need_save = true; save_phone_sessions(); }
@@ -768,6 +769,29 @@ void scan_task(void *)
     vTaskDelete(nullptr);
 }
 
+void refresh_phone_dns()
+{
+    if (lan_connected.load() && phone_tls_ready.load()) {
+        char ip[16];
+        { const std::lock_guard<std::mutex> lock(auth_mutex); std::snprintf(ip, sizeof(ip), "%s", acquired_host); }
+        const uint32_t address = inet_addr(ip);
+        const bool matches = waveform_phone_dns_matches(waveform_phone_tls_hostname(), address);
+        dns_address.store(address);
+        dns_valid_until.store(matches ? esp_timer_get_time() + 30000000 : 0);
+    } else dns_valid_until.store(0);
+}
+
+void stop_unavailable_phone_server(httpd_handle_t *server)
+{
+    if (!*server || (phone_tls_ready.load() && waveform_phone_tls_time_valid())) return;
+    phone_tls_ready.store(false);
+    dns_valid_until.store(0);
+    { const std::lock_guard<std::mutex> lock(auth_mutex); auth.suspend(); }
+    const esp_err_t stopped = waveform_phone_tls_stop(*server);
+    if (stopped == ESP_OK) *server = nullptr;
+    else ESP_LOGE(kTag, "Phone HTTPS shutdown deferred: %s", esp_err_to_name(stopped));
+}
+
 void start_secure_phone_server(httpd_handle_t *server)
 {
     // SNTP is independent of phone pairing; retry rather than accepting invalid dates.
@@ -787,7 +811,6 @@ void start_secure_phone_server(httpd_handle_t *server)
             const std::lock_guard<std::mutex> lock(auth_mutex);
             std::snprintf(verified_phone_host, sizeof(verified_phone_host), "%s", waveform_phone_tls_hostname());
         }
-        bind_remote();
         register_uri(*server, "/api/history", HTTP_POST, history_handler);
         register_uri(*server, "/", HTTP_GET, page_handler);
         register_uri(*server, "/pair", HTTP_GET, pair_handler);
@@ -801,6 +824,8 @@ void start_secure_phone_server(httpd_handle_t *server)
         register_uri(*server, "/api/name", HTTP_POST, name_handler);
         register_uri(*server, "/api/appearance", HTTP_POST, appearance_handler);
         register_uri(*server, "/api/time", HTTP_POST, time_handler);
+        refresh_phone_dns();
+        bind_remote(); // publish only after routes and DNS are ready
     }
 }
 
@@ -873,11 +898,8 @@ void network_task(void *)
 
     // Keep the on-screen pairing code valid and rejoin home Wi-Fi after a drop.
     for (;;) {
-        if(phone_tls_ready.load()&&!waveform_phone_tls_time_valid()){
-            phone_tls_ready.store(false);dns_valid_until.store(0);
-            waveform_phone_tls_stop(server);server=nullptr;
-        }
-        if(!phone_tls_ready.load()&&lan_connected.load())start_secure_phone_server(&server);
+        stop_unavailable_phone_server(&server);
+        if(!server&&lan_connected.load())start_secure_phone_server(&server);
         bool rotated = false;
         bool bound = false;
         {
@@ -887,14 +909,7 @@ void network_task(void *)
             rotated = auth.refresh_pairing(esp_timer_get_time());
             bound = lan_connected.load();
         }
-        if (bound && phone_tls_ready.load()) {
-            char ip[16];
-            { const std::lock_guard<std::mutex> lock(auth_mutex); std::snprintf(ip, sizeof(ip), "%s", acquired_host); }
-            const uint32_t address = inet_addr(ip);
-            const bool matches = waveform_phone_dns_matches(waveform_phone_tls_hostname(), address);
-            dns_address.store(address);
-            dns_valid_until.store(matches ? esp_timer_get_time() + 30000000 : 0);
-        } else dns_valid_until.store(0);
+        refresh_phone_dns();
         (void)rotated;
         publish_remote();
         if (!bound && maintaining_home.load() && !configuring_home.load()) {

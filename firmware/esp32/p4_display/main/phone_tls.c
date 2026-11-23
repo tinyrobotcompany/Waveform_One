@@ -14,6 +14,7 @@
 
 /* Separate from settings and OTA metadata; never erase on an initialization error. */
 static char hostname[97];
+static httpd_handle_t active_server;
 static char *certificate, *private_key, *trust_bundle;
 static struct { mbedtls_x509_time from, to; } validity[16];
 static size_t validity_count;
@@ -95,6 +96,7 @@ static bool matches_identity(void)
 esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *config)
 {
     if(!server||!config)return ESP_ERR_INVALID_ARG;
+    if(active_server)return ESP_ERR_INVALID_STATE;
     *server=NULL;
     clear_identity();
     esp_err_t err;
@@ -126,8 +128,22 @@ esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *
     ssl.prvtkey_pem=(const unsigned char *)private_key;ssl.prvtkey_len=strlen(private_key)+1;
     err=httpd_ssl_start(server,&ssl);
     if(err==ESP_OK&&!*server)err=ESP_FAIL;
-    if(err!=ESP_OK)clear_identity();
+    if(err!=ESP_OK){*server=NULL;clear_identity();}
+    else active_server=*server;
     return err;
 }
-void waveform_phone_tls_stop(httpd_handle_t server){if(server)httpd_ssl_stop(server);clear_identity();}
+esp_err_t waveform_phone_tls_stop(httpd_handle_t server)
+{
+    if(server!=active_server)return ESP_ERR_INVALID_STATE;
+    if(server){
+        /* ESP-IDF v6.1 copies both PEM buffers in https_server.c. Its httpd_ssl_stop
+         * delegates to httpd_stop, which waits for THREAD_STOPPED before releasing
+         * server contexts. Retain our buffers AND handle if shutdown fails. */
+        const esp_err_t err=httpd_ssl_stop(server);
+        if(err!=ESP_OK)return err;
+    }
+    active_server=NULL;
+    clear_identity();
+    return ESP_OK;
+}
 const char *waveform_phone_tls_hostname(void){return hostname;}

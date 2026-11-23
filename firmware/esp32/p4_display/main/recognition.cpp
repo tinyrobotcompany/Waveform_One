@@ -20,6 +20,7 @@
 #include "fingerprint.h"
 #include "listening.h"
 #include "music_detector.h"
+#include "recognition_gate.h"
 #include "usb_controller.h"
 
 #include <algorithm>
@@ -68,7 +69,7 @@ std::atomic_bool music_heard{false};
 std::atomic_bool cloud_configured{false};
 std::atomic_bool local_startup_ready{false};
 // Sound has gone on for a while without the classifier calling it music:
-// lookups still run, cautiously, in case it is music the classifier misses.
+// cautious lookups cover uncertain audio, but never confirmed speech.
 std::atomic_bool cautious_lookups{false};
 constexpr int64_t kUnconfirmedSoundUs = 30000000;
 struct SoundSession { Session session; audio_presence::Snapshot audio; uint64_t transport_epoch; };
@@ -215,6 +216,13 @@ void compare_pcm(const int16_t *pcm, size_t count, int original_code, recognitio
 
 static recognition_http::Connection recognition_connection;
 
+// Checked again before opening and between bounded upload/read chunks, so
+// a newly confirmed speech verdict can stop an already-prepared request.
+static bool recognition_upload_allowed(void *context)
+{
+    return microphone_privacy::Permit::check(context) && music_detector_verdict() != MusicVerdict::Speech;
+}
+
 // Identifies a stretch of audio with ACRCloud. pcm holds 16 kHz samples.
 Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64_t &service_delay, microphone_privacy::Permit permit)
 {
@@ -235,7 +243,7 @@ Lookup identify(const int16_t *pcm, size_t count, RecognitionTrack &track, int64
     Response response;
     // One connection kept open: no TCP/TLS handshake per lookup.
     auto &connection = recognition_connection;
-    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, microphone_privacy::Permit::check, &permit}, 64 * 1024,
+    if (!fetch(url.c_str(), recognition_http::Body{body.data(), body.size(), type.c_str(), false, recognition_upload_allowed, &permit}, 64 * 1024,
                response, &connection)) {
         service_delay = response.retry_after_us;
         return Lookup::Failed;
@@ -456,7 +464,7 @@ void presence_task(void *)
     int64_t last_diagnostic = 0;
     // Recognition and the display follow music, not just sound: sound counts
     // once the classifier calls it music, a song from it is on screen, or it
-    // has gone on for 30 s (cautious lookups). Talk alone stays on the home
+    // is uncertain for 30 s (cautious lookups). Confirmed speech stays on the home
     // screen and costs no lookups.
     bool music = false;
     int64_t sound_since = 0;
@@ -477,12 +485,13 @@ void presence_task(void *)
         if (!raw.sound) sound_since = 0;
         else if (!sound_since) sound_since = now;
         const auto verdict = music_detector_verdict();
-        const bool classified = verdict == MusicVerdict::Music || verdict == MusicVerdict::Unavailable
-            || track_visible.load();
+        // A speech gap must not inherit a fallback deadline from a podcast.
+        if (verdict == MusicVerdict::Speech) sound_since = now;
         const bool unconfirmed = raw.sound && now - sound_since >= kUnconfirmedSoundUs;
-        cautious_lookups.store(unconfirmed && !classified);
-        const bool wanted = raw.sound && (classified || unconfirmed);
-        music_heard.store(raw.sound && classified);
+        const auto decision = recognition_gate::decide(raw.sound, verdict, track_visible.load(), unconfirmed);
+        cautious_lookups.store(decision.cautious);
+        const bool wanted = decision.active;
+        music_heard.store(decision.led);
         if (kContinuousRecognition || wanted == music) return;
         music = wanted;
         ESP_LOGI(kTag, "Music %s verdict=%d track=%d unconfirmed=%d", music ? "started" : "ended",
@@ -633,6 +642,10 @@ void recognition_task(void *)
             clear(); recent = {}; recent_image = {}; planner.stopped();
             vTaskDelay(pdMS_TO_TICKS(20)); continue;
         }
+        if (music_detector_verdict() == MusicVerdict::Speech) {
+            planner.stopped(); clear();
+            vTaskDelay(pdMS_TO_TICKS(20)); continue;
+        }
         const auto current = sound_session();
         const auto *audio = recognition_input_audio();
         size_t count = 0;
@@ -666,7 +679,7 @@ void recognition_task(void *)
             show_now(current.audio.sound ? RecognitionStatus::Capturing : RecognitionStatus::Waiting);
         }
         if (paid && !current.audio.sound) planner.observe_quiet(heard, quiet_hop);
-        // Sound the classifier has not called music for 30 s: one try, then
+        // Uncertain sound not classified as speech or music for 30 s: one try, then
         // one every two minutes, so music it misses is still identified.
         planner.set_cautious(cautious_lookups.load());
         // Retry a busy display using still-owned track/artwork. A session
@@ -677,7 +690,7 @@ void recognition_task(void *)
         // HTTPS/catalogue work may leave seconds of queued audio. Drain it
         // before choosing the next window; otherwise each slow lookup can
         // trigger another lookup on old samples before reaching current audio.
-        if (recognition_policy::request_allowed(paid, current.session, planner.acquiring(), caught_up)
+        if (recognition_policy::request_allowed(paid, current.session, planner.acquiring(), caught_up, music_detector_verdict() == MusicVerdict::Speech)
             && std::time(nullptr) >= 1704067200 && retries.due(now)
             && (!paid || now - last_request_at >= 2500000)
             && budget.available(now) && planner.due(heard, window)) {
@@ -719,6 +732,9 @@ void recognition_task(void *)
                     static_cast<unsigned long long>(region.first), static_cast<unsigned long long>(region.last),
                     static_cast<unsigned long long>(analysis_base + uint64_t(window.last) * fingerprint::kHopSamples));
             }
+            // A locally cancelled speech request is not a cloud-service outage.
+            // Keep the spent-request budget, but do not delay the next real song.
+            if (music_detector_verdict() == MusicVerdict::Speech) { planner.stopped(); clear(); continue; }
             // Account for the request before presentation/session checks. A
             // quiet/disconnect transition must not discard service backoff.
             if (outcome == Lookup::Failed) {

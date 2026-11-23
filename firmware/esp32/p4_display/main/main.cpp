@@ -30,6 +30,7 @@
 #include "recognition_feedback.h"
 #include "display_schedule.h"
 #include "settings_layout.h"
+#include "settings_tile_style.h"
 #include "search_waveform.h"
 #include "update_feedback.h"
 #include "album_palette.h"
@@ -78,6 +79,7 @@ lv_obj_t *wifi_settings = nullptr, *display_settings = nullptr, *phone_settings 
 lv_obj_t *microphone_hub_label = nullptr;
 void style_update_button(lv_obj_t *button);
 void position_settings_tile(lv_obj_t *button, unsigned index) {
+    style_settings_tile(button, kAccent, kLine);
     const auto rect = settings_layout::tile(index);
     lv_obj_set_size(button, rect.w, rect.h);
     lv_obj_align(button, LV_ALIGN_TOP_LEFT, rect.x, rect.y);
@@ -401,9 +403,6 @@ void refresh_microphone() {
 void create_microphone_controls(lv_obj_t *screen) {
     auto *open = lv_button_create(settings_panel);
     position_settings_tile(open, settings_layout::Microphone);
-    lv_obj_set_style_bg_color(open, kPanel, 0);
-    lv_obj_set_style_border_width(open, 2, 0);
-    lv_obj_set_style_border_color(open, kLine, 0);
     microphone_hub_label = make_label(open, "Microphone", &lv_font_montserrat_20, kForeground);
     lv_obj_center(microphone_hub_label);
     lv_obj_add_event_cb(open, [](lv_event_t *) { refresh_microphone(); lv_obj_remove_flag(microphone_panel, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(microphone_panel); }, LV_EVENT_CLICKED, nullptr);
@@ -998,13 +997,6 @@ void create_setup_guide(lv_obj_t *screen)
 void create_updates_screen(lv_obj_t *screen)
 {
     auto *open = lv_button_create(settings_panel);
-    lv_obj_set_size(open, 220, 52);
-    lv_obj_set_style_bg_opa(open, LV_OPA_TRANSP, LV_STATE_DEFAULT);
-    lv_obj_set_style_border_color(open, kLine, LV_STATE_DEFAULT);
-    lv_obj_set_style_border_width(open, 1, LV_STATE_DEFAULT);
-    lv_obj_set_style_shadow_width(open, 0, LV_STATE_DEFAULT);
-    lv_obj_set_style_bg_color(open, kAccent, LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(open, LV_OPA_COVER, LV_STATE_PRESSED);
     position_settings_tile(open, settings_layout::Updates);
     lv_obj_center(make_label(open, "Software updates", &lv_font_montserrat_20, kForeground));
     lv_obj_add_event_cb(open, [](lv_event_t *) { lv_obj_remove_flag(updates_panel, LV_OBJ_FLAG_HIDDEN); }, LV_EVENT_CLICKED, nullptr);
@@ -1091,7 +1083,7 @@ lv_obj_t *create_settings_page(const char *name, unsigned slot)
         lv_obj_add_flag(static_cast<lv_obj_t *>(lv_event_get_user_data(event)), LV_OBJ_FLAG_HIDDEN);
     }, LV_EVENT_CLICKED, page);
     auto *open = lv_button_create(settings_panel);
-    style_update_button(open); position_settings_tile(open, slot);
+    position_settings_tile(open, slot);
     lv_obj_center(make_label(open, name, &lv_font_montserrat_20, kForeground));
     lv_obj_add_event_cb(open, [](lv_event_t *event) {
         auto *target = static_cast<lv_obj_t *>(lv_event_get_user_data(event));

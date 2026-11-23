@@ -107,12 +107,13 @@ jobs:
       - name: Build and verify factory profile without provisioning hardware
         shell: bash
         env:
-          WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
+          WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version || '0.0.0' }}
         run: |
           . "$IDF_PATH/export.sh"
+          version="${WAVEFORM_RELEASE_VERSION:-0.0.0}"
           umask 077
           scratch=$(mktemp -d "$RUNNER_TEMP/waveform-security.XXXXXX")
           trap 'rm -rf "$scratch"' EXIT
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$scratch/test-only.pem" 2>/dev/null
-          python scripts/build-production.py --output "$scratch/factory" --signing-key "$scratch/test-only.pem" --version "$WAVEFORM_RELEASE_VERSION"
+          python scripts/build-production.py --output "$scratch/factory" --signing-key "$scratch/test-only.pem" --version "$version"
           # Deliberately no upload step: test-signed factory images are not release artifacts.
