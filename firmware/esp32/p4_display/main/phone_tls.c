@@ -15,8 +15,26 @@
 /* Separate from settings and OTA metadata; never erase on an initialization error. */
 static char hostname[97];
 static char *certificate, *private_key, *trust_bundle;
+static struct { mbedtls_x509_time from, to; } validity[16];
+static size_t validity_count;
+bool waveform_phone_tls_time_valid(void)
+{
+    if(!validity_count)return false;
+    for(size_t i=0;i<validity_count;++i)
+        if(mbedtls_x509_time_is_future(&validity[i].from)||mbedtls_x509_time_is_past(&validity[i].to))return false;
+    return true;
+}
+static bool remember_validity(const mbedtls_x509_crt *chain)
+{
+    for(const mbedtls_x509_crt *c=chain;c;c=c->next){
+        if(validity_count==sizeof(validity)/sizeof(validity[0]))return false;
+        validity[validity_count].from=c->valid_from;validity[validity_count++].to=c->valid_to;
+    }
+    return true;
+}
 static void clear_identity(void)
 {
+    validity_count=0;
     if(private_key){volatile char *p=private_key;size_t n=strlen(private_key);while(n--)*p++=0;}
     free(private_key);free(certificate);free(trust_bundle);private_key=certificate=trust_bundle=NULL;hostname[0]=0;
 }
@@ -66,11 +84,11 @@ static bool matches_identity(void)
     }
     if(result==0){
         uint32_t flags=0;
-        /* Verify the chain against the separately provisioned issuer trust. The browser
-           additionally enforces validity dates even before this device has SNTP. */
+        /* Never waive validity dates. Startup is retried once network time is usable. */
         result=mbedtls_x509_crt_verify(&cert,&trust,NULL,hostname,&flags,NULL,NULL);
-        if(result==MBEDTLS_ERR_X509_CERT_VERIFY_FAILED &&
-           !(flags & ~(MBEDTLS_X509_BADCERT_EXPIRED|MBEDTLS_X509_BADCERT_FUTURE)))result=0;
+        if(result==0 && flags)result=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
+        if(result==0 && (!remember_validity(&cert)||!remember_validity(&trust)||!waveform_phone_tls_time_valid()))
+            result=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
     }
     mbedtls_pk_free(&key);mbedtls_x509_crt_free(&cert);mbedtls_x509_crt_free(&trust);return result==0;
 }

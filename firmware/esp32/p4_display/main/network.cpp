@@ -767,6 +767,38 @@ void scan_task(void *)
     vTaskDelete(nullptr);
 }
 
+void start_secure_phone_server(httpd_handle_t *server)
+{
+    // SNTP is independent of phone pairing; retry rather than accepting invalid dates.
+    if(std::time(nullptr)<1700000000)return;
+    httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
+    server_config.max_uri_handlers = 20;
+    // Bound concurrent inbound TLS handshakes; background recognition/OTA also use TLS.
+    server_config.max_open_sockets = 2;
+    server_config.lru_purge_enable = true;
+    server_config.recv_wait_timeout = 5;
+    server_config.send_wait_timeout = 5;
+    const esp_err_t tls_result = waveform_phone_tls_start(server, &server_config);
+    phone_tls_ready.store(tls_result == ESP_OK);
+    if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: provision a valid identity over USB (%s)", esp_err_to_name(tls_result));
+    if (phone_tls_ready.load()) {
+    bind_remote();
+    register_uri(*server, "/api/history", HTTP_POST, history_handler);
+    register_uri(*server, "/", HTTP_GET, page_handler);
+    register_uri(*server, "/pair", HTTP_GET, pair_handler);
+    register_uri(*server, "/api/session", HTTP_GET, session_handler);
+    register_uri(*server, "/api/state", HTTP_GET, state_handler);
+    register_uri(*server, "/api/updates", HTTP_GET, update_status_handler);
+    register_uri(*server, "/api/updates/action", HTTP_POST, update_action_handler);
+    register_uri(*server, "/api/updates/config", HTTP_POST, update_config_handler);
+    register_uri(*server, "/api/style", HTTP_POST, style_handler);
+    register_uri(*server, "/api/brightness", HTTP_POST, brightness_handler);
+    register_uri(*server, "/api/name", HTTP_POST, name_handler);
+    register_uri(*server, "/api/appearance", HTTP_POST, appearance_handler);
+    register_uri(*server, "/api/time", HTTP_POST, time_handler);
+    }
+}
+
 void network_task(void *)
 {
     esp_err_t result = nvs_flash_init();
@@ -824,33 +856,8 @@ void network_task(void *)
     wifi_ready.store(true);
     network_request_scan();
 
-    httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
-    server_config.max_uri_handlers = 20;
     httpd_handle_t server = nullptr;
-    // Bound concurrent inbound TLS handshakes; background recognition/OTA also use TLS.
-    server_config.max_open_sockets = 2;
-    server_config.lru_purge_enable = true;
-    server_config.recv_wait_timeout = 5;
-    server_config.send_wait_timeout = 5;
-    const esp_err_t tls_result = waveform_phone_tls_start(&server, &server_config);
-    phone_tls_ready.store(tls_result == ESP_OK);
-    if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: provision a valid identity over USB (%s)", esp_err_to_name(tls_result));
-    if (phone_tls_ready.load()) {
-    bind_remote();
-    register_uri(server, "/api/history", HTTP_POST, history_handler);
-    register_uri(server, "/", HTTP_GET, page_handler);
-    register_uri(server, "/pair", HTTP_GET, pair_handler);
-    register_uri(server, "/api/session", HTTP_GET, session_handler);
-    register_uri(server, "/api/state", HTTP_GET, state_handler);
-    register_uri(server, "/api/updates", HTTP_GET, update_status_handler);
-    register_uri(server, "/api/updates/action", HTTP_POST, update_action_handler);
-    register_uri(server, "/api/updates/config", HTTP_POST, update_config_handler);
-    register_uri(server, "/api/style", HTTP_POST, style_handler);
-    register_uri(server, "/api/brightness", HTTP_POST, brightness_handler);
-    register_uri(server, "/api/name", HTTP_POST, name_handler);
-    register_uri(server, "/api/appearance", HTTP_POST, appearance_handler);
-    register_uri(server, "/api/time", HTTP_POST, time_handler);
-    }
+    start_secure_phone_server(&server);
     update_local_ready.store(true); // local boot/recognition must not depend on a phone identity
     publish_remote();
     if (connected) {
@@ -861,6 +868,11 @@ void network_task(void *)
 
     // Keep the on-screen pairing code valid and rejoin home Wi-Fi after a drop.
     for (;;) {
+        if(phone_tls_ready.load()&&!waveform_phone_tls_time_valid()){
+            phone_tls_ready.store(false);dns_valid_until.store(0);
+            waveform_phone_tls_stop(server);server=nullptr;
+        }
+        if(!phone_tls_ready.load()&&lan_connected.load())start_secure_phone_server(&server);
         bool rotated = false;
         bool bound = false;
         {

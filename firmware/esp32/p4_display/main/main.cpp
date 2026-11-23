@@ -749,7 +749,7 @@ void remote_set_network(NetworkMode mode, const char *address)
         lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(network_qr_placeholder, LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(network_heading, "SECURE PHONE SETUP");
-        lv_label_set_text(network_instructions, "Wi-Fi connected. Phone access needs\na valid certificate and matching DNS.\nSee USB provisioning instructions.");
+        lv_label_set_text(network_instructions, "Wi-Fi connected. Phone access needs\nnetwork time, a certificate and DNS.\nSee USB provisioning instructions.");
         lv_label_set_text(wifi_status, "Connected. Secure phone setup pending.");
     } else if (mode == NetworkMode::Reconnecting) {
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);

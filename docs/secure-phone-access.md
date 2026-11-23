@@ -66,7 +66,9 @@ Scan the new QR to pair. HTTP-era sessions are invalidated; cookies are Secure,
 HttpOnly and SameSite=Strict. Exact HTTPS Origin, Host and CSRF checks remain.
 A DHCP address change no longer invalidates sessions if the hostname stays fixed.
 
-Missing/bad certificates disable phone access and show secure-setup instructions.
+Missing/bad/expired certificates disable phone access and show secure-setup instructions.
+Phone service waits for usable network time and retries initialization in the background;
+certificate validity is rechecked during maintenance and expired service is stopped.
 They do not prevent local boot, Wi-Fi recognition, the visualizer or OTA checks.
 Recognition network readiness is independent of QR/certificate readiness.
 

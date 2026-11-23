@@ -4,7 +4,9 @@
 static int init_error,open_error,read_error,parse_error,key_error,pair_error,verify_error,start_error;
 static unsigned starts,stops;static uint32_t verify_flags;
 static const char *name="device-a7f3.waveform.tinyrobotcompany.io";
-static size_t fake_size;static bool self_signed,ca_leaf;
+static size_t fake_size;static bool self_signed,ca_leaf,clock_expired;
+int mbedtls_x509_time_is_past(const mbedtls_x509_time *t){(void)t;return clock_expired;}
+int mbedtls_x509_time_is_future(const mbedtls_x509_time *t){(void)t;return 0;}
 #ifdef CONFIG_NVS_ENCRYPTION
 static int key_error_read, missing_keys;
 static esp_partition_t keys;
@@ -47,7 +49,8 @@ int main(void){httpd_handle_t server=NULL;httpd_config_t config=HTTPD_DEFAULT_CO
  key_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0);key_error=0;
  pair_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0);pair_error=0;
  verify_error=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;verify_flags=4;assert(waveform_phone_tls_start(&server,&config)!=0);assert(!starts);
- verify_flags=MBEDTLS_X509_BADCERT_FUTURE;assert(waveform_phone_tls_start(&server,&config)==0);waveform_phone_tls_stop(server);
+ verify_flags=MBEDTLS_X509_BADCERT_FUTURE;assert(waveform_phone_tls_start(&server,&config)!=0);
+ verify_flags=MBEDTLS_X509_BADCERT_EXPIRED;assert(waveform_phone_tls_start(&server,&config)!=0);
  verify_error=0;verify_flags=0;start_error=-1;assert(waveform_phone_tls_start(&server,&config)!=0&&!waveform_phone_tls_hostname()[0]);start_error=0;
- assert(waveform_phone_tls_start(&server,&config)==0&&!strcmp(waveform_phone_tls_hostname(),name));waveform_phone_tls_stop(server);assert(stops==2&&!private_key&&!certificate);
+ assert(waveform_phone_tls_start(&server,&config)==0&&!strcmp(waveform_phone_tls_hostname(),name));assert(waveform_phone_tls_time_valid());clock_expired=true;assert(!waveform_phone_tls_time_valid());clock_expired=false;waveform_phone_tls_stop(server);assert(!waveform_phone_tls_time_valid());assert(stops==1&&!private_key&&!certificate);
  puts("PASS: HTTPS identity failures fail closed; keys match, hostname checked, TLS-only startup");}
