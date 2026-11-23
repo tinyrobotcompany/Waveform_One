@@ -861,7 +861,6 @@ void network_task(void *)
 
     // Keep the on-screen pairing code valid and rejoin home Wi-Fi after a drop.
     for (;;) {
-        vTaskDelay(kMaintenanceInterval);
         bool rotated = false;
         bool bound = false;
         {
@@ -877,7 +876,7 @@ void network_task(void *)
             const uint32_t address = inet_addr(ip);
             const bool matches = waveform_phone_dns_matches(waveform_phone_tls_hostname(), address);
             dns_address.store(address);
-            dns_valid_until.store(matches ? esp_timer_get_time() + 10000000 : 0);
+            dns_valid_until.store(matches ? esp_timer_get_time() + 30000000 : 0);
         } else dns_valid_until.store(0);
         (void)rotated;
         publish_remote();
@@ -887,6 +886,7 @@ void network_task(void *)
                 ESP_LOGW(kTag, "Home Wi-Fi rejoin deferred: %s", esp_err_to_name(reconnect));
             }
         }
+        vTaskDelay(kMaintenanceInterval);
     }
 }
 

@@ -10,7 +10,7 @@ that hostname to the device's reserved LAN address. Use a router reservation and
 local/split DNS, or a public A record pointing to that private address where the
 router permits it. DNS rebinding protection can block the latter. Do not forward
 port 443 on the router. The QR is suppressed when DNS is unresolved, mixed, IPv6-only
-or points elsewhere; the worker rechecks approximately every 10 seconds.
+or points elsewhere; the worker rechecks on startup and approximately every 15 seconds.
 
 Use a publicly trusted CA certificate obtained using DNS validation for normal
 customers. This can be issued and renewed from an operator workstation; no permanent
