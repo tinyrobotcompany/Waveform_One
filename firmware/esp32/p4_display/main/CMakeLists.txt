@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "network_activity.c" "update_service.c" "update_policy.c" "main.cpp" "display_schedule.cpp" "idle_display.cpp" "idle_display_ui.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
+    SRCS "phone_tls.c" "phone_dns.c" "network_activity.c" "update_service.c" "update_policy.c" "main.cpp" "display_schedule.cpp" "idle_display.cpp" "idle_display_ui.cpp" "usb_controller.cpp" "network.cpp" "fingerprint.cpp"
          "recognition.cpp" "recognition_credentials.cpp" "recognition_input.cpp" "p4_led.cpp" "unicode_font.cpp" "../third_party/cJSON.c"
          "music_detector.cpp" "microphone_privacy.cpp" "../../common/music_features.cpp"
          "fonts/waveform_font_16.c" "fonts/waveform_font_20.c"
@@ -13,7 +13,7 @@ idf_component_register(
     EMBED_TXTFILES "ota_public.pem"
     REQUIRES esp32_p4_wifi6_touch_lcd_7b lvgl__lvgl
     PRIV_REQUIRES esp_psram esp_system spi_flash esp_wifi esp_event esp_netif
-                  esp_http_server esp_timer nvs_flash esp_driver_sdmmc heap
+                  esp_http_server esp_https_server esp_timer nvs_flash esp_driver_sdmmc heap
                   esp_http_client mbedtls esp_new_jpeg esp-dsp esp_codec_dev esp_driver_parlio
                   espressif__esp-tflite-micro esp_partition app_update)
 

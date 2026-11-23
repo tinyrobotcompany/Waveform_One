@@ -1,0 +1,11 @@
+# New factory devices only: signed bootloader needs a larger reserved region.
+# Name, Type, SubType, Offset, Size, Flags
+nvs, data, nvs, 0x11000, 0x6000,
+phy_init, data, phy, 0x17000, 0x1000,
+ota_0, app, ota_0, 0x20000, 8M,
+music_model, data, 0x40, 0x820000, 4M,
+storage, data, spiffs, 0xc20000, 3M,
+otadata, data, ota, 0xf20000, 0x2000,
+ota_1, app, ota_1, 0x1000000, 8M,
+phone_tls, data, nvs, 0x1800000, 0x10000,
+nvs_keys, data, nvs_keys, 0x1810000, 0x1000, encrypted

@@ -3,7 +3,14 @@
 #include <stdint.h>
 #include <stddef.h>
 #define WAVEFORM_UPDATE_TARGET "waveshare-p4-7b-rev3-32mb"
-#define WAVEFORM_UPDATE_LAYOUT "waveform-ab8-model-v1"
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+#ifdef CONFIG_WAVEFORM_PRODUCTION_SECURITY
+#define WAVEFORM_UPDATE_LAYOUT "waveform-ab8-secure-v1"
+#else
+#define WAVEFORM_UPDATE_LAYOUT "waveform-ab8-https-v1"
+#endif
 #define WAVEFORM_UPDATE_BASE "https://github.com/tinyrobotcompany/Waveform_One/releases/download/"
 typedef enum { UPDATE_IDLE, UPDATE_CHECKING, UPDATE_AVAILABLE, UPDATE_DOWNLOADING,
  UPDATE_VERIFYING, UPDATE_RESTARTING, UPDATE_ERROR } waveform_update_state_t;

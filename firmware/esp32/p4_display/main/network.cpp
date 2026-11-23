@@ -1,6 +1,9 @@
 #include "listening_history.h"
 #include "cJSON.h"
 #include "network.h"
+#include "phone_tls.h"
+#include "phone_dns.h"
+#include <arpa/inet.h>
 
 #include <algorithm>
 #include <atomic>
@@ -46,7 +49,11 @@ constexpr TickType_t kMaintenanceInterval = pdMS_TO_TICKS(15000);
 int connection_attempts = 0;
 std::atomic_bool credentials_rejected{false};
 std::mutex auth_mutex;
+std::atomic_bool lan_connected{false}, phone_tls_ready{false};
+std::atomic<uint32_t> dns_address{0};
+std::atomic<int64_t> dns_valid_until{0};
 char acquired_host[16]{}; // guarded by auth_mutex
+char verified_phone_host[97]{}; // guarded by auth_mutex; never read mutable TLS buffers from Wi-Fi callbacks
 remote_auth::RemoteAuth auth{esp_fill_random};
 // Guarded by auth_mutex. Only pairing changes write NVS, never status polling.
 bool sessions_restored = false;
@@ -153,8 +160,8 @@ bool request_header(httpd_req_t *request, const char *name, char *value, size_t 
 }
 
 struct RequestHeaders {
-    char host[32]{};
-    char origin[48]{};
+    char host[128]{};
+    char origin[160]{};
     char cookies[513]{};
     char csrf[65]{};
 };
@@ -176,6 +183,7 @@ void set_page_security_headers(httpd_req_t *request)
                        "frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     httpd_resp_set_hdr(request, "X-Frame-Options", "DENY");
     httpd_resp_set_hdr(request, "Referrer-Policy", "no-referrer");
+    httpd_resp_set_hdr(request, "Strict-Transport-Security", "max-age=31536000");
     httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
 }
 
@@ -282,15 +290,23 @@ std::mutex publish_mutex;
 void publish_remote()
 {
     const std::lock_guard<std::mutex> publishing(publish_mutex);
-    char address[96]{};
+    char address[160]{};
+    char network_identity[64]{};
     bool available = false;
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
-        available = auth.pairing_url(address, sizeof(address));
+        const uint32_t ip = inet_addr(acquired_host);
+        available = phone_tls_ready.load() && dns_address.load() == ip &&
+            esp_timer_get_time() < dns_valid_until.load() && auth.pairing_url(address, sizeof(address));
+        std::snprintf(network_identity, sizeof(network_identity), "https://%s", acquired_host);
     }
+    // Cloud recognition depends on Wi-Fi, not phone certificate/DNS availability.
+    recognition_set_network(lan_connected.load(), network_identity);
     if (controls.set_network == nullptr) return;
     if (available) {
         controls.set_network(NetworkMode::HomeWifi, address);
+    } else if (lan_connected.load()) {
+        controls.set_network(NetworkMode::HomeWifi, "");
     } else if (maintaining_home.load()) {
         controls.set_network(NetworkMode::Reconnecting, "");
     } else {
@@ -302,8 +318,9 @@ void bind_remote()
 {
     {
         const std::lock_guard<std::mutex> lock(auth_mutex);
-        const bool address_changed = !auth.matches_address(acquired_host);
-        auth.connect(acquired_host, esp_timer_get_time());
+        if (!phone_tls_ready.load()) { auth.suspend(); return; }
+        const bool address_changed = !auth.matches_address(verified_phone_host);
+        auth.connect(verified_phone_host, esp_timer_get_time());
         if (sessions_restored && address_changed) { sessions_need_save = true; save_phone_sessions(); }
     }
     publish_remote();
@@ -325,6 +342,7 @@ void revoke_remote()
 
 void suspend_remote()
 {
+    lan_connected.store(false); dns_valid_until.store(0);
     const std::lock_guard<std::mutex> lock(auth_mutex);
     auth.suspend();
 }
@@ -373,6 +391,7 @@ esp_err_t state_handler(httpd_req_t *request)
         valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(request, "Strict-Transport-Security", "max-age=31536000");
     httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
     if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
     const std::string state = remote_state.json();
@@ -393,6 +412,7 @@ esp_err_t update_status_handler(httpd_req_t *request)
         valid = auth.session_csrf(headers.host, headers.cookies, esp_timer_get_time(), csrf);
     }
     httpd_resp_set_hdr(request, "Cache-Control", "no-store");
+    httpd_resp_set_hdr(request, "Strict-Transport-Security", "max-age=31536000");
     httpd_resp_set_hdr(request, "X-Content-Type-Options", "nosniff");
     if (!valid) return httpd_resp_send_err(request, HTTPD_401_UNAUTHORIZED, "Pairing required");
     waveform_update_status_t value{};
@@ -630,6 +650,7 @@ void wifi_event(void *, esp_event_base_t base, int32_t event_id, void *event_dat
             std::snprintf(acquired_host, sizeof(acquired_host), IPSTR,
                           IP2STR(&event->ip_info.ip));
         }
+        lan_connected.store(true); dns_valid_until.store(0);
         if (maintaining_home.load()) bind_remote();
         xEventGroupSetBits(wifi_events, kConnected);
     }
@@ -748,6 +769,66 @@ void scan_task(void *)
     vTaskDelete(nullptr);
 }
 
+void refresh_phone_dns()
+{
+    if (lan_connected.load() && phone_tls_ready.load()) {
+        char ip[16];
+        { const std::lock_guard<std::mutex> lock(auth_mutex); std::snprintf(ip, sizeof(ip), "%s", acquired_host); }
+        const uint32_t address = inet_addr(ip);
+        const bool matches = waveform_phone_dns_matches(waveform_phone_tls_hostname(), address);
+        dns_address.store(address);
+        dns_valid_until.store(matches ? esp_timer_get_time() + 30000000 : 0);
+    } else dns_valid_until.store(0);
+}
+
+void stop_unavailable_phone_server(httpd_handle_t *server)
+{
+    if (!*server || (phone_tls_ready.load() && waveform_phone_tls_time_valid())) return;
+    phone_tls_ready.store(false);
+    dns_valid_until.store(0);
+    { const std::lock_guard<std::mutex> lock(auth_mutex); auth.suspend(); }
+    const esp_err_t stopped = waveform_phone_tls_stop(*server);
+    if (stopped == ESP_OK) *server = nullptr;
+    else ESP_LOGE(kTag, "Phone HTTPS shutdown deferred: %s", esp_err_to_name(stopped));
+}
+
+void start_secure_phone_server(httpd_handle_t *server)
+{
+    // SNTP is independent of phone pairing; retry rather than accepting invalid dates.
+    if(std::time(nullptr)<1700000000)return;
+    httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
+    server_config.max_uri_handlers = 20;
+    // Bound concurrent inbound TLS handshakes; background recognition/OTA also use TLS.
+    server_config.max_open_sockets = 2;
+    server_config.lru_purge_enable = true;
+    server_config.recv_wait_timeout = 5;
+    server_config.send_wait_timeout = 5;
+    const esp_err_t tls_result = waveform_phone_tls_start(server, &server_config);
+    phone_tls_ready.store(tls_result == ESP_OK && *server != nullptr);
+    if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: provision a valid identity over USB (%s)", esp_err_to_name(tls_result));
+    if (phone_tls_ready.load()) {
+        {
+            const std::lock_guard<std::mutex> lock(auth_mutex);
+            std::snprintf(verified_phone_host, sizeof(verified_phone_host), "%s", waveform_phone_tls_hostname());
+        }
+        register_uri(*server, "/api/history", HTTP_POST, history_handler);
+        register_uri(*server, "/", HTTP_GET, page_handler);
+        register_uri(*server, "/pair", HTTP_GET, pair_handler);
+        register_uri(*server, "/api/session", HTTP_GET, session_handler);
+        register_uri(*server, "/api/state", HTTP_GET, state_handler);
+        register_uri(*server, "/api/updates", HTTP_GET, update_status_handler);
+        register_uri(*server, "/api/updates/action", HTTP_POST, update_action_handler);
+        register_uri(*server, "/api/updates/config", HTTP_POST, update_config_handler);
+        register_uri(*server, "/api/style", HTTP_POST, style_handler);
+        register_uri(*server, "/api/brightness", HTTP_POST, brightness_handler);
+        register_uri(*server, "/api/name", HTTP_POST, name_handler);
+        register_uri(*server, "/api/appearance", HTTP_POST, appearance_handler);
+        register_uri(*server, "/api/time", HTTP_POST, time_handler);
+        refresh_phone_dns();
+        bind_remote(); // publish only after routes and DNS are ready
+    }
+}
+
 void network_task(void *)
 {
     esp_err_t result = nvs_flash_init();
@@ -805,33 +886,20 @@ void network_task(void *)
     wifi_ready.store(true);
     network_request_scan();
 
-    httpd_config_t server_config = HTTPD_DEFAULT_CONFIG();
-    server_config.max_uri_handlers = 20;
     httpd_handle_t server = nullptr;
-    ESP_ERROR_CHECK(httpd_start(&server, &server_config));
-    register_uri(server, "/api/history", HTTP_POST, history_handler);
-    register_uri(server, "/", HTTP_GET, page_handler);
-    register_uri(server, "/pair", HTTP_GET, pair_handler);
-    register_uri(server, "/api/session", HTTP_GET, session_handler);
-    register_uri(server, "/api/state", HTTP_GET, state_handler);
-    register_uri(server, "/api/updates", HTTP_GET, update_status_handler);
-    register_uri(server, "/api/updates/action", HTTP_POST, update_action_handler);
-    register_uri(server, "/api/updates/config", HTTP_POST, update_config_handler);
-    register_uri(server, "/api/style", HTTP_POST, style_handler);
-    register_uri(server, "/api/brightness", HTTP_POST, brightness_handler);
-    register_uri(server, "/api/name", HTTP_POST, name_handler);
-    register_uri(server, "/api/appearance", HTTP_POST, appearance_handler);
-    register_uri(server, "/api/time", HTTP_POST, time_handler);
-    update_local_ready.store(true);
+    start_secure_phone_server(&server);
+    update_local_ready.store(true); // local boot/recognition must not depend on a phone identity
+    publish_remote();
     if (connected) {
-        ESP_LOGI(kTag, "Phone remote ready on home Wi-Fi: http://%s", acquired_host);
+        ESP_LOGI(kTag, "Home Wi-Fi ready; HTTPS identity available=%d", int(phone_tls_ready.load()));
     } else {
         ESP_LOGI(kTag, "Home Wi-Fi requires touchscreen setup");
     }
 
     // Keep the on-screen pairing code valid and rejoin home Wi-Fi after a drop.
     for (;;) {
-        vTaskDelay(kMaintenanceInterval);
+        stop_unavailable_phone_server(&server);
+        if(!server&&lan_connected.load())start_secure_phone_server(&server);
         bool rotated = false;
         bool bound = false;
         {
@@ -839,15 +907,18 @@ void network_task(void *)
             restore_phone_sessions();
             save_phone_sessions();
             rotated = auth.refresh_pairing(esp_timer_get_time());
-            bound = auth.connected();
+            bound = lan_connected.load();
         }
-        if (rotated) publish_remote();
+        refresh_phone_dns();
+        (void)rotated;
+        publish_remote();
         if (!bound && maintaining_home.load() && !configuring_home.load()) {
             const esp_err_t reconnect = esp_wifi_connect();
             if (reconnect != ESP_OK) {
                 ESP_LOGW(kTag, "Home Wi-Fi rejoin deferred: %s", esp_err_to_name(reconnect));
             }
         }
+        vTaskDelay(kMaintenanceInterval);
     }
 }
 
@@ -980,7 +1051,7 @@ bool network_set_appearance(bool album_colours)
 extern "C" void waveform_update_network(waveform_update_network_t *out)
 {
     const std::lock_guard<std::mutex> lock(auth_mutex);
-    out->connected = auth.connected();
+    out->connected = lan_connected.load();
     out->time_ready = std::time(nullptr) >= 1700000000;
 }
 

@@ -34,6 +34,8 @@ Original software is licensed under [Apache 2.0](LICENSE). Original hardware and
 - [Buyer-readiness checklist](https://github.com/tinyrobotcompany/Waveform_One/issues/25)
 - [CI and releases](docs/delivery.md)
 - [Wi-Fi and QR phone setup](docs/setup.md)
+- [HTTPS identity provisioning and renewal](docs/secure-phone-access.md)
+- [Production secure boot and encrypted credentials](docs/production-security.md)
 
 Native P4 signed updates follow Tempo: monthly checks, an overnight installation
 window, countdown and postponement, with controls on the touchscreen and paired phone.
