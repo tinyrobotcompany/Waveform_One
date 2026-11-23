@@ -12,6 +12,38 @@ inline float music_score(const int8_t *scores) {
     return (best + 128) / 256.0f;
 }
 
+// YAMNet class map: Speech, Child speech, Conversation, Narration and
+// Speech synthesizer. Do not include Singing (24) or Rapping (31).
+inline float speech_score(const int8_t *scores) {
+    if (!scores) return 0;
+    const int best = std::max({int(scores[0]), int(scores[1]), int(scores[2]), int(scores[3]), int(scores[5])});
+    return (best + 128) / 256.0f;
+}
+
+// Require repeated, separate speech-dominant windows. Thresholds are policy
+// choices, not calibrated probabilities; podcast/music bench testing is needed.
+class SpeechPresence {
+public:
+    static constexpr float kStrong = 0.6f, kMusic = 0.2f;
+    static constexpr uint64_t kWindowSamples = 15600;
+    static constexpr int64_t kHoldUs = 6000000;
+    void update(float speech, float music, int64_t now, uint64_t end) {
+        if (!std::isfinite(speech) || !std::isfinite(music) || speech < 0 || speech > 1 || music < 0 || music > 1) return;
+        if (music >= kMusic) { reset(); return; }
+        if (speech < kStrong) return;
+        if (count_ && now - positive_at_ > kHoldUs) reset();
+        if (count_ && end < last_end_ + kWindowSamples) return;
+        if (count_ < 2) ++count_;
+        positive_at_ = now; last_end_ = end;
+    }
+    bool speech(int64_t now) const { return count_ >= 2 && now - positive_at_ <= kHoldUs; }
+    void reset() { *this = {}; }
+private:
+    unsigned count_ = 0;
+    int64_t positive_at_ = 0;
+    uint64_t last_end_ = 0;
+};
+
 // Whether the sound the level detector hears is music.
 //
 // Measured on the P4's onboard microphones (2026-10-17): music at -60 to

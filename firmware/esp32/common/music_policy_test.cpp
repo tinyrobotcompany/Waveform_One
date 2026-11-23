@@ -13,6 +13,35 @@ int main() {
     scores[24] = 127;
     assert(music_detection::music_score(scores) > 0.99f);
 
+    // Confident narration must be distinct from uncertain audio, even after
+    // the recognition fallback deadline. Singing/rapping remain music cues.
+    scores[24] = -128; scores[3] = 64;
+    assert(music_detection::speech_score(scores) == 0.75f);
+    music_detection::SpeechPresence podcast;
+    for (int i = 1; i <= 180; ++i) podcast.update(0.8f, 0.02f, i * s, i * window);
+    assert(podcast.speech(180 * s));
+    podcast.update(0.8f, 0.4f, 181 * s, 181 * window);
+    assert(!podcast.speech(181 * s));
+
+    assert(music_detection::speech_score(nullptr) == 0);
+    for (auto &value : scores) value = -128;
+    scores[31] = 100;
+    assert(music_detection::speech_score(scores) == 0 && music_detection::music_score(scores) > 0.8f);
+    music_detection::SpeechPresence repeated;
+    repeated.update(0.8f, 0, s, window);
+    repeated.update(0.8f, 0, 2*s, window + window/2);
+    assert(!repeated.speech(2*s)); // overlapping audio is not a second vote
+    repeated.update(0.8f, 0, 3*s, 2*window);
+    assert(repeated.speech(3*s));
+    assert(repeated.speech(9*s) && !repeated.speech(9*s+1));
+    repeated.reset(); assert(!repeated.speech(3*s));
+    repeated.update(0.8f, 0, s, window);
+    repeated.update(0.8f, 0, 8*s, 8*window);
+    assert(!repeated.speech(8*s)); // expired votes cannot accumulate
+    repeated.update(std::numeric_limits<float>::quiet_NaN(), 0, 9*s, 9*window);
+    repeated.update(0.8f, -1, 9*s, 9*window);
+    assert(!repeated.speech(9*s));
+
     // Talk scores near zero: never music.
     Presence talk;
     for (int64_t t = 0; t <= 30 * s; t += s / 2) talk.update(0.06f, t, uint64_t(t) * 16 / 1000);

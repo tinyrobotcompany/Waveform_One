@@ -64,13 +64,14 @@ void detector_task(void *model)
     ESP_LOGI(kTag, "Classifier ready arena=%u", unsigned(interpreter.arena_used_bytes()));
     verdict.store(MusicVerdict::Undecided);
     music_detection::Presence presence;
+    music_detection::SpeechPresence speech;
     uint32_t segment = UINT32_MAX;
     int64_t last_log = 0;
     while (true) {
         const auto *audio = recognition_input_audio();
         // Only sound needs a verdict: silence resets it, and costs no CPU.
         if (!audio || !recognition_sound_heard()) {
-            presence.reset();
+            presence.reset(); speech.reset();
             verdict.store(MusicVerdict::Undecided);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
@@ -79,14 +80,14 @@ void detector_task(void *model)
         if (end < music_detection::kSamples) { vTaskDelay(pdMS_TO_TICKS(100)); continue; }
         // The newest 0.975 s; consecutive windows overlap when inference is fast.
         const auto read = audio->read(end - music_detection::kSamples, work->pcm, music_detection::kSamples);
-        if (read.segment != segment) { presence.reset(); segment = read.segment; }
+        if (read.segment != segment) { presence.reset(); speech.reset(); segment = read.segment; }
         if (read.skipped || read.count != music_detection::kSamples) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }
         const int64_t started = esp_timer_get_time();
         const auto *bytes = reinterpret_cast<const uint8_t *>(work->pcm);
         constexpr size_t size = music_detection::kSamples * 2;
         if (!music_detection::features(bytes, size, work->features, interpreter.input(0)->data.int8, 6144,
                 yield_frontend, music_detection::input_gain(bytes, size)) || interpreter.Invoke() != kTfLiteOk) {
-            presence.reset();
+            presence.reset(); speech.reset();
             verdict.store(MusicVerdict::Undecided);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
@@ -94,12 +95,16 @@ void detector_task(void *model)
         const int64_t now = esp_timer_get_time();
         const float score = music_detection::music_score(interpreter.output(0)->data.int8);
         presence.update(score, now, read.position + read.count);
-        const auto state = presence.music(now) ? MusicVerdict::Music : MusicVerdict::Undecided;
+        const float speech_score = music_detection::speech_score(interpreter.output(0)->data.int8);
+        speech.update(speech_score, score, now, read.position + read.count);
+        const bool spoken = speech.speech(now);
+        if (spoken) presence.reset(); // speech must override a previous song's hold
+        const auto state = spoken ? MusicVerdict::Speech : presence.music(now) ? MusicVerdict::Music : MusicVerdict::Undecided;
         verdict.store(state);
         if (now - last_log >= 2000000 || score >= music_detection::Presence::kWeak) {
             last_log = now;
-            ESP_LOGI(kTag, "score=%.3f verdict=%s processing_ms=%lld", score,
-                state == MusicVerdict::Music ? "music" : "undecided",
+            ESP_LOGI(kTag, "score=%.3f speech_score=%.3f verdict=%s processing_ms=%lld", score, speech_score,
+                state == MusicVerdict::Music ? "music" : state == MusicVerdict::Speech ? "speech" : "undecided",
                 static_cast<long long>((now - started) / 1000));
         }
         vTaskDelay(pdMS_TO_TICKS(20));
