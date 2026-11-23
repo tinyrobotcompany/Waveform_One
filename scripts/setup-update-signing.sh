@@ -4,7 +4,7 @@ set -eu
 cd "$(dirname "$0")/.."
 key_dir="$HOME/.config/waveform-one-publisher"
 private="$key_dir/update-signing.pem"
-public="pi/updater/release-public.pem"
+public="firmware/esp32/p4_display/main/ota_public.pem"
 umask 077
 mkdir -p "$key_dir"
 if [ ! -f "$private" ]; then

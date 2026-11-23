@@ -141,7 +141,7 @@ The visualizer boots into `classic`, preserving the original bar display.
 history below it; colour indicates intensity. Silence scrolls black into the
 history. A stale audio stream clears every mode after the existing 500 ms limit.
 
-Use the [Rust Pi controller](../../pi/README.md) to switch modes over the same
+The retired Rust Pi controller used to switch modes over the same
 USB cable. Commands change the renderer only, not calibration or audio gain.
 Mode selections last until reboot. Tests for symmetry, history timing, stale
 data and malformed USB commands run with the existing host suites.

@@ -143,10 +143,8 @@ class P4PackageTests(unittest.TestCase):
             self.assertEqual(manifest['layout'], p4.LAYOUT)
             self.assertEqual(manifest['version'], '1.2.3')
             self.assertTrue(manifest['url'].endswith('/v1.2.3/waveform-p4.bin'))
-            # The workflow combines P4 output and legacy assets into a single flat release.
+            # The complete release contains only the P4 publication contract.
             self.assertEqual({p.name for p in dist.iterdir()}, release_assets.P4_ASSETS)
-            for name in release_assets.LEGACY_ASSETS:
-                (dist / name).write_bytes(('legacy fixture: ' + name).encode())
             downloaded = root / 'downloaded'
             shutil.copytree(dist, downloaded)
             release_assets.verify_assets(dist, downloaded)
@@ -175,3 +173,22 @@ class P4PackageTests(unittest.TestCase):
         for name in ['ota_0', 'ota_1']:
             self.assertEqual(entries[name][1], 8*1024**2)
             self.assertEqual(entries[name][0] % 0x10000, 0)
+
+    def test_pre_sign_verification_rejects_missing_wrong_commit_and_corrupt_downloads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            dist=Path(directory)
+            (dist/p4.IMAGE).write_bytes(image())
+            (dist/'p4-dependencies.lock').write_text('locked')
+            metadata=dict(commit='a'*40,version='1.2.3',sha256=p4.digest(dist/p4.IMAGE),
+                          dependency_lock_sha256=p4.digest(dist/'p4-dependencies.lock'))
+            provenance=dist/'p4-update-build.json';provenance.write_text(json.dumps(metadata))
+            p4.verify_build(dist,'1.2.3','a'*40)
+            with self.assertRaises(ValueError):p4.verify_build(dist,'1.2.3','b'*40)
+            with self.assertRaises(ValueError):p4.verify_build(dist,'1.2.4','a'*40)
+            for name in (p4.IMAGE,'p4-dependencies.lock','p4-update-build.json'):
+                path=dist/name; original=path.read_bytes()
+                path.unlink()
+                with self.assertRaises((ValueError,OSError)):p4.verify_build(dist,'1.2.3','a'*40)
+                path.write_bytes(b'corrupt')
+                with self.assertRaises(ValueError):p4.verify_build(dist,'1.2.3','a'*40)
+                path.write_bytes(original)

@@ -24,12 +24,12 @@ class ReleaseAssetTests(unittest.TestCase):
         self.downloaded = self.root / 'downloaded'
         shutil.copytree(self.dist, self.downloaded)
 
-    def test_combined_release_matches_preflight_and_post_upload_cli(self):
+    def test_p4_release_matches_preflight_and_post_upload_cli(self):
         subprocess.run([sys.executable, str(SCRIPT), '--dist', str(self.dist)], check=True)
         subprocess.run([sys.executable, str(SCRIPT), '--dist', str(self.dist),
                         '--downloaded', str(self.downloaded)], check=True)
 
-    def test_every_legacy_and_p4_asset_is_required_and_hash_checked(self):
+    def test_every_p4_asset_is_required_and_hash_checked(self):
         for name in sorted(assets.RELEASE_ASSETS):
             with self.subTest(asset=name):
                 target = self.downloaded / name
@@ -72,3 +72,8 @@ class ReleaseAssetTests(unittest.TestCase):
         self.assertLess(preflight, delete)
         self.assertLess(download, verify)
         self.assertLess(verify, publish)
+
+    def test_release_contains_only_p4_assets(self):
+        self.assertEqual(assets.RELEASE_ASSETS, assets.P4_ASSETS)
+        (self.dist / 'waveform-one-pi.tar.gz').write_bytes(b'retired')
+        with self.assertRaises(ValueError): assets.validate_staging(self.dist)
