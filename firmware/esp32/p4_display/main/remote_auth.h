@@ -19,19 +19,19 @@ constexpr std::size_t kTokenSize = 33;
 inline bool session_cookie(char *output, std::size_t capacity, const char *id)
 {
     const int size = std::snprintf(output, capacity,
-        "wf1_session=%s; Path=/; Max-Age=%lld; HttpOnly; SameSite=Strict", id,
+        "wf1_session=%s; Path=/; Max-Age=%lld; HttpOnly; Secure; SameSite=Strict", id,
         static_cast<long long>(kSessionLifetimeSeconds));
     return size > 0 && static_cast<std::size_t>(size) < capacity;
 }
 
 using RandomFill = void (*)(void *buffer, std::size_t size);
 
-// Sessions remain bound to one home-network address. A brief Wi-Fi interruption
-// suspends access; address changes and explicit network changes revoke access.
+// Sessions remain bound to the provisioned device hostname. Wi-Fi interruptions
+// suspend access; hostname changes and explicit network changes revoke access.
 struct StoredSessions {
-    uint32_t schema = 1;
+    uint32_t schema = 2;
     uint32_t next_session = 0;
-    char host[16]{};
+    char host[97]{};
     struct Entry { char id[kTokenSize]{}; char csrf[kTokenSize]{}; int64_t expires_epoch = 0; } entries[kMaxSessions];
 };
 
@@ -39,7 +39,7 @@ class RemoteAuth {
 public:
     explicit RemoteAuth(RandomFill fill) : fill_(fill) {}
 
-    // A same-address reconnect preserves unexpired pairing sessions.
+    // A same-hostname reconnect preserves unexpired pairing sessions.
     void connect(std::string_view host, int64_t now_us)
     {
         if (host == host_ && !host.empty()) { online_ = true; issue_pairing_code(now_us); return; }
@@ -85,7 +85,7 @@ public:
 
     bool restore_sessions(const StoredSessions &in, int64_t now_us, int64_t epoch)
     {
-        if (!connected() || epoch < 1700000000 || in.schema != 1 || in.next_session >= kMaxSessions ||
+        if (!connected() || epoch < 1700000000 || in.schema != 2 || in.next_session >= kMaxSessions ||
             !std::memchr(in.host, 0, sizeof(in.host)) || std::string_view(in.host) != host_) return false;
         for (const auto &entry : in.entries) {
             if (!entry.id[0]) continue;
@@ -116,14 +116,14 @@ public:
     bool pairing_url(char *output, std::size_t capacity) const
     {
         if (!connected() || capacity == 0) return false;
-        const int written = std::snprintf(output, capacity, "http://%s/pair?code=%s", host_,
+        const int written = std::snprintf(output, capacity, "https://%s/pair?code=%s", host_,
                                           pairing_code_);
         return written > 0 && static_cast<std::size_t>(written) < capacity;
     }
 
     bool host_valid(std::string_view host) const
     {
-        return connected() && control_policy::valid_http_host(host, host_);
+        return connected() && (host == host_ || host == std::string(host_) + ":443");
     }
 
     // Exchanges the on-screen pairing code for a session and rotates the code so
@@ -158,7 +158,7 @@ public:
                    std::string_view csrf, int64_t now_us) const
     {
         const Session *session = find_session(cookies, now_us);
-        return connected() && control_policy::same_http_origin(host, origin, host_) &&
+        return connected() && host_valid(host) && (origin == std::string("https://") + host_ || origin == std::string("https://") + host_ + ":443") &&
                session != nullptr && control_policy::remote_token_matches(session->csrf, csrf);
     }
 
@@ -209,7 +209,7 @@ private:
 
     bool online_ = false;
     RandomFill fill_;
-    char host_[16]{};
+    char host_[97]{};
     char pairing_code_[kTokenSize]{};
     int64_t pairing_expires_at_us_ = 0;
     Session sessions_[kMaxSessions]{};

@@ -19,7 +19,7 @@ void deterministic_random(void *output, std::size_t size)
 
 std::string pairing_code(const remote_auth::RemoteAuth &auth)
 {
-    char url[96]{};
+    char url[160]{};
     assert(auth.pairing_url(url, sizeof(url)));
     const std::string_view value(url);
     const std::string_view marker = "?code=";
@@ -36,11 +36,11 @@ std::string cookie(const char (&session)[remote_auth::kTokenSize])
 int main()
 {
     using namespace remote_auth;
-    constexpr std::string_view kHost = "192.168.1.20";
-    constexpr std::string_view kOrigin = "http://192.168.1.20";
+    constexpr std::string_view kHost = "device-a.waveform.tinyrobotcompany.io";
+    constexpr std::string_view kOrigin = "https://device-a.waveform.tinyrobotcompany.io";
     char session[kTokenSize]{};
     char csrf[kTokenSize]{};
-    char url[96]{};
+    char url[160]{};
 
     RemoteAuth auth(deterministic_random);
 
@@ -53,9 +53,9 @@ int main()
     auth.connect(kHost, 0);
     assert(auth.connected());
     assert(auth.pairing_url(url, sizeof(url)));
-    assert(std::string_view(url).rfind("http://192.168.1.20/pair?code=", 0) == 0);
+    assert(std::string_view(url).rfind("https://device-a.waveform.tinyrobotcompany.io/pair?code=", 0) == 0);
     assert(auth.host_valid(kHost));
-    assert(auth.host_valid("192.168.1.20:80"));
+    assert(auth.host_valid("device-a.waveform.tinyrobotcompany.io:443"));
     // A DNS-rebinding page reaches the device under its own name.
     assert(!auth.host_valid("evil.example"));
 
@@ -79,10 +79,12 @@ int main()
     assert(auth.authorize(kHost, kOrigin, cookie(session), csrf, 3));
     assert(!auth.authorize(kHost, kOrigin, cookie(session), "", 3));
     assert(!auth.authorize(kHost, kOrigin, "", csrf, 3));
-    assert(!auth.authorize(kHost, "http://evil.example", cookie(session), csrf, 3));
+    assert(!auth.authorize(kHost, "https://evil.example", cookie(session), csrf, 3));
     assert(!auth.authorize("evil.example", kOrigin, cookie(session), csrf, 3));
     assert(!auth.authorize(kHost, kOrigin, cookie(session), csrf, kSessionLifetimeUs + 2));
 
+    assert(!auth.authorize(kHost, "http://device-a.waveform.tinyrobotcompany.io", cookie(session), csrf, 3));
+    assert(!auth.host_valid("device-a.waveform.tinyrobotcompany.io:80"));
     // An unused pairing code expires and is replaced for the QR.
     const std::string waiting_code = pairing_code(auth);
     assert(!auth.refresh_pairing(1 + kPairingLifetimeUs));
@@ -107,7 +109,7 @@ int main()
     assert(rebooted.restore_sessions(stored, 100, epoch + 60));
     assert(rebooted.authorize(kHost, kOrigin, cookie(session), csrf, 101));
     assert(!rebooted.authorize(kHost, kOrigin, cookie(session), "forged", 101));
-    assert(!rebooted.authorize(kHost, "http://evil.example", cookie(session), csrf, 101));
+    assert(!rebooted.authorize(kHost, "https://evil.example", cookie(session), csrf, 101));
     assert(!rebooted.authorize(kHost, kOrigin, cookie(session), csrf, kSessionLifetimeUs));
     rebooted.disconnect();rebooted.connect("192.168.1.21", 100);
     assert(!rebooted.restore_sessions(stored, 100, epoch + 60));
@@ -137,7 +139,7 @@ int main()
     assert(auth.host_valid("192.168.1.21"));
     assert(auth.pair("192.168.1.21", pairing_code(auth), 6, session));
     assert(auth.session_csrf("192.168.1.21", cookie(session), 6, csrf));
-    assert(auth.authorize("192.168.1.21", "http://192.168.1.21", cookie(session), csrf, 6));
+    assert(auth.authorize("192.168.1.21", "https://192.168.1.21", cookie(session), csrf, 6));
     assert(!auth.authorize(kHost, kOrigin, cookie(session), csrf, 6));
 
     // At most four phones stay paired; the oldest is evicted.
@@ -177,7 +179,7 @@ int main()
     char response_cookie[112]{};
     assert(session_cookie(response_cookie, sizeof(response_cookie), persistent_id));
     const std::string cookie_header(response_cookie);
-    assert(cookie_header.find("Max-Age=7776000; HttpOnly; SameSite=Strict") != std::string::npos);
+    assert(cookie_header.find("Max-Age=7776000; HttpOnly; Secure; SameSite=Strict") != std::string::npos);
     assert(!session_cookie(response_cookie, 8, persistent_id));
     assert(pair_saved(durable, kHost, initial_code, 2, epoch, replay, save) == PairResult::InvalidCode);
     RemoteAuth next_day(deterministic_random);
@@ -204,6 +206,6 @@ int main()
     assert(!after_forget.authorize(kHost, kOrigin, cookie(persistent_id), persistent_csrf, 1));
 
     // An address that does not fit is never bound.
-    auth.connect("this-address-is-too-long", 8);
+    auth.connect(std::string(97, 'a'), 8);
     assert(!auth.connected());
 }

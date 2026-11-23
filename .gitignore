@@ -100,3 +100,9 @@ acrcloud.local*
 
 # Isolated local feature worktrees
 /worktree/
+
+# Per-device provisioning artifacts (contain private keys)
+phone_tls.bin
+nvs_keys.bin
+identity.json
+fullchain.pem

@@ -144,3 +144,26 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 14
+  production-security:
+    needs: scope
+    if: contains(fromJSON(needs.scope.outputs.firmware), 'p4_display')
+    name: P4 production security build (test key only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: espressif/idf:v6.1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Build and verify factory profile without provisioning hardware
+        shell: bash
+        env:
+          WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
+        run: |
+          . "$IDF_PATH/export.sh"
+          umask 077
+          scratch=$(mktemp -d "$RUNNER_TEMP/waveform-security.XXXXXX")
+          trap 'rm -rf "$scratch"' EXIT
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$scratch/test-only.pem" 2>/dev/null
+          python scripts/build-production.py --output "$scratch/factory" --signing-key "$scratch/test-only.pem" --version "$WAVEFORM_RELEASE_VERSION"
+          # Deliberately no upload step: test-signed factory images are not release artifacts.

@@ -42,3 +42,12 @@ menu "Experimental P4 HUB75 takeover"
         depends on WAVEFORM_P4_LED
         default y
 endmenu
+
+menu "Waveform production security"
+    config WAVEFORM_PRODUCTION_SECURITY
+        bool "Factory secure boot and encrypted storage profile"
+        default n
+        help
+            Use only through scripts/build-production.py for new factory devices.
+            First boot changes irreversible eFuses. Not an OTA migration option.
+endmenu

@@ -28,10 +28,11 @@ public:
         // Pairing rotates independently of the network. Keep only the origin,
         // never a pairing code, when deciding whether a recognition is stale.
         std::string origin;
-        if (available && pairing_url.substr(0, 7) == "http://") {
-            const size_t end = pairing_url.find_first_of("/?#", 7);
+        const size_t scheme = pairing_url.substr(0, 8) == "https://" ? 8 : pairing_url.substr(0, 7) == "http://" ? 7 : 0;
+        if (available && scheme) {
+            const size_t end = pairing_url.find_first_of("/?#", scheme);
             origin = pairing_url.substr(0, end);
-            if (origin.size() <= 7 || origin.size() > 64) origin.clear();
+            if (origin.size() <= scheme || origin.size() > 104) origin.clear();
         }
         available = available && !origin.empty();
         if (available == online_ && origin == origin_) return false;

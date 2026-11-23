@@ -727,7 +727,7 @@ void on_forget_phones(lv_event_t *)
 
 void remote_set_network(NetworkMode mode, const char *address)
 {
-    recognition_set_network(mode == NetworkMode::HomeWifi, address);
+    // Network service publishes recognition connectivity independently of phone HTTPS.
     if (!bsp_display_lock(1000)) return;
     setup_address = mode == NetworkMode::HomeWifi && address ? address : "";
     setup.network(!setup_address.empty() ? setup_guide::Network::Ready :
@@ -745,6 +745,12 @@ void remote_set_network(NetworkMode mode, const char *address)
         lv_label_set_text(network_instructions,
                           "Connect Waveform One to your\nhome Wi-Fi in Settings. The\napp QR will appear here.");
         lv_label_set_text(wifi_status, "Choose your home Wi-Fi network.");
+    } else if (mode == NetworkMode::HomeWifi && (!address || !address[0])) {
+        lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(network_qr_placeholder, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(network_heading, "SECURE PHONE SETUP");
+        lv_label_set_text(network_instructions, "Wi-Fi connected. Phone access needs\na valid certificate and matching DNS.\nSee USB provisioning instructions.");
+        lv_label_set_text(wifi_status, "Connected. Secure phone setup pending.");
     } else if (mode == NetworkMode::Reconnecting) {
         lv_obj_align(wifi_indicator, LV_ALIGN_TOP_RIGHT, -260, 28);
         lv_obj_add_flag(network_qr, LV_OBJ_FLAG_HIDDEN);

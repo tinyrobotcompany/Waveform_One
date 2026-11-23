@@ -76,3 +76,11 @@ incorrect password, successful saved join, QR scan, live remote action, code
 rotation, reconnect, dismissal and reopen. Verify QR scan distance/readability
 on the actual screen and that the guide does not obscure a password error.
 Host state tests and firmware compilation do not replace this acceptance.
+
+## Secure phone access
+
+Phone pairing now uses a unique HTTPS identity and DNS hostname. An unprovisioned
+device shows secure-setup instructions instead of an unsafe HTTP QR. The owner
+can still configure Wi-Fi and recognition on the touchscreen. See [identity
+provisioning and certificate renewal](secure-phone-access.md) for the one-time
+USB migration, CA trust and DNS setup. Old HTTP browser sessions must pair again.

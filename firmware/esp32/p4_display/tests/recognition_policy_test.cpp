@@ -7,6 +7,15 @@ int main()
     using namespace recognition_policy;
     constexpr uint32_t s = Planner::kHopsPerSecond;
 
+    Sessions secure;
+    secure.set_controller(true); secure.set_sound(true);
+    assert(secure.set_network(true, "https://device-a.waveform.tinyrobotcompany.io/pair?code=x"));
+    assert(secure.snapshot().ready);
+    assert(!secure.set_network(true, "https://device-a.waveform.tinyrobotcompany.io/pair?code=y"));
+    // Network can use its own identity before phone provisioning is complete.
+    assert(secure.set_network(true, "https://192.168.1.20"));
+    assert(secure.snapshot().ready);
+
     // Sessions: network and controller changes invalidate work.
     Sessions sessions;
     sessions.set_sound(true);

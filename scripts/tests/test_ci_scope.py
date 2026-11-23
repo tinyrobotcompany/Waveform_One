@@ -53,3 +53,6 @@ class ScopeTests(unittest.TestCase):
     def test_automation_tests_do_not_rebuild_firmware(self):
         self.assertEqual(scope.select(['.github/scripts/codex-pr-review.mjs']),
                          {'firmware': [], 'pi': False, 'tests': True})
+
+    def test_production_builder_selects_p4_security_build(self):
+        self.assertEqual(scope.select(['scripts/build-production.py'])['firmware'], ['p4_display'])

@@ -41,8 +41,8 @@ revokes all phones, including across reboot; it also rotates the QR code. If
 saving fails, existing pairing remains intact and the screen reports the failure.
 At most four phones are paired; pairing a fifth replaces the oldest. Expiry,
 cleared browser cookies, address changes or an explicit network change require
-scanning the current QR again. Cookies remain HttpOnly and SameSite=Strict, and
-Host/Origin/CSRF checks remain mandatory. Local HTTP still requires a trusted LAN.
+scanning the current QR again. Cookies are Secure, HttpOnly and SameSite=Strict, and
+Host/Origin/CSRF checks remain mandatory. Phone access now requires a provisioned HTTPS identity; see [migration and renewal](secure-phone-access.md).
 
 The phone polls every second during update checks, installation and countdowns,
 and every two seconds when idle, with bounded backoff during outages. Unsaved
@@ -52,10 +52,11 @@ update-setting edits are not overwritten by background polling.
 
 - Target: Waveshare P4 7B, revision-3 silicon, 32 MB flash, rather than Tempo's
   10.1-inch board. Application project identity is `waveform_p4_display`.
-- Layout: `waveform-ab8-model-v1`, two 8 MB application slots. NVS stays at
+- Layout: `waveform-ab8-https-v1`, two 8 MB application slots. NVS stays at
   `0x9000`, the music model at `0x810000`, and storage at `0xc10000`. OTA data is
   at `0xf10000`, with the second app at `0xf20000`. Existing data offsets remain
-  unchanged. Application-only OTA does not replace the model, S3 firmware, C6,
+  unchanged. HTTPS adds a 64 KiB identity partition at `0x1720000`, requiring a one-time
+  USB partition-table migration. Application-only OTA does not replace the model, S3 firmware, C6,
   partition table or bootloader. A future model/layout change needs an explicit
   compatibility migration, not an ordinary application release.
 - The existing Waveform One RSA/SHA-256 publisher key is retained instead of
@@ -64,8 +65,8 @@ update-setting edits are not overwritten by background polling.
 - The existing combined validation/release workflow allocates the version before
   building. P4 assets join the same release as legacy Pi/S3 assets, avoiding two
   workflows racing to publish the repository's latest release.
-- Local display timers and the initialized HTTP server establish trial-boot
-  health. A separate task restarts an unaccepted trial after 120 seconds, allowing
+- Local display timers and the network initialization attempt establish trial-boot
+  health; missing phone credentials do not block acceptance. A separate task restarts an unaccepted trial after 120 seconds, allowing
   the bootloader to roll back. Internet, Shazam and the external S3 are not
   prerequisites for accepting local startup.
 - Existing paired-session, Host/Origin and CSRF checks protect the phone actions.
