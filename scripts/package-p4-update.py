@@ -56,15 +56,22 @@ def record(build, dist, version, commit):
     }, sort_keys=True) + '\n')
 
 
-def package(dist, plan, commit, key, public_key):
-    version = plan['tag'].removeprefix('v')
+def verify_build(dist, version, commit):
     provenance = json.loads((dist / 'p4-update-build.json').read_text())
-    if (plan['commit'] != commit or provenance['commit'] != commit or
+    if (provenance['commit'] != commit or
             provenance['version'] != version or provenance['sha256'] != digest(dist / IMAGE) or
             provenance['dependency_lock_sha256'] != digest(dist / 'p4-dependencies.lock')):
         raise ValueError('P4 artifacts do not match the validated source/version')
     blob = (dist / IMAGE).read_bytes()
     validate_image(blob, version)
+    return provenance, blob
+
+
+def package(dist, plan, commit, key, public_key):
+    if plan['commit'] != commit:
+        raise ValueError('Release plan does not match the validated source')
+    version = plan['tag'].removeprefix('v')
+    provenance, blob = verify_build(dist, version, commit)
     manifest = dict(schema=1, source_commit=commit, version=version, target=TARGET,
                     layout=LAYOUT, size=len(blob), sha256=hashlib.sha256(blob).hexdigest(),
                     dependency_lock_sha256=provenance['dependency_lock_sha256'],
@@ -82,7 +89,7 @@ def package(dist, plan, commit, key, public_key):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['record', 'package'])
+    parser.add_argument('action', choices=['record', 'verify', 'package'])
     parser.add_argument('--dist', required=True, type=Path)
     parser.add_argument('--build', type=Path)
     parser.add_argument('--version')
@@ -95,6 +102,12 @@ def main():
     else:
         if not args.plan:
             parser.error('package requires --plan')
+        if args.action == 'verify':
+            plan = json.loads(args.plan.read_text())
+            if plan['commit'] != os.environ['GITHUB_SHA']:
+                raise ValueError('Release plan commit mismatch')
+            verify_build(args.dist, plan['tag'].removeprefix('v'), os.environ['GITHUB_SHA'])
+            return
         key = os.environ.get('UPDATE_SIGNING_KEY', '')
         if not key:
             raise ValueError('UPDATE_SIGNING_KEY is required')

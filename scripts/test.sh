@@ -12,4 +12,3 @@ python3 -m unittest discover -s tools/history_bridge -p 'test_*.py' -v
 sh firmware/esp32/tests/run.sh
 
 python3 -m unittest discover -s tools/product_validation -p 'test_*.py' -v
-
