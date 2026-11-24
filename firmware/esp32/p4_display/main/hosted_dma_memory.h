@@ -19,7 +19,7 @@ static inline uint8_t *waveform_hosted_stream_buffer(uint8_t **buffer,
                                                     uint32_t *capacity, uint32_t size)
 {
     if (size > *capacity) {
-        uint8_t *next = waveform_hosted_buffer_alloc(size);
+        uint8_t *next = (uint8_t *)waveform_hosted_buffer_alloc(size);
         if (!next) return NULL;
         heap_caps_free(*buffer);
         *buffer = next;

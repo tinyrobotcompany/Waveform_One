@@ -158,7 +158,7 @@ printf '%s\n' 'PASS: audio presence independent of lookup, absolute positions an
 "$build_dir/p4_fingerprint"
 printf '%s\n' 'PASS: streaming fingerprints against upstream reference, recordings and binary encoding'
 
-"${CC:-cc}" -std=c11 -Wall -Wextra -Werror -c "$esp_dir/p4_display/main/network_activity.c" -o "$build_dir/network_activity.o"
+"${CXX:-c++}" -std=c++17 -pedantic-errors -Wall -Wextra -Werror -c "$esp_dir/p4_display/main/network_activity.cpp" -o "$build_dir/network_activity.o"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/stubs" -I "$esp_dir/visualizer/tests/stubs" \
@@ -304,19 +304,19 @@ printf '%s\n' 'PASS: P4 HUB75 blanking, DMA buffer ownership and 16 kHz LED spec
 
 # Tempo OTA policy and actual worker, with deterministic IDF/network/persistence doubles.
 for suite in policy service; do
-    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror \
+    "${CXX:-c++}" -std=c++17 -pedantic-errors -fsanitize=address,undefined -fno-omit-frame-pointer -Wall -Wextra -Werror \
         -I "$esp_dir/p4_display/tests/ota_stubs" -I "$esp_dir/p4_display/main" \
         -I "$esp_dir/p4_display/third_party" \
-        "$esp_dir/p4_display/tests/update_${suite}_test.c" \
-        "$esp_dir/p4_display/main/network_activity.c" "$esp_dir/p4_display/main/update_policy.c" "$esp_dir/p4_display/third_party/cJSON.c" \
+        "$esp_dir/p4_display/tests/update_${suite}_test.cpp" \
+        "$esp_dir/p4_display/main/network_activity.cpp" "$esp_dir/p4_display/main/update_policy.cpp" "$build_dir/cJSON.o" \
         -lm -o "$build_dir/p4_update_$suite"
     "$build_dir/p4_update_$suite"
 done
 
-"${CC:-cc}" -std=c11 -Wall -Wextra -Werror \
+"${CXX:-c++}" -std=c++17 -pedantic-errors -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \
     -I "$esp_dir/p4_display/tests/dma_stubs" -I "$esp_dir/p4_display/main" \
-    "$esp_dir/p4_display/tests/hosted_dma_memory_test.c" -o "$build_dir/p4_hosted_dma"
+    "$esp_dir/p4_display/tests/hosted_dma_memory_test.cpp" -o "$build_dir/p4_hosted_dma"
 "$build_dir/p4_hosted_dma"
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \

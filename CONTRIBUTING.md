@@ -23,6 +23,11 @@ existing firmware suites cover that logic; physical wiring, electrical levels,
 display refresh quality and actual audio capture still require board testing.
 The scrolling demos are built in CI but do not yet have rendering unit tests.
 
+Custom P4 application modules use C++. Keep the existing C-linkage boundaries
+for ESP-IDF callbacks and shared interfaces. Vendor libraries (including cJSON)
+and generated font assets remain in their upstream language; do not rewrite them.
+Host tests compile the converted modules as C++17 with strict diagnostics.
+
 ESP-IDF v6.1 builds all six programs in CI. To build locally, activate ESP-IDF,
 then run `idf.py build` inside the relevant `firmware/esp32/<program>` directory.
 See the [firmware README](firmware/esp32/README.md) for installation and wiring.

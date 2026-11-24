@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "hosted_dma_memory.h"
-static _Alignas(128) unsigned char blocks[8][65536];
+alignas(128) static unsigned char blocks[8][65536];
 static unsigned allocations, frees;
 static size_t requested;
 static int fail;

@@ -1,4 +1,4 @@
-// Expose POSIX localtime_r before any libc header in strict C11 Linux builds.
+// Expose POSIX localtime_r before any libc header in strict Linux builds.
 #define _POSIX_C_SOURCE 200809L
 #include <assert.h>
 #include <time.h>
@@ -10,12 +10,12 @@
 static time_t test_clock=1800000000;
 static time_t fake_time(time_t *v){if(v)*v=test_clock;return test_clock;}
 #define time fake_time
-#include "../main/update_service.c"
+#include "../main/update_service.cpp"
 __asm__(".globl _binary_ota_public_pem_start\n_binary_ota_public_pem_start:\n.asciz \"test public key\"\n.globl _binary_ota_public_pem_end\n_binary_ota_public_pem_end:\n");
 static int64_t mono=1000000;
-static waveform_update_network_t net={.connected=true,.time_ready=true};
-static esp_app_desc_t desc={.version="0.9.0",.project_name="waveform_p4_display"};
-static esp_partition_t part={.size=0x800000};
+static waveform_update_network_t net{};
+static esp_app_desc_t desc{};
+static esp_partition_t part{};
 static int open_error,read_error=ESP_ERR_NVS_NOT_FOUND,write_error,commit_error,crypto_error,ota_error,end_error,begin_error,boot_error,http_code=200;
 static bool namespace_missing,queue_fail,task_fail,active_pending,trial_aborted,no_partition,truncated,read_failed,init_failed,connect_failed,has_redirect;
 static const char *redirect_to="https://release-assets.githubusercontent.com/test";
@@ -65,7 +65,7 @@ int esp_ota_mark_app_valid_cancel_rollback(void){if(accept_error)return accept_e
 void esp_restart(void){restarted++;}
 void esp_crt_bundle_attach(void){}
 void *esp_http_client_init(esp_http_client_config_t *c){assert(c->crt_bundle_attach&&c->disable_auto_redirect);offset=0;client_url=c->url;if(!strcmp(c->url,LATEST))release_checks++;
- if(has_redirect&&strstr(c->url,"github.com")){esp_http_client_event_t e={.event_id=HTTP_EVENT_ON_HEADER,.header_key="Location",.header_value=redirect_to,.user_data=c->user_data};c->event_handler(&e);}
+ if(has_redirect&&strstr(c->url,"github.com")){esp_http_client_event_t e{};e.event_id=HTTP_EVENT_ON_HEADER;e.header_key="Location";e.header_value=redirect_to;e.user_data=c->user_data;c->event_handler(&e);}
  if(!strstr(c->url,"release-assets.githubusercontent.com"))response=strstr(c->url,"/latest")?latest_body:strstr(c->url,"manifest.json")?manifest_text:strstr(c->url,"manifest.sig")?"signature":image;
  response_size=response==image?(size_t)(1024+body_delta):strlen(response);return init_failed?NULL:(void *)1;}
 int esp_http_client_open(void *h,int n){(void)h;(void)n;return connect_failed?-1:0;}
@@ -87,6 +87,7 @@ int mbedtls_pk_parse_public_key(mbedtls_pk_context *c,const unsigned char *p,siz
 int mbedtls_pk_verify(mbedtls_pk_context *c,int t,const unsigned char *p,size_t n,const unsigned char *s,size_t sn){(void)c;(void)t;(void)p;(void)n;(void)s;(void)sn;return crypto_error;}
 static void run(unsigned count){loops=0;stop_loop=count;if(!setjmp(done))worker(NULL);stop_loop=0;}
 int main(void){
+ net.connected=true;net.time_ready=true;strcpy(desc.version,"0.9.0");strcpy(desc.project_name,"waveform_p4_display");part.size=0x800000;
  snprintf(manifest_text,sizeof(manifest_text),"{\"schema\":1,\"version\":\"0.9.1\",\"target\":\"%s\",\"layout\":\"%s\",\"size\":1024,\"sha256\":\"%064d\",\"url\":\"%sv0.9.1/waveform-p4.bin\"}",WAVEFORM_UPDATE_TARGET,WAVEFORM_UPDATE_LAYOUT,0,WAVEFORM_UPDATE_BASE);
  assert(!waveform_update_request("check"));assert(!waveform_update_configure(720,true,180,240));
  open_error=-1;assert(waveform_update_start()!=0);open_error=0;read_error=-1;assert(waveform_update_start()!=0);read_error=ESP_ERR_NVS_NOT_FOUND;
