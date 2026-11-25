@@ -52,12 +52,16 @@ static esp_err_t key_open(const char *space,mbedtls_pk_context *key)
 }
 static esp_err_t ensure_key(uint32_t id)
 {
+    // TLS capability checks use the SDK's configured deterministic/randomized
+    // ECDSA algorithm. ECDHE uses a separate ephemeral key; no DERIVE permission.
+    const psa_algorithm_t algorithm=id==WAVEFORM_TLS_KEY_ID?
+        MBEDTLS_PK_ALG_ECDSA(PSA_ALG_SHA_256):PSA_ALG_ECDSA(PSA_ALG_SHA_256);
     psa_key_attributes_t attributes=PSA_KEY_ATTRIBUTES_INIT;
     psa_status_t result=psa_get_key_attributes(id,&attributes);
     if(result==PSA_SUCCESS){
         bool valid=psa_get_key_type(&attributes)==PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1)&&
             psa_get_key_bits(&attributes)==256&&psa_get_key_lifetime(&attributes)==PSA_KEY_LIFETIME_PERSISTENT&&
-            psa_get_key_algorithm(&attributes)==PSA_ALG_ECDSA(PSA_ALG_SHA_256)&&
+            psa_get_key_algorithm(&attributes)==algorithm&&
             psa_get_key_usage_flags(&attributes)==(PSA_KEY_USAGE_SIGN_HASH|PSA_KEY_USAGE_VERIFY_HASH|PSA_KEY_USAGE_SIGN_MESSAGE|PSA_KEY_USAGE_VERIFY_MESSAGE);
         psa_reset_key_attributes(&attributes);return valid?ESP_OK:ESP_ERR_INVALID_STATE;
     }
@@ -69,7 +73,7 @@ static esp_err_t ensure_key(uint32_t id)
     psa_set_key_type(&attributes,PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_SECP_R1));
     psa_set_key_bits(&attributes,256);
     psa_set_key_usage_flags(&attributes,PSA_KEY_USAGE_SIGN_HASH|PSA_KEY_USAGE_VERIFY_HASH);
-    psa_set_key_algorithm(&attributes,PSA_ALG_ECDSA(PSA_ALG_SHA_256));
+    psa_set_key_algorithm(&attributes,algorithm);
     mbedtls_svc_key_id_t generated=0;
     result=psa_generate_key(&attributes,&generated);psa_reset_key_attributes(&attributes);
     return result==PSA_SUCCESS&&generated==id?ESP_OK:ESP_FAIL;

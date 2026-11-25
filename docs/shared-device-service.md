@@ -87,7 +87,11 @@ Host tests cover signed request construction, malformed/redirected/truncated
 responses, OTA cancellation and lease release, scheduling/backoff, encrypted
 storage prerequisites/write failures, immutable keys and OTA contract separation.
 A real ESP-IDF crypto test validates CSR creation and certificate chains, hostname,
-key, expiry and timezone-independent renewal. The managed production P4 profile
+key, expiry and timezone-independent renewal. It completes verified TLS 1.2 and 1.3
+client/server handshakes with the persistent PSA certificate key, without export
+or DERIVE permissions. The TLS key uses the SDK-configured ECDSA algorithm; ECDHE
+agreement uses separate ephemeral keys. Physical HTTP-server acceptance remains
+required. The managed production P4 profile
 builds and fits its 8 MiB slot, with approximately 188 KiB remaining.
 
 Read-only Azure inventory on 2026-11-25 found the existing staging foundation but
