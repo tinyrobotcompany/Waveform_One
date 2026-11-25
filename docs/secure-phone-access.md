@@ -1,5 +1,7 @@
 # HTTPS phone access and provisioning
 
+For the optional shared-service enrollment profile, see [managed HTTPS identity](shared-device-service.md). Existing manual provisioning below remains supported.
+
 The phone connects directly to the P4 over HTTPS on the home LAN. No Azure resource,
 relay, public web server or cloud audio path is introduced. This adapts Tempo PR #23
 (`8ecd2d1d50878ebd60a1e45509f09278b88f8832`) to the P4 partition layout and C++ callers.

@@ -1,7 +1,12 @@
+#include "sdkconfig.h"
 #include "listening_history.h"
 #include "cJSON.h"
 #include "network.h"
 #include "phone_tls.h"
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+#include "device_identity.h"
+#include "device_enrollment.h"
+#endif
 #include "phone_dns.h"
 #include <arpa/inet.h>
 
@@ -805,7 +810,7 @@ void start_secure_phone_server(httpd_handle_t *server)
     server_config.send_wait_timeout = 5;
     const esp_err_t tls_result = waveform_phone_tls_start(server, &server_config);
     phone_tls_ready.store(tls_result == ESP_OK && *server != nullptr);
-    if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: provision a valid identity over USB (%s)", esp_err_to_name(tls_result));
+    if (tls_result != ESP_OK) ESP_LOGE(kTag, "Phone HTTPS unavailable: check identity provisioning or enrollment (%s)", esp_err_to_name(tls_result));
     if (phone_tls_ready.load()) {
         {
             const std::lock_guard<std::mutex> lock(auth_mutex);
@@ -886,6 +891,10 @@ void network_task(void *)
     wifi_ready.store(true);
     network_request_scan();
 
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+    const esp_err_t enrollment_result=waveform_enrollment_start();
+    if(enrollment_result!=ESP_OK)ESP_LOGW(kTag,"Managed phone identity unavailable: %s",esp_err_to_name(enrollment_result));
+#endif
     httpd_handle_t server = nullptr;
     start_secure_phone_server(&server);
     update_local_ready.store(true); // local boot/recognition must not depend on a phone identity
@@ -898,6 +907,10 @@ void network_task(void *)
 
     // Keep the on-screen pairing code valid and rejoin home Wi-Fi after a drop.
     for (;;) {
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+        // Keep a failed-stop handle for retry, as on expiry; never start a second server.
+        if(waveform_identity_changed())phone_tls_ready.store(false);
+#endif
         stop_unavailable_phone_server(&server);
         if(!server&&lan_connected.load())start_secure_phone_server(&server);
         bool rotated = false;

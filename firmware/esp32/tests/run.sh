@@ -13,6 +13,20 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
     "$esp_dir/p4_display/tests/idle_display_storage_test.cpp" "$esp_dir/p4_display/main/idle_display.cpp" -o "$build_dir/idle_storage"
 "$build_dir/idle_storage"
 
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/enrollment_policy_test.cpp" -o "$build_dir/enrollment_policy"
+"${CC:-cc}" -std=c11 -Wno-deprecated-declarations -c "$esp_dir/p4_display/third_party/cJSON.c" -o "$build_dir/enrollment_cjson.o"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
+    -I "$esp_dir/p4_display/tests/enrollment_stubs" -I "$esp_dir/p4_display/main" -I "$esp_dir/p4_display/third_party" \
+    "$esp_dir/p4_display/tests/device_enrollment_test.cpp" "$build_dir/enrollment_cjson.o" -o "$build_dir/enrollment_http"
+"$build_dir/enrollment_http"
+"$build_dir/enrollment_policy"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -include "$esp_dir/p4_display/tests/identity_store_stubs/sdkconfig.h" \
+    -I "$esp_dir/p4_display/tests/identity_store_stubs" -I "$esp_dir/p4_display/tests/tls_stubs" -I "$esp_dir/p4_display/main" \
+    "$esp_dir/p4_display/tests/identity_store_test.cpp" -o "$build_dir/identity_store"
+"$build_dir/identity_store"
+
 sh "$esp_dir/mic_test/tests/run.sh"
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror \
     -fsanitize=address,undefined -fno-omit-frame-pointer \

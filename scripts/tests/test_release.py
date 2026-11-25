@@ -64,6 +64,7 @@ class GitReleaseTests(unittest.TestCase):
         self.assertIn('Initial firmware.', plan['notes'])
         self.assertIn('Waveform One does not save audio recordings on the device.', plan['notes'])
         self.assertIn('Clips may include nearby voices', plan['notes'])
+        self.assertIn('Managed HTTPS identity service', plan['notes'])
         notice = release.privacy_notice(self.root, plan['commit'])
         self.assertTrue(plan['notes'].endswith(notice + '\n'))
         self.assertEqual(plan['notes'].count(notice), 1)

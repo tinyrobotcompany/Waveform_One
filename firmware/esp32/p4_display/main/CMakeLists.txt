@@ -73,3 +73,8 @@ set_source_files_properties(p4_led.cpp PROPERTIES COMPILE_OPTIONS "-fstack-usage
 
 # Shazam startup calls the FFT self-test on the recognition task stack.
 set_source_files_properties(fingerprint.cpp PROPERTIES COMPILE_OPTIONS "-O3;-Werror=frame-larger-than=4096;-fstack-usage")
+
+if(CONFIG_WAVEFORM_MANAGED_IDENTITY)
+    target_sources(${COMPONENT_LIB} PRIVATE "device_identity.cpp" "identity_store.cpp" "device_enrollment.cpp")
+    target_add_binary_data(${COMPONENT_LIB} "device_roots.pem" TEXT)
+endif()

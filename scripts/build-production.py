@@ -28,7 +28,12 @@ def verify_config(config):
     if 'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.production.csv"' not in config.splitlines():
         raise ValueError('Production partition layout required')
 
-def build(output, key, version, idf):
+def validate_enrollment_url(url):
+    if not re.fullmatch(r'https://[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?/v1/device', url):
+        raise ValueError('A shared HTTPS service endpoint ending in /v1/device is required')
+
+def build(output, key, version, idf, enrollment_url=''):
+    if enrollment_url: validate_enrollment_url(enrollment_url)
     if not re.fullmatch(r'\d+\.\d+\.\d+',version): raise ValueError('Semantic version required')
     output=output.resolve();key=key.resolve()
     if key.stat().st_mode & 0o077: raise ValueError('Signing key must be private (0600)')
@@ -36,12 +41,19 @@ def build(output, key, version, idf):
     output.mkdir(mode=0o700,parents=True,exist_ok=False)
     signing=output/'signing.defaults'
     signing.write_text('CONFIG_SECURE_BOOT_SIGNING_KEY="'+str(key)+'"\n')
+    defaults=str(APP/'sdkconfig.defaults')+';'+str(APP/'sdkconfig.defaults.production')
+    if enrollment_url:
+        defaults+=';'+str(APP/'sdkconfig.defaults.enrollment')
+        with signing.open('a') as config:
+            config.write('CONFIG_WAVEFORM_ENROLLMENT_URL="'+enrollment_url+'"\n')
     env=dict(os.environ,WAVEFORM_DEVICE_ACRCLOUD='1',WAVEFORM_RELEASE_VERSION=version)
     subprocess.run([sys.executable,str(idf/'tools/idf.py'),'-C',str(APP),'-B',str(output/'build'),
         '-DSDKCONFIG='+str(output/'sdkconfig'),
-        '-DSDKCONFIG_DEFAULTS='+str(APP/'sdkconfig.defaults')+';'+str(APP/'sdkconfig.defaults.production')+';'+str(signing),
+        '-DSDKCONFIG_DEFAULTS='+defaults+';'+str(signing),
         'build'],env=env,check=True)
     verify_config((output/'sdkconfig').read_text())
+    if enrollment_url and 'CONFIG_WAVEFORM_MANAGED_IDENTITY=y' not in (output/'sdkconfig').read_text().splitlines():
+        raise ValueError('Managed identity profile was not enabled')
     for binary in (output/'build/bootloader/bootloader.bin',output/'build/waveform_p4_display.bin'):
         subprocess.run([sys.executable,'-m','espsecure','verify-signature','--version','2','--keyfile',str(key),str(binary)],check=True)
     print('Verified factory build. NOT flashed. First boot permanently enables hardware protections.')
@@ -51,7 +63,8 @@ if __name__=='__main__':
     p.add_argument('--output',type=Path,required=True)
     p.add_argument('--signing-key',type=Path,required=True)
     p.add_argument('--version',required=True)
+    p.add_argument('--enrollment-url', default='', help='Enable managed identity using the existing shared service')
     p.add_argument('--idf',type=Path,default=Path(os.environ.get('IDF_PATH',Path.home()/'.espressif/v6.1/esp-idf')))
     a=p.parse_args()
     os.umask(0o077)
-    build(a.output,a.signing_key,a.version,a.idf)
+    build(a.output,a.signing_key,a.version,a.idf,a.enrollment_url)

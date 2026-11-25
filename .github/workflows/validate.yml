@@ -116,4 +116,6 @@ jobs:
           trap 'rm -rf "$scratch"' EXIT
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$scratch/test-only.pem" 2>/dev/null
           python scripts/build-production.py --output "$scratch/factory" --signing-key "$scratch/test-only.pem" --version "$version"
+          python scripts/build-production.py --output "$scratch/managed" --signing-key "$scratch/test-only.pem" --version "$version" --enrollment-url https://certificate-service.invalid/v1/device
+          bash scripts/test-managed-identity.sh
           # Deliberately no upload step: test-signed factory images are not release artifacts.
