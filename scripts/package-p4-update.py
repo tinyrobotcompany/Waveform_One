@@ -16,6 +16,7 @@ APP = ROOT / 'firmware/esp32/p4_display'
 TARGET = 'waveshare-p4-7b-rev3-32mb'
 LAYOUT = 'waveform-ab8-https-v1'
 SECURE_LAYOUT = 'waveform-ab8-secure-v1'
+MANAGED_LAYOUT = 'waveform-ab8-managed-v1'
 IMAGE = 'waveform-p4.bin'
 
 
@@ -53,6 +54,9 @@ def record(build, dist, version, commit, secure_boot_public_key=None):
         if '#define CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH 1' not in header.read_text():
             raise ValueError(f'32-bit flash addressing must be enabled in {header}')
     secure = '#define CONFIG_WAVEFORM_PRODUCTION_SECURITY 1' in config
+    managed = '#define CONFIG_WAVEFORM_MANAGED_IDENTITY 1' in config
+    if managed and not secure:
+        raise ValueError('Managed identity requires production security')
     if secure:
         verify_secure_image(build / 'waveform_p4_display.bin', secure_boot_public_key)
     elif secure_boot_public_key is not None:
@@ -66,7 +70,7 @@ def record(build, dist, version, commit, secure_boot_public_key=None):
     shutil.copyfile(APP / 'dependencies.lock', dist / 'p4-dependencies.lock')
     (dist / 'p4-update-build.json').write_text(json.dumps({
         'commit': commit, 'version': version, 'sha256': digest(dist / IMAGE),
-        'layout': SECURE_LAYOUT if secure else LAYOUT,
+        'layout': MANAGED_LAYOUT if managed else (SECURE_LAYOUT if secure else LAYOUT),
         'dependency_lock_sha256': digest(dist / 'p4-dependencies.lock'),
     }, sort_keys=True) + '\n')
 
@@ -88,9 +92,9 @@ def package(dist, plan, commit, key, public_key, secure_boot_public_key=None):
     version = plan['tag'].removeprefix('v')
     provenance, blob = verify_build(dist, version, commit)
     layout = provenance.get('layout', LAYOUT)
-    if layout not in (LAYOUT, SECURE_LAYOUT):
+    if layout not in (LAYOUT, SECURE_LAYOUT, MANAGED_LAYOUT):
         raise ValueError('Unknown P4 layout')
-    if layout == SECURE_LAYOUT:
+    if layout in (SECURE_LAYOUT, MANAGED_LAYOUT):
         verify_secure_image(dist / IMAGE, secure_boot_public_key)
     elif secure_boot_public_key is not None:
         raise ValueError('Secure-boot key supplied for a development image')

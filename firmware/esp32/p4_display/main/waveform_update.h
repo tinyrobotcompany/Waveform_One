@@ -6,7 +6,9 @@
 #ifdef ESP_PLATFORM
 #include "sdkconfig.h"
 #endif
-#ifdef CONFIG_WAVEFORM_PRODUCTION_SECURITY
+#ifdef CONFIG_WAVEFORM_MANAGED_IDENTITY
+#define WAVEFORM_UPDATE_LAYOUT "waveform-ab8-managed-v1"
+#elif defined(CONFIG_WAVEFORM_PRODUCTION_SECURITY)
 #define WAVEFORM_UPDATE_LAYOUT "waveform-ab8-secure-v1"
 #else
 #define WAVEFORM_UPDATE_LAYOUT "waveform-ab8-https-v1"

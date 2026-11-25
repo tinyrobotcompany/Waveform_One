@@ -116,6 +116,34 @@ class P4PackageTests(unittest.TestCase):
                 p4.record(build, root / 'secret-dist', '1.2.3', 'a'*40)
             self.assertFalse((root / 'secret-dist').exists())
 
+    def test_managed_identity_has_a_distinct_secure_ota_contract(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            build = root / 'build'
+            config = ('#define CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE 1\n'
+                      '#define CONFIG_BOOTLOADER_CACHE_32BIT_ADDR_QUAD_FLASH 1\n'
+                      '#define CONFIG_WAVEFORM_MANAGED_IDENTITY 1\n')
+            for path in ('config/sdkconfig.h', 'bootloader/config/sdkconfig.h'):
+                header = build / path
+                header.parent.mkdir(parents=True)
+                header.write_text(config)
+            (build / 'waveform_p4_display.bin').write_bytes(image())
+            credentials = build / 'esp-idf/main/acrcloud_config.h'
+            credentials.parent.mkdir(parents=True)
+            credentials.write_text(''.join(f'#define ACRCLOUD_{name} ""\n'
+                for name in ['HOST', 'ACCESS_KEY', 'ACCESS_SECRET']))
+            with self.assertRaisesRegex(ValueError, 'Managed identity requires production security'):
+                p4.record(build, root / 'dist', '1.2.3', 'a'*40)
+            (build / 'config/sdkconfig.h').write_text(config + '#define CONFIG_WAVEFORM_PRODUCTION_SECURITY 1\n')
+            with patch.object(p4, 'verify_secure_image') as verify:
+                p4.record(build, root / 'dist', '1.2.3', 'a'*40, Path('public.pem'))
+                verify.assert_called_once()
+            provenance = json.loads((root / 'dist/p4-update-build.json').read_text())
+            self.assertEqual(provenance['layout'], 'waveform-ab8-managed-v1')
+            plan = dict(tag='v1.2.3', commit='a'*40, notes='Managed identity')
+            with self.assertRaisesRegex(ValueError, 'approved secure-boot public key'):
+                p4.package(root / 'dist', plan, 'a'*40, Path('key.pem'), Path('public.pem'))
+
     def test_image_identity_version_and_slot_are_required(self):
         p4.validate_image(image(), '1.2.3')
         for blob, version in [(image(), '1.2.4'), (image(), '01.2.3'),

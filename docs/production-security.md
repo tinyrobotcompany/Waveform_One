@@ -1,5 +1,7 @@
 # Production P4 security and factory service
 
+For the optional shared-service enrollment profile, see [managed HTTPS identity](shared-device-service.md). Existing manual provisioning below remains supported.
+
 This is a separate manufacturing profile, not an OTA switch for development units.
 No provisioning script in this change burns eFuses or flashes a connected device.
 First boot of a correctly commissioned production image does make irreversible

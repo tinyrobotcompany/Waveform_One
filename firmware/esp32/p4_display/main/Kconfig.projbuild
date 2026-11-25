@@ -51,3 +51,23 @@ menu "Waveform production security"
             Use only through scripts/build-production.py for new factory devices.
             First boot changes irreversible eFuses. Not an OTA migration option.
 endmenu
+
+menu "Shared device certificate service"
+    config WAVEFORM_MANAGED_IDENTITY
+        bool "Device-generated identity and automatic certificate renewal"
+        depends on WAVEFORM_PRODUCTION_SECURITY && NVS_ENCRYPTION
+        default n
+        help
+            Factory-only managed identity using the shared Tempo Azure service.
+            Existing manually provisioned identities require explicit migration.
+    config WAVEFORM_DEVICE_SUFFIX
+        string "Waveform device DNS namespace"
+        default "waveform.tinyrobotcompany.io"
+    config WAVEFORM_ENROLLMENT_URL
+        string "Shared HTTPS enrollment endpoint ending in /v1/device"
+        depends on WAVEFORM_MANAGED_IDENTITY
+        default ""
+        help
+            Set from the reviewed shared-service deployment output. Empty disables
+            enrollment networking; local identity and normal device operation remain available.
+endmenu

@@ -1,5 +1,10 @@
 #include "phone_tls.h"
 #include "sdkconfig.h"
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+#include "identity_store.h"
+#include "esp_key_config.h"
+extern const char device_roots_start[] __asm__("_binary_device_roots_pem_start");
+#endif
 #include "nvs.h"
 #include "nvs_flash.h"
 #ifdef CONFIG_NVS_ENCRYPTION
@@ -75,7 +80,10 @@ static bool matches_identity(void)
     if(result==0 && mbedtls_x509_crt_get_ca_istrue(&cert))result=MBEDTLS_ERR_X509_CERT_VERIFY_FAILED;
 #endif
     if(result==0){
-#if MBEDTLS_VERSION_MAJOR >= 4
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+        result=mbedtls_pk_wrap_psa(&key,WAVEFORM_TLS_KEY_ID);
+        if(result==0)result=mbedtls_pk_check_pair(&cert.pk,&key);
+#elif MBEDTLS_VERSION_MAJOR >= 4
         result=mbedtls_pk_parse_key(&key,(const unsigned char *)private_key,strlen(private_key)+1,NULL,0);
         if(result==0)result=mbedtls_pk_check_pair(&cert.pk,&key);
 #else
@@ -100,7 +108,9 @@ esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *
     *server=NULL;
     clear_identity();
     esp_err_t err;
-#ifdef CONFIG_NVS_ENCRYPTION
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+    err=waveform_identity_store_init();
+#elif defined(CONFIG_NVS_ENCRYPTION)
     nvs_sec_cfg_t encryption;
     const esp_partition_t *keys=esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS_KEYS, "nvs_keys");
     if(!keys)return ESP_ERR_INVALID_STATE;
@@ -116,8 +126,12 @@ esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *
     size_t n=sizeof(hostname);err=nvs_get_str(h,"hostname",hostname,&n);
     if(err==ESP_OK&&!valid_hostname(hostname))err=ESP_ERR_INVALID_ARG;
     if(err==ESP_OK)err=read_pem(h,"cert",8192,&certificate);
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+    if(err==ESP_OK){trust_bundle=strdup(device_roots_start);if(!trust_bundle)err=ESP_ERR_NO_MEM;}
+#else
     if(err==ESP_OK)err=read_pem(h,"key",4096,&private_key);
     if(err==ESP_OK)err=read_pem(h,"trust",8192,&trust_bundle);
+#endif
     nvs_close(h);
     if(err==ESP_OK&&!matches_identity())err=ESP_ERR_INVALID_ARG;
     free(trust_bundle);trust_bundle=NULL; // verification only; do not retain an extra CA buffer while serving
@@ -125,7 +139,13 @@ esp_err_t waveform_phone_tls_start(httpd_handle_t *server,const httpd_config_t *
     httpd_ssl_config_t ssl=HTTPD_SSL_CONFIG_DEFAULT();ssl.httpd=*config;
     ssl.transport_mode=HTTPD_SSL_TRANSPORT_SECURE;ssl.port_secure=443;
     ssl.servercert=(const unsigned char *)certificate;ssl.servercert_len=strlen(certificate)+1;
+#if CONFIG_WAVEFORM_MANAGED_IDENTITY
+    static esp_key_config_t tls_key={};
+    tls_key.source=ESP_KEY_SOURCE_PSA;tls_key.psa.key_id=WAVEFORM_TLS_KEY_ID;
+    ssl.server_key=&tls_key;
+#else
     ssl.prvtkey_pem=(const unsigned char *)private_key;ssl.prvtkey_len=strlen(private_key)+1;
+#endif
     err=httpd_ssl_start(server,&ssl);
     if(err==ESP_OK&&!*server)err=ESP_FAIL;
     if(err!=ESP_OK){*server=NULL;clear_identity();}
