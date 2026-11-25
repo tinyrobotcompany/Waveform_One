@@ -76,7 +76,7 @@ static psa_status_t store_remove(void *ctx,psa_storage_uid_t uid)
        a separately authorized manufacturing operation, never automatic. */
     (void)ctx;(void)uid;return PSA_ERROR_NOT_PERMITTED;
 }
-static const esp_psa_its_custom_ops_t backend={.set=store_set,.get=store_get,.get_info=store_info,.remove=store_remove};
+static const esp_psa_its_custom_ops_t backend={.set=store_set,.get=store_get,.get_info=store_info,.remove=store_remove,.ctx=nullptr};
 esp_err_t waveform_identity_store_init(void)
 {
     if(ready)return ESP_OK;

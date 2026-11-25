@@ -22,7 +22,7 @@ trap 'rm -rf "$build_dir"' EXIT HUP INT TERM
 "$build_dir/enrollment_http"
 "$build_dir/enrollment_policy"
 
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -Wno-missing-field-initializers -include "$esp_dir/p4_display/tests/identity_store_stubs/sdkconfig.h" \
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -include "$esp_dir/p4_display/tests/identity_store_stubs/sdkconfig.h" \
     -I "$esp_dir/p4_display/tests/identity_store_stubs" -I "$esp_dir/p4_display/tests/tls_stubs" -I "$esp_dir/p4_display/main" \
     "$esp_dir/p4_display/tests/identity_store_test.cpp" -o "$build_dir/identity_store"
 "$build_dir/identity_store"

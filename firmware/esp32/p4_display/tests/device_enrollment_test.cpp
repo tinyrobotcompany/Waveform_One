@@ -61,7 +61,7 @@ int64_t esp_http_client_fetch_headers(void *h){
  assert(h);cJSON *j=cJSON_Parse(request_body);assert(j);const char *action=cJSON_GetObjectItem(j,"action")->valuestring;
  if(!strcmp(action,"certificate"))cert_requests++;
  snprintf(response,sizeof(response),"{\"state\":\"%s\",\"address\":\"192.168.1.34\",\"certificate\":\"%s\"}",pending?"pending":"ready",have_certificate?"chain":"");
- if(content_type){esp_http_client_event_t header={.event_id=HTTP_EVENT_ON_HEADER,.user_data=client_config->user_data,.header_key="content-type",.header_value=content_type};assert(client_config->event_handler(&header)==0);}
+ if(content_type){esp_http_client_event_t header={};header.event_id=HTTP_EVENT_ON_HEADER;header.user_data=client_config->user_data;header.header_key="content-type";header.header_value=content_type;assert(client_config->event_handler(&header)==0);}
  cJSON_Delete(j);return http_error?-1:(int64_t)strlen(response);
 }
 int esp_http_client_get_status_code(void *h){assert(h);return http_status;}
