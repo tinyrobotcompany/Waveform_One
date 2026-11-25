@@ -102,13 +102,27 @@ records; use Last.fm's account controls. Discogs links open a search only when
 clicked and disclose the search terms and normal browser/network information to
 Discogs. Neither integration uploads microphone audio.
 
+**Managed HTTPS identity service.** On the optional managed production profile,
+Waveform uses Tiny Robot Company's shared Azure certificate service for secure
+phone access. It sends its public device identifier, product, local IPv4 address,
+signed request timestamps/nonces and certificate-signing request. Manufacturing
+registers the device serial and public enrollment key. The service stores enrollment,
+DNS and certificate state; infrastructure may record public source IPs and request
+metadata. Public DNS and Certificate Transparency expose the assigned device
+hostname, and DNS publishes its private LAN address. Device private keys remain
+on the P4. This service receives no microphone audio, listening history, Wi-Fi
+passwords or ACRCloud credentials. The phone connects directly to the device over
+HTTPS. Service outages can delay pairing or certificate renewal without preventing
+local visualization or microphone processing. See [managed HTTPS identity](docs/shared-device-service.md).
+
 **Owner account controls.** On firmware offering owner account setup, credentials
-are entered on the touchscreen, not through the phone's unencrypted local HTTP
-connection. Replacing or disabling an account takes effect after restart; recognition
+are entered on the touchscreen; the phone's transport and pairing are separate
+from recognition-account configuration. Replacing or disabling an account takes effect after restart; recognition
 can continue with the previous account until then. Disabling the account stops
 cloud recognition after restart but leaves local microphone processing active.
-Wi-Fi/pairing/account settings persist in device storage, which is not newly
-encrypted by these features. Removal is not a claim of forensic secure erasure.
+Wi-Fi/pairing/account settings persist in device storage. The commissioned production
+security profile encrypts their NVS storage; development profiles may store them
+without encryption. Audio processing and account controls alone do not enable encryption. Removal is not a claim of forensic secure erasure.
 
 **Stopping capture.** Powering off Waveform One stops microphone capture and
 uploads. Disconnecting its internet connection prevents cloud recognition
