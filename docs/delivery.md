@@ -22,8 +22,9 @@ overwritten. Docs-only pushes without new changesets publish nothing.
    base branch, so the bootstrap PR cannot use its own unmerged review workflow.
 2. Add `OPENAI_API_KEY` in repository Settings → Secrets and variables → Actions.
    Use a project key with an appropriate spending limit. Do not commit it or paste
-   it into chat. As in Voxa, the workflow skips review when the key is missing.
-3. The workflow matches Voxa exactly: `gpt-5.5`, `low` reasoning, a 120,000-character
+   it into chat. For reviewed PRs, a missing key fails the check; the workflow
+   does not skip the runner successfully.
+3. The workflow uses `gpt-5.5`, `low` reasoning, a 120,000-character
    diff limit and a 6,000-token output limit. These settings are explicit in the workflow.
 4. Enable GitHub Actions and allow it to submit pull-request reviews if repository
    or organisation policy disables that feature. The workflow grants only contents
@@ -36,8 +37,10 @@ overwritten. Docs-only pushes without new changesets publish nothing.
    Configure both secrets before merging to activate reviews and enforcement.
    Once checks have appeared, also protect `main` with required host tests,
    changeset and all six firmware build checks.
-   Inspect the review body before merging: the Voxa workflow can succeed after a
-   skipped review or a fallback comment. It posts comments rather than approvals.
+   Inspect the review body and exact head SHA before merging. Critical/High
+   findings are posted as comments and fail the check. Provider failures and
+   invalid output fail without a passing fallback. Existing Dependabot and
+   changeset-release exemptions remain; this change does not alter ruleset bypasses.
 
 The repository had no OpenAI secret or release at integration time. Repository
 secrets are not supplied by these files. The enforcement workflow requires the
@@ -47,12 +50,19 @@ and displays the latest version automatically after that first release.
 
 PR jobs have no deployment secrets. The privileged Codex workflow never checks
 out or executes PR code, including fork code: it fetches the diff as untrusted
-text. The model cannot run tools. Large diffs are truncated at 120,000 characters
-and the review prompt records the limitation. The Voxa runner posts a fallback
-comment when the response does not meet its output contract; it skips Dependabot
-and changeset-release PRs. Before posting either result, the runner rechecks the
-PR head and refuses to post if it changed. Reviews include the reviewed commit
-SHA in both the comment marker and GitHub’s `commit_id` field.
+text. The model cannot run tools. Complete diffs above 120,000 characters fail
+before any paid request; split the PR without raising the limit. Only completed,
+schema-valid structured responses are accepted. The runner retains the existing
+Dependabot and changeset-release exemptions. Before reviewing and publishing,
+it checks the PR head. Reviews include the exact SHA in the marker and GitHub's
+`commit_id` field. Critical/High findings fail even when the review was published.
+
+Only a matching bot-authored, exact-head review with validated result metadata
+can be reused as nonblocking. Blocking or legacy/unverifiable reviews do not
+produce a passing duplicate run or an automatic paid retry. Stop for owner
+disposition; manual reruns require Simon's permission. A PR introducing these
+controls still runs the old trusted base scripts until merged, so offline tests
+and human review are required; it cannot certify itself using its unmerged code.
 
 ## Device updates
 
@@ -68,11 +78,12 @@ Hooks, changeset handling and CI follow the template's approach but use the exis
 C++ host tests and ESP-IDF builds instead of its Node/.NET/Azure deployment targets.
 
 The review workflow, core helper, core tests and three review rubrics
-match [Voxa commit 714ac8f](https://github.com/simonholmes001/voxa/tree/714ac8fb5f70d617a50def04f159d483c4e4a167/.github)
-byte for byte, as requested. The runner additionally prevents stale-head posts
-and anchors reviews to the reviewed commit. Local integration tests verify these
-guards along with Voxa's model settings, dependency-PR skip and fallback behaviour. The imported
-ruleset enforcement runs on main with its configured secret.
+were originally imported from [Voxa commit 714ac8f](https://github.com/simonholmes001/voxa/tree/714ac8fb5f70d617a50def04f159d483c4e4a167/.github).
+Simon subsequently approved replacing successful credential skips, truncation and
+fallback output with fail-closed review. These files no longer match that historical
+reference byte for byte. Local process-level tests cover failures, severity gates,
+duplicate disposition and stale-head behavior without live provider calls. The
+imported ruleset enforcement remains separate and runs on main with its configured secret.
 
 ### Affected-component PR checks
 

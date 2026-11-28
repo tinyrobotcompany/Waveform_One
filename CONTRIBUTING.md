@@ -34,8 +34,11 @@ See the [firmware README](firmware/esp32/README.md) for installation and wiring.
 
 Add a [changeset](.changeset/README.md) with each firmware, protocol or
 automation PR. PR checks run all host tests and firmware builds. Codex reviews
-non-draft PRs except Dependabot and changeset-release PRs, matching Voxa. Inspect
-the actual review body: a successful check can represent a skip or fallback.
+non-draft PRs except Dependabot and changeset-release PRs under the existing
+repository exemptions. For reviewed PRs, missing credentials, provider failures,
+malformed/incomplete responses, oversized diffs and Critical/High findings fail
+the check. No truncated input or passing fallback is accepted. Inspect the actual
+review body and its head SHA.
 
 Every generated release includes the committed [recognition evidence and cost
 disclosures](docs/release-evidence.md). Keep both required sections nonempty.
