@@ -17,5 +17,7 @@ Files are immutable once merged: add a correction in a new file. Keep old files;
 the release script uses reachable `vX.Y.Z` Git tags to determine which are new.
 Do not hand-create version tags: the validated main workflow owns them.
 
-This uses the template's changeset format with a small Python release runner,
+This uses the template's changeset format with a Node.js standard-library release runner,
 not the npm Changesets CLI. There is no Node package to version or publish.
+
+See [release planning](../docs/release-planning.md) for commands and validation.
