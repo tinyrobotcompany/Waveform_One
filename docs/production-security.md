@@ -33,11 +33,14 @@ NVS, never this reserved filesystem.
 
 ## Build without provisioning hardware
 
-Activate ESP-IDF v6.1. Use an approved RSA-3072 secure-boot signing key held outside
+Run `bash scripts/setup-idf.sh` to install the reviewed ESP-IDF 6.1.1 revision
+`051e4c4eb20346e043cdd47bc388fde75ff8af63`. Node.js 22 and Git are required.
+The setup and build wrappers reject any other SDK commit or HTTP parser hash.
+SDK/tool installations default to the project-local `.artifacts` directory. Use an approved RSA-3072 secure-boot signing key held outside
 Git with mode 0600. It is distinct from the existing OTA-manifest publisher key.
 
 ```sh
-python scripts/build-production.py --output /private/operator/factory-build --signing-key /private/operator/secure-boot.pem --version 1.0.0
+node scripts/build-production.mjs --output /private/operator/factory-build --signing-key /private/operator/secure-boot.pem --version 1.0.0
 ```
 
 The output directory must be new. The tool checks the resulting effective security
@@ -113,3 +116,24 @@ Source coverage: ESP-IDF v6.1 implementation/Kconfig and official documentation 
 [NVS encryption](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32p4/api-reference/storage/nvs_encryption.html).
 RSA is used rather than the P4 ECDSA mode affected by the documented hardware erratum.
 Hardware claims remain acceptance requirements, not inferred guarantees.
+
+## Build tooling and artifact compatibility
+
+Repository orchestration uses Node.js 22. `scripts/idf.sh` and
+`scripts/espsecure.sh` activate the verified SDK and invoke Espressif's supported
+Python tools; the repository does not reimplement those tools. An existing SDK
+checkout with a different commit or parser is rejected rather than repaired.
+`IDF_PATH` and `IDF_TOOLS_PATH` can select an operator-managed installation.
+
+Use `node scripts/package-p4-update.mjs record --build <build> --dist <dist>
+--version <version>` with `GITHUB_SHA` set to the validated commit. The `verify`
+and `package` actions take `--dist` and `--plan`. `verify` needs no signing secret;
+`package` reads `UPDATE_SIGNING_KEY` only for publisher signing. Temporary keys
+are mode 0600 under `.artifacts`, removed on success and failure. The OTA image,
+manifest, detached signature, provenance, dependency lock, notes and checksum
+filenames and formats remain compatible with the existing release contract.
+
+Run `node --test .github/scripts/idf-security.test.mjs
+.github/scripts/p4-delivery.test.mjs` for SDK rejection, production configuration,
+image identity, partition bounds, signing and failure-cleanup tests. Host evidence
+does not establish that any device has been provisioned or flashed.

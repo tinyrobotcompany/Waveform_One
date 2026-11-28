@@ -23,6 +23,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
       - name: Select validation scope
         id: select
         env:
@@ -32,9 +35,9 @@ jobs:
         run: |
           if [ "$CHANGED_ONLY" = true ]; then
             test -n "$BASE_SHA" && test -n "$HEAD_SHA"
-            python3 scripts/ci-scope.py --base "$BASE_SHA" --head "$HEAD_SHA"
+            node scripts/ci-scope.mjs --base "$BASE_SHA" --head "$HEAD_SHA"
           else
-            python3 scripts/ci-scope.py
+            node scripts/ci-scope.mjs
           fi
   tests:
     needs: scope
@@ -61,7 +64,9 @@ jobs:
     name: ESP32 ${{ matrix.app }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    container: espressif/idf:v6.1
+    container: espressif/idf:v6.1.1
+    env:
+      IDF_PATH: ${{ github.workspace }}/.artifacts/esp-idf
     strategy:
       fail-fast: false
       matrix:
@@ -70,6 +75,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Set up reviewed ESP-IDF revision
+        shell: bash
+        run: bash scripts/setup-idf.sh
       - name: Build firmware
         shell: bash
         env:
@@ -78,14 +89,13 @@ jobs:
           WAVEFORM_DEVICE_ACRCLOUD: "1"
           WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
         run: |
-          . "$IDF_PATH/export.sh"
           cd "firmware/esp32/$APP"
-          idf.py build
+          bash "$GITHUB_WORKSPACE/scripts/idf.sh" build
       - name: Package validated P4 application
         if: matrix.app == 'p4_display'
         env:
           WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version }}
-        run: python3 scripts/package-p4-update.py record --build firmware/esp32/p4_display/build --dist p4-dist --version "$WAVEFORM_RELEASE_VERSION"
+        run: node scripts/package-p4-update.mjs record --build firmware/esp32/p4_display/build --dist p4-dist --version "$WAVEFORM_RELEASE_VERSION"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: matrix.app == 'p4_display'
         with:
@@ -99,21 +109,28 @@ jobs:
     name: P4 production security build (test key only)
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    container: espressif/idf:v6.1
+    container: espressif/idf:v6.1.1
+    env:
+      IDF_PATH: ${{ github.workspace }}/.artifacts/esp-idf
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Set up reviewed ESP-IDF revision
+        shell: bash
+        run: bash scripts/setup-idf.sh
       - name: Build and verify factory profile without provisioning hardware
         shell: bash
         env:
           WAVEFORM_RELEASE_VERSION: ${{ inputs.release-version || '0.0.0' }}
         run: |
-          . "$IDF_PATH/export.sh"
           version="${WAVEFORM_RELEASE_VERSION:-0.0.0}"
           umask 077
           scratch=$(mktemp -d "$RUNNER_TEMP/waveform-security.XXXXXX")
           trap 'rm -rf "$scratch"' EXIT
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$scratch/test-only.pem" 2>/dev/null
-          python scripts/build-production.py --output "$scratch/factory" --signing-key "$scratch/test-only.pem" --version "$version"
+          node scripts/build-production.mjs --output "$scratch/factory" --signing-key "$scratch/test-only.pem" --version "$version"
           # Deliberately no upload step: test-signed factory images are not release artifacts.

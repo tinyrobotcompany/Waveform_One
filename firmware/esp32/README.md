@@ -169,3 +169,26 @@ last printed line, so it need not match that line's instantaneous flux/RMS.
 The host regression covers sustained quiet spectral activity below the old raw
 threshold, and return to black when only calibrated ambient noise remains.
 Confirm responsiveness and silence behaviour on the real panel after flashing.
+
+### Reviewed SDK builds
+
+Install Node.js 22, then run `bash scripts/setup-idf.sh` from the repository root.
+This installs ESP-IDF 6.1.1 at revision
+`051e4c4eb20346e043cdd47bc388fde75ff8af63` and the ESP32-S3/P4 toolchains under
+`.artifacts`. SDK installation needs network access. Existing unsupported checkouts
+are rejected; select a fresh directory with `IDF_PATH` when upgrading.
+
+From an application directory, invoke the repository's `scripts/idf.sh` with `bash`
+and the normal IDF arguments, for example from the root:
+
+```sh
+WAVEFORM_DEVICE_ACRCLOUD=1 WAVEFORM_RELEASE_VERSION=0.0.0 \
+  bash scripts/idf.sh -C firmware/esp32/p4_display build
+```
+
+Every invocation checks the SDK commit and the reviewed HTTP parser SHA-256 before
+activating Espressif's environment. CI uses the same setup and wrapper for every
+application and the production-security profile. See
+[production security](../../docs/production-security.md) for the Node manufacturing
+builder, signing checks and P4 packaging commands. Compilation and signing tests do
+not provision or establish hardware security.

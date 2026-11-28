@@ -83,5 +83,11 @@ shared audio pipeline. Shared firmware code selects all firmware builds.
 Documentation and changeset-only edits skip builds and unit tests, while the
 changeset policy check still runs. Automation changes select host tests, and firmware packaging changes select the visualizer.
 Changes to the validation workflows or scope selector run the complete suite.
+The selector is `scripts/ci-scope.mjs` and runs on Node 22. Backend changes select
+host validation; P4 builder/packager changes select the P4 build, including its
+production-security profile. SDK setup/guard changes select every firmware
+application. Unclassified non-documentation changes select all validation
+conservatively. Legacy packaging filenames remain recognized during migration,
+so deleting or renaming an old entry point still selects its consumers.
 The complete PR diff is considered on every update, not only the latest commit.
 Main-branch release validation retains full builds to supply all release assets.

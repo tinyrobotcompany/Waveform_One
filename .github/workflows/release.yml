@@ -40,6 +40,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
       - name: Prepare empty release staging directory
         id: staging
         run: |
@@ -67,8 +70,8 @@ jobs:
             exit 0
           fi
           # Fail before signing on missing/stale/corrupt downloaded P4 artifacts.
-          python3 scripts/package-p4-update.py verify --dist "$RELEASE_DIST" --plan /tmp/release-plan.json
-          python3 scripts/package-p4-update.py package --dist "$RELEASE_DIST" --plan /tmp/release-plan.json
+          node scripts/package-p4-update.mjs verify --dist "$RELEASE_DIST" --plan /tmp/release-plan.json
+          node scripts/package-p4-update.mjs package --dist "$RELEASE_DIST" --plan /tmp/release-plan.json
           # Validate the complete flat publication set before touching any draft.
           python3 scripts/verify-release-assets.py --dist "$RELEASE_DIST"
           tag=$(jq -r .tag /tmp/release-plan.json)
