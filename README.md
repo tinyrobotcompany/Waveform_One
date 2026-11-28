@@ -35,6 +35,8 @@ Original software is licensed under [Apache 2.0](LICENSE). Original hardware and
 - [CI and releases](docs/delivery.md)
 - [Wi-Fi and QR phone setup](docs/setup.md)
 - [HTTPS identity provisioning and renewal](docs/secure-phone-access.md)
+- [Managed certificate migration plan and accepted decisions](docs/plans/managed-certificates.md)
+- [Agent in Chief working protocol](docs/engineering-agent-protocol.md)
 - [Production secure boot and encrypted credentials](docs/production-security.md)
 
 Native P4 signed updates follow Tempo: monthly checks, an overnight installation
