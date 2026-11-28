@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Waveform.Certificates.Domain/Waveform.Certificates.Domain.csproj" />
+    <Project Path="src/Waveform.Certificates.Application/Waveform.Certificates.Application.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Waveform.Certificates.Domain.Tests/Waveform.Certificates.Domain.Tests.csproj" />
+    <Project Path="tests/Waveform.Certificates.Application.Tests/Waveform.Certificates.Application.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../Waveform.Certificates.Domain/Waveform.Certificates.Domain.csproj" />
+  </ItemGroup>
+</Project>

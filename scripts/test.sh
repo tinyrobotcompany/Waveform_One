@@ -6,6 +6,7 @@ for git_variable in $(git rev-parse --local-env-vars); do
     unset "$git_variable"
 done
 node --test .github/scripts/*.test.mjs
+sh scripts/test-backend.sh
 python3 -m unittest discover -s scripts/tests -v
 python3 -m unittest discover -s tools/music_benchmark -p 'test_*.py' -v
 python3 -m unittest discover -s tools/history_bridge -p 'test_*.py' -v
