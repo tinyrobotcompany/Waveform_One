@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import {
-  buildFallbackReviewBody,
   buildOpenAiErrorDiagnostics,
   buildOpenAiReviewRequestPayload,
   buildOpenAiResponseDiagnostics,
@@ -17,6 +16,7 @@ import {
   isDependabotPr,
   loadSkillRubrics,
   renderStructuredReviewBody,
+  parseOpenAiReview,
 } from './codex-pr-review-core.mjs';
 
 test('isDependabotPr returns true for dependabot branch', () => {
@@ -36,8 +36,11 @@ test('isChangesetReleasePr returns true for changeset-release branch', () => {
   assert.equal(isChangesetReleasePr(pr), true);
 });
 
-test('loadSkillRubrics reads rubric files from repository-like tree', () => {
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codex-review-rubrics-'));
+test('loadSkillRubrics reads rubric files from repository-like tree', (t) => {
+  const artifacts = fileURLToPath(new URL('../../.artifacts/', import.meta.url));
+  fs.mkdirSync(artifacts, {recursive: true});
+  const tempRoot = fs.mkdtempSync(path.join(artifacts, 'codex-review-rubrics-'));
+  t.after(() => fs.rmSync(tempRoot, {recursive: true, force: true}));
   const rubricDir = path.join(tempRoot, '.github', 'review-rubrics');
   fs.mkdirSync(rubricDir, { recursive: true });
   fs.writeFileSync(path.join(rubricDir, 'pull-request-review.md'), 'pull request rubric');
@@ -65,7 +68,7 @@ test('buildSystemPrompt includes all rubric sections', () => {
   assert.match(prompt, /C/);
 });
 
-test('buildUserPrompt includes truncation note when diff was truncated', () => {
+test('buildUserPrompt refuses truncated or oversized diffs', () => {
   const pr = {
     title: 'T',
     user: { login: 'u' },
@@ -73,8 +76,8 @@ test('buildUserPrompt includes truncation note when diff was truncated', () => {
     head: { ref: 'feature/x' },
     body: 'desc',
   };
-  const prompt = buildUserPrompt(pr, 'diff', 123, true);
-  assert.match(prompt, /Diff truncated at 123 characters/);
+  assert.throws(() => buildUserPrompt(pr, 'diff', 123, true), /complete diff/i);
+  assert.throws(() => buildUserPrompt(pr, 'diff', 3, false), /split/i);
 });
 
 test('buildUserPrompt wraps PR content in untrusted boundaries', () => {
@@ -221,14 +224,6 @@ test('isStructurallyValidReviewBody accepts explicit no-finding output with resi
   ].join('\n')), true);
 });
 
-test('buildFallbackReviewBody produces a structurally valid review body', () => {
-  const fallback = buildFallbackReviewBody({
-    choices: [{ message: { parsed: { unexpected: true } } }],
-  });
-
-  assert.equal(isStructurallyValidReviewBody(fallback), true);
-  assert.match(fallback, /Automated review body could not be parsed/);
-});
 
 test('buildOpenAiResponseDiagnostics summarizes response shape without content', () => {
   const diagnostics = buildOpenAiResponseDiagnostics({
@@ -346,25 +341,20 @@ test('buildOpenAiErrorDiagnostics handles non-json error bodies', () => {
   assert.match(diagnostics, /message=upstream unavailable/);
 });
 
-test('buildFallbackReviewBody reports Responses API response shape', () => {
-  const fallback = buildFallbackReviewBody({
-    status: 'incomplete',
-    incomplete_details: {
-      reason: 'max_output_tokens',
-    },
-    output_text: '',
-    usage: {
-      output_tokens: 6000,
-      output_tokens_details: {
-        reasoning_tokens: 5800,
-      },
-    },
-  });
-
-  assert.match(fallback, /response body could not be parsed/);
-  assert.match(fallback, /Status: incomplete/);
-  assert.match(fallback, /Incomplete reason: max_output_tokens/);
-  assert.match(fallback, /Output text length: 0/);
-  assert.match(fallback, /Reasoning tokens: 5800/);
-  assert.equal(isStructurallyValidReviewBody(fallback), true);
+test('accepts completed Responses API message output with its strict JSON contract', () => {
+  const review = {summary: 'Reviewed', findings: [], testsVerification: ['Not run'], risksFollowups: ['Hardware']};
+  const payload = {status: 'completed', output: [
+    {type: 'reasoning', summary: []},
+    {type: 'message', role: 'assistant', status: 'completed',
+      content: [{type: 'output_text', text: JSON.stringify(review)}]},
+  ]};
+  assert.deepEqual(parseOpenAiReview(payload), review);
+  assert.throws(() => parseOpenAiReview({...payload, output_text: '{}'}), /conflicting/);
 });
+
+for (const status of [undefined, 'incomplete', 'failed', 'cancelled', 'in_progress']) {
+  test(`does not accept content from a noncompleted response: ${status}`, () => {
+    const output_text = JSON.stringify({summary: 'Reviewed', findings: [], testsVerification: ['Not run'], risksFollowups: ['Hardware']});
+    assert.throws(() => parseOpenAiReview({status, output_text}), /complete/);
+  });
+}

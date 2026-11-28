@@ -5,12 +5,12 @@ import process from 'process';
 import {
   buildSystemPrompt,
   buildUserPrompt,
-  buildFallbackReviewBody,
   buildOpenAiErrorDiagnostics,
   buildOpenAiReviewRequestPayload,
   buildOpenAiResponseDiagnostics,
-  extractReviewBodyFromOpenAiPayload,
-  isStructurallyValidReviewBody,
+  parseOpenAiReview,
+  renderStructuredReviewBody,
+  hasBlockingFindings,
   isChangesetReleasePr,
   isDependabotPr,
   loadSkillRubrics,
@@ -59,11 +59,20 @@ if (!openAiKey) {
 }
 
 const githubApi = process.env.GITHUB_API_URL || 'https://api.github.com';
-const model = process.env.CODEX_REVIEW_MODEL || 'gpt-5.2';
-const maxDiffChars = Number.parseInt(process.env.CODEX_REVIEW_DIFF_MAX || '120000', 10);
-const maxOutputTokens = Number.parseInt(process.env.CODEX_REVIEW_MAX_OUTPUT_TOKENS || '6000', 10);
+const model = process.env.CODEX_REVIEW_MODEL || 'gpt-5.5';
+function positiveInteger(name, fallback) {
+  const text = process.env[name] ?? String(fallback);
+  const value = Number(text);
+  if (!/^[1-9]\d*$/.test(text) || !Number.isSafeInteger(value)) {
+    throw new Error(`${name} must be a positive integer.`);
+  }
+  return value;
+}
+const maxDiffChars = positiveInteger('CODEX_REVIEW_DIFF_MAX', 120000);
+const maxOutputTokens = positiveInteger('CODEX_REVIEW_MAX_OUTPUT_TOKENS', 6000);
 const reasoningEffort = process.env.CODEX_REVIEW_REASONING_EFFORT || 'low';
-const codexReviewMarker = `<!-- codex-review:${pr.head?.sha || process.env.GITHUB_SHA || 'unknown'} -->`;
+if (!pr.head?.sha) throw new Error('PR head SHA is required.');
+const codexReviewMarker = `<!-- codex-review:${pr.head.sha} -->`;
 
 async function githubRequest(path, options = {}) {
   const response = await fetch(`${githubApi}${path}`, {
@@ -83,20 +92,50 @@ async function githubRequest(path, options = {}) {
   return response;
 }
 
-const existingReviewsResponse = await githubRequest(
-  `/repos/${owner}/${repo}/pulls/${pr.number}/reviews?per_page=100`,
-  {
-    headers: {
-      Accept: 'application/vnd.github+json',
-    },
-  }
-);
-const existingReviews = await existingReviewsResponse.json();
-const alreadyReviewed = Array.isArray(existingReviews)
-  && existingReviews.some((review) => typeof review?.body === 'string' && review.body.includes(codexReviewMarker));
+async function requireCurrentHead() {
+  const response = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}`, {
+    headers: {Accept: 'application/vnd.github+json'},
+  });
+  const latestPr = await response.json();
+  if (latestPr.head?.sha !== pr.head.sha) throw new Error('PR head changed during review; no review was posted.');
+}
+await requireCurrentHead();
 
-if (alreadyReviewed) {
-  console.log('Existing Codex review found for this PR; skipping duplicate review comment.');
+function taggedReviewBody(review) {
+  const result = Buffer.from(JSON.stringify(review)).toString('base64');
+  return `${codexReviewMarker}\n${renderStructuredReviewBody(review)}\n<!-- codex-review-result:v1:${result} -->`;
+}
+
+async function previousReviews() {
+  const reviews = [];
+  for (let page = 1; page <= 100; page++) {
+    const response = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}/reviews?per_page=100&page=${page}`, {
+      headers: {Accept: 'application/vnd.github+json'},
+    });
+    const batch = await response.json();
+    if (!Array.isArray(batch)) throw new Error('GitHub returned an invalid review list.');
+    reviews.push(...batch);
+    if (batch.length < 100) return reviews;
+  }
+  throw new Error('Cannot establish prior review history; refusing another paid review.');
+}
+
+const existingReviews = (await previousReviews()).filter((review) =>
+  review.user?.login === 'github-actions[bot]' && review.user?.type === 'Bot'
+  && review.commit_id === pr.head.sha && review.body?.startsWith(codexReviewMarker)
+);
+if (existingReviews.length) {
+  for (const previous of existingReviews) {
+    const result = previous.body.match(/\n<!-- codex-review-result:v1:([A-Za-z0-9+/=]+) -->$/);
+    if (!result || previous.state !== 'COMMENTED') {
+      throw new Error('Existing review has no verified disposition; refusing a duplicate paid review.');
+    }
+    const review = parseOpenAiReview({status: 'completed', output_text: Buffer.from(result[1], 'base64').toString('utf8')});
+    if (previous.body !== taggedReviewBody(review)) throw new Error('Existing review body differs from its verified result.');
+    if (hasBlockingFindings(review)) throw new Error('Existing Codex review contains blocking findings (Critical/High).');
+  }
+  await requireCurrentHead();
+  console.log('Verified nonblocking Codex review already exists for this exact head; no duplicate request.');
   process.exit(0);
 }
 
@@ -107,16 +146,11 @@ const diffResponse = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.num
     },
   });
 
-let diff = await diffResponse.text();
-let diffTruncated = false;
-if (diff.length > maxDiffChars) {
-  diff = diff.slice(0, maxDiffChars);
-  diffTruncated = true;
-}
+const diff = await diffResponse.text();
 
 const rubrics = loadSkillRubrics(process.cwd());
 const systemPrompt = buildSystemPrompt(rubrics);
-const userPrompt = buildUserPrompt(pr, diff, maxDiffChars, diffTruncated);
+const userPrompt = buildUserPrompt(pr, diff, maxDiffChars, false);
 
 const openAiResponse = await fetch('https://api.openai.com/v1/responses', {
   method: 'POST',
@@ -145,30 +179,17 @@ if (!openAiResponse.ok) {
 }
 
 const openAiPayload = await openAiResponse.json();
-const extractedReviewBody = extractReviewBodyFromOpenAiPayload(openAiPayload);
-const structurallyValidReviewBody = isStructurallyValidReviewBody(extractedReviewBody);
+const review = parseOpenAiReview(openAiPayload);
+const reviewBody = renderStructuredReviewBody(review);
 console.log(buildOpenAiResponseDiagnostics({
   payload: openAiPayload,
-  extractedReviewBody,
-  isStructurallyValid: structurallyValidReviewBody,
+  extractedReviewBody: reviewBody,
+  isStructurallyValid: true,
 }));
 
-const reviewBody = extractedReviewBody && structurallyValidReviewBody
-  ? extractedReviewBody
-  : buildFallbackReviewBody(openAiPayload);
-if (reviewBody !== extractedReviewBody) {
-  console.warn('OpenAI review body was missing or did not match the required output contract; posting fallback review body.');
-}
+await requireCurrentHead();
 
-const latestPrResponse = await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}`, {
-  headers: {Accept: 'application/vnd.github+json'},
-});
-const latestPr = await latestPrResponse.json();
-if (!pr.head?.sha || latestPr.head?.sha !== pr.head.sha) {
-  throw new Error('PR head changed during review; no review was posted.');
-}
-
-const taggedBody = `${codexReviewMarker}\n${reviewBody}`;
+const taggedBody = taggedReviewBody(review);
 
 await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, {
   method: 'POST',
@@ -184,3 +205,4 @@ await githubRequest(`/repos/${owner}/${repo}/pulls/${pr.number}/reviews`, {
 });
 
 console.log('Codex review posted.');
+if (hasBlockingFindings(review)) throw new Error('Codex review contains blocking findings (Critical/High).');
